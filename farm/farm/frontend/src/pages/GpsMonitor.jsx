@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useEffect, useState, useRef, useCallback } from "react";
-import { Download, List, Navigation, ChevronLeft, ChevronRight } from "lucide-react";
+import { Download, List, Navigation, ChevronLeft, ChevronRight, Camera } from "lucide-react";
 import { resource } from "../lib/api";
 import { Badge, Button, Card, PageHeader, Table } from "../components/ui";
 import { exportExcel } from "../lib/export";
@@ -9,6 +9,56 @@ import { connectLocationStream } from "../lib/realtime";
 const acts = resource("gps/activities");
 const PAGE_SIZE = 25;
 const statusColor = { SUBMITTED: "yellow", VERIFIED: "green", REJECTED: "red" };
+const phaseColor = { BEFORE: "blue", DURING: "purple", COMPLETION: "green" };
+
+function renderPhotos(r) {
+  const phases = Array.isArray(r.photos) ? r.photos : [];
+  const hasMainPhoto = r.photo_url;
+  if (!hasMainPhoto && phases.length === 0) {
+    return (
+      <span className="inline-flex items-center justify-center h-10 w-10 rounded-md bg-gray-100 text-xs text-gray-400">
+        <Camera size={14} />
+      </span>
+    );
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5 max-w-[180px]">
+      {phases.length > 0 ? phases.map((p, i) => (
+        <div key={i} className="relative group">
+          <img
+            src={p.photo_url}
+            alt={p.phase_display || p.phase}
+            className="h-10 w-10 object-cover rounded-md cursor-pointer ring-1 ring-gray-200"
+            onClick={() => window.open(p.photo_url, "_blank")}
+            title={p.phase_display || p.phase}
+          />
+          {p.phase && (
+            <span
+              className="absolute -top-1.5 -right-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[8px] font-bold text-white ring-1 ring-white"
+              style={{
+                backgroundColor:
+                  p.phase === "BEFORE" ? "#2563eb" :
+                  p.phase === "DURING" ? "#9333ea" :
+                  p.phase === "COMPLETION" ? "#16a34a" : "#6b7280"
+              }}
+            >
+              {p.phase === "BEFORE" ? "B" : p.phase === "DURING" ? "D" : p.phase === "COMPLETION" ? "C" : "?"}
+            </span>
+          )}
+        </div>
+      )) : hasMainPhoto ? (
+        <div className="relative group">
+          <img
+            src={r.photo_url}
+            alt="Activity"
+            className="h-10 w-10 object-cover rounded-md cursor-pointer ring-1 ring-gray-200"
+            onClick={() => window.open(r.photo_url, "_blank")}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export default function GpsMonitor() {
   const { t } = useTranslation();
@@ -138,6 +188,11 @@ export default function GpsMonitor() {
             { key: "user_name", header: t("header.worker"), render: (r) => r.user_name || r.user },
             { key: "description", header: t("header.activities") },
             {
+              key: "photos",
+              header: t("header.photo"),
+              render: (r) => renderPhotos(r),
+            },
+            {
               key: "location_name",
               header: t("header.address"),
               render: (r) =>
@@ -178,6 +233,11 @@ export default function GpsMonitor() {
               { key: "description", header: t("header.activities") },
               { key: "field_name", header: t("header.field"), render: (r) => r.field_name || "—" },
               { key: "task_title", header: t("header.task"), render: (r) => r.task_title || "—" },
+              {
+                key: "photos",
+                header: t("header.photo"),
+                render: (r) => renderPhotos(r),
+              },
               {
                 key: "location_name",
                 header: t("header.address"),

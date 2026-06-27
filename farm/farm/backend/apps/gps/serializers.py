@@ -67,10 +67,19 @@ class LocationPingSerializer(serializers.ModelSerializer):
 
 class ActivityPhotoSerializer(serializers.ModelSerializer):
     phase_display = serializers.CharField(source="get_phase_display", read_only=True)
+    photo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = ActivityPhoto
         fields = "__all__"
+
+    def get_photo_url(self, obj):
+        if obj.photo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.photo.url)
+            return obj.photo.url
+        return None
 
     def validate_recorded_at(self, value):
         return _validate_not_future(value)
@@ -88,6 +97,7 @@ class FieldActivitySerializer(serializers.ModelSerializer):
     photos = ActivityPhotoSerializer(many=True, read_only=True)
     location_verified = serializers.SerializerMethodField()
     location_name = serializers.SerializerMethodField()
+    photo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = FieldActivity
@@ -106,6 +116,14 @@ class FieldActivitySerializer(serializers.ModelSerializer):
         if obj.latitude is None or obj.longitude is None:
             return None
         return reverse_geocode(float(obj.latitude), float(obj.longitude))
+
+    def get_photo_url(self, obj):
+        if obj.photo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.photo.url)
+            return obj.photo.url
+        return None
 
     def validate_recorded_at(self, value):
         return _validate_not_future(value)

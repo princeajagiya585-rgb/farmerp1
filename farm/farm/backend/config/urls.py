@@ -2,6 +2,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
+from django.views.static import serve as static_serve
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
@@ -32,5 +33,13 @@ urlpatterns = [
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
 ]
 
+# Serve media files in both dev and production
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+else:
+    # In production (DEBUG=False), Django doesn't serve media automatically.
+    # WhiteNoise serves static files but not media uploads, so add an explicit
+    # route so uploaded photos (attendance, field-activity, etc.) are accessible.
+    urlpatterns += [
+        path("media/<path:path>", static_serve, {"document_root": settings.MEDIA_ROOT}),
+    ]
