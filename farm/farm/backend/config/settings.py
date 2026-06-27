@@ -129,8 +129,13 @@ if DATABASE_URL:
             "PASSWORD": _urlparse.unquote(_u.password or ""),
             "HOST": _u.hostname or "",
             "PORT": str(_u.port or 5432),
-            "CONN_MAX_AGE": 600,
-            "OPTIONS": {"sslmode": os.getenv("DB_SSLMODE", "require")},
+            # Reduce connection age to prevent pool exhaustion (was 600 = 10 min)
+            "CONN_MAX_AGE": 60,
+            "OPTIONS": {
+                "sslmode": os.getenv("DB_SSLMODE", "require"),
+                # Connection pool settings for Supabase
+                "connect_timeout": 10,
+            },
         }
     }
 else:

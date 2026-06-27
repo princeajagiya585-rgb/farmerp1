@@ -16,7 +16,7 @@ services:
       - key: ALLOWED_HOSTS
         value: "localhost,127.0.0.1,0.0.0.0,farmerp-api.onrender.com,farmerp1.vercel.app"
       - key: DATABASE_URL
-        value: "postgresql://postgres:p1r2i3n4c5e6@db.favafuvuglsorwmezggd.supabase.co:5432/postgres"
+        value: "postgresql://postgres:p1r2i3n4c5e6@aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres"
       - key: LOCATIONIQ_API_KEY
         value: "8NpCatjl2jymfNJ69FRK"
       - key: ACCESS_TOKEN_LIFETIME_MIN
