@@ -3,10 +3,23 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 from django.views.static import serve as static_serve
+from django.views.generic import TemplateView
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
 )
+
+
+# Root URL view - returns API info
+def api_root(request):
+    from django.http import JsonResponse
+    return JsonResponse({
+        "name": "FarmERP Pro API",
+        "version": "1.0.0",
+        "status": "running",
+        "docs": "/api/docs/",
+        "schema": "/api/schema/",
+    })
 
 api_v1 = [
     path("auth/", include("apps.accounts.urls")),
@@ -27,6 +40,7 @@ api_v1 = [
 ]
 
 urlpatterns = [
+    path("", api_root, name="api-root"),  # Root URL - API info
     path("admin/", admin.site.urls),
     path("api/v1/", include(api_v1)),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
