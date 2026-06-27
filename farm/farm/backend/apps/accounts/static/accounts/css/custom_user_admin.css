@@ -1,0 +1,34 @@
+/* ===========================
+   Custom User Admin Styling
+   =========================== */
+
+/* Hide Recent Actions Panel */
+#recent-actions-module {
+    display: none !important;
+}
+
+/* Highlight the entire row for Super Admin users */
+tr:has(.field-role_badge span[style*="#7c3aed"]) {
+    background: linear-gradient(90deg, rgba(124, 58, 237, 0.06) 0%, rgba(124, 58, 237, 0.02) 100%) !important;
+}
+
+tr:has(.field-role_badge span[style*="#7c3aed"]):hover {
+    background: linear-gradient(90deg, rgba(124, 58, 237, 0.12) 0%, rgba(124, 58, 237, 0.04) 100%) !important;
+}
+
+/* Subtle left border accent for super admin rows */
+tr:has(.field-role_badge span[style*="#7c3aed"]) td:first-child {
+    border-left: 3px solid #7c3aed;
+    padding-left: 9px;
+}
+
+/* Style for Farm Manager rows */
+tr:has(.field-role_badge span[style*="#2563eb"]) td:first-child {
+    border-left: 3px solid #2563eb;
+    padding-left: 9px;
+}
+
+/* Make the username bold for super admins */
+tr:has(.field-role_badge span[style*="#7c3aed"]) .field-username {
+    font-weight: 600;
+}

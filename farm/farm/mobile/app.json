@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "FarmERP Pro",
+    "slug": "farmerp-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/adaptive-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#16a34a"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.farmerp.mobile",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "FarmERP Pro uses your location to record GPS check-ins and field activity.",
+        "NSCameraUsageDescription": "FarmERP Pro uses the camera to capture attendance and field activity photos."
+      }
+    },
+    "android": {
+      "package": "com.farmerp.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#16a34a"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "CAMERA"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "FarmERP Pro uses your location to record GPS check-ins and field activity."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "FarmERP Pro uses the camera to capture attendance and field activity photos."
+        }
+      ],
+      "expo-asset",
+      "expo-font"
+    ]
+  }
+}

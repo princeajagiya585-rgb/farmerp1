@@ -1,0 +1,30 @@
+# ── Secrets & local data (NEVER commit) ───────────────────────────
+**/.env
+**/.env.local
+**/.env.*.local
+
+# ── Python ────────────────────────────────────────────────────────
+**/venv/
+**/venv2/
+**/__pycache__/
+*.pyc
+*.pyo
+**/db.sqlite3
+**/datadump.json
+**/media/
+**/staticfiles/
+
+# ── Node / frontend / mobile ──────────────────────────────────────
+**/node_modules/
+**/dist/
+**/.expo/
+
+# ── AI / IDE / tooling config (local only) ────────────────────────
+**/.claude/
+.idea/
+
+# ── Build / deploy / misc ─────────────────────────────────────────
+.vercel/
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,85 @@
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'accounts/css/custom_user_admin.css' %}">
+<style>
+  /* ── Super Admin Banner ── */
+  .super-admin-banner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #7c3aed 0%, #a855f7 50%, #7c3aed 100%);
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    border-bottom: 2px solid rgba(255, 255, 255, 0.15);
+    position: relative;
+    overflow: hidden;
+  }
+  .super-admin-banner::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 20px,
+      rgba(255, 255, 255, 0.04) 20px,
+      rgba(255, 255, 255, 0.04) 40px
+    );
+    pointer-events: none;
+  }
+  .super-admin-banner .banner-icon {
+    font-size: 1.3rem;
+    flex-shrink: 0;
+  }
+  .super-admin-banner .banner-text {
+    position: relative;
+    z-index: 1;
+  }
+  .super-admin-banner .banner-subtitle {
+    font-weight: 400;
+    opacity: 0.85;
+    font-size: 0.8rem;
+    margin-left: 4px;
+  }
+
+  /* Dark mode support */
+  @media (prefers-color-scheme: dark) {
+    .super-admin-banner {
+      background: linear-gradient(135deg, #5b21b6 0%, #7c3aed 50%, #5b21b6 100%);
+      border-bottom-color: rgba(255, 255, 255, 0.1);
+    }
+  }
+
+  /* ── Animated shimmer effect on hover ── */
+  .super-admin-banner:hover::before {
+    background: repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 20px,
+      rgba(255, 255, 255, 0.08) 20px,
+      rgba(255, 255, 255, 0.08) 40px
+    );
+  }
+</style>
+{% endblock %}
+
+{% block nav-global %}
+{% if user.is_authenticated and user.is_super_admin %}
+<div class="super-admin-banner">
+  <span class="banner-icon">⚡</span>
+  <span class="banner-text">
+    Super Admin Mode
+    <span class="banner-subtitle">— Full system access enabled</span>
+  </span>
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}
