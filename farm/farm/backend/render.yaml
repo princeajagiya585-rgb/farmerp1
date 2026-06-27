@@ -1,0 +1,41 @@
+# Render Blueprint - Backend Configuration
+# This file configures the Render backend service
+
+services:
+  - type: web
+    name: farmerp-api
+    env: python
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: daphne farmerp.asgi:application && uvicorn farmerp.asgi:application --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: "localhost,127.0.0.1,0.0.0.0,farmerp-api.onrender.com,farmerp1.vercel.app"
+      - key: DATABASE_URL
+        value: "postgresql://postgres:p1r2i3n4c5e6@db.favafuvuglsorwmezggd.supabase.co:5432/postgres"
+      - key: LOCATIONIQ_API_KEY
+        value: "8NpCatjl2jymfNJ69FRK"
+      - key: ACCESS_TOKEN_LIFETIME_MIN
+        value: "60"
+      - key: REFRESH_TOKEN_LIFETIME_DAYS
+        value: "7"
+      - key: CORS_ALLOWED_ORIGINS
+        value: "http://localhost:5173,http://localhost:3000,https://farmerp1.vercel.app"
+      - key: USE_S3
+        value: "False"
+      - key: EMAIL_HOST
+        value: "smtp.gmail.com"
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_USE_TLS
+        value: "True"
+      - key: EMAIL_HOST_USER
+        value: "risingyeti00@gmail.com"
+      - key: EMAIL_HOST_PASSWORD
+        value: "olnmvgmwdiwxvbvc"
+      - key: DEFAULT_FROM_EMAIL
+        value: "risingyeti00@gmail.com"
