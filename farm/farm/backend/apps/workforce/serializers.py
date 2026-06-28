@@ -130,6 +130,11 @@ class AttendanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Attendance
         fields = "__all__"
+        # Approval is privileged: it must only be set via the approve/reject
+        # actions (which check the manager role), never through a plain
+        # create/update — otherwise an employee could self-approve their own
+        # attendance and have it counted by payroll.
+        read_only_fields = ["approval_status", "approved_by"]
 
     def get_location_name(self, obj):
         if obj.check_in_lat is None or obj.check_in_lng is None:

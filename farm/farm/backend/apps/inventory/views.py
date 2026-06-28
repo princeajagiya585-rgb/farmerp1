@@ -1,6 +1,9 @@
 from decimal import Decimal
 
+from django.db import transaction
 from django.db.models import F, Sum
+from django.db.models.functions import Coalesce
+from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -86,25 +89,30 @@ class StockMovementViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         return -q if movement_type == StockMovement.MovementType.OUT else q
 
     def _apply(self, item_id, delta):
-        # Always re-fetch the row so we never write a stale current_stock.
-        item = Item.objects.get(pk=item_id)
-        item.current_stock = (item.current_stock or Decimal("0")) + delta
-        item.save(update_fields=["current_stock", "updated_at"])
+        # Atomic, DB-side increment so two concurrent movements on the same item
+        # can't read-modify-write over each other and corrupt the stock level.
+        Item.objects.filter(pk=item_id).update(
+            current_stock=Coalesce(F("current_stock"), Decimal("0")) + delta,
+            updated_at=timezone.now(),
+        )
 
     def perform_create(self, serializer):
-        super().perform_create(serializer)
-        movement = serializer.instance
-        self._apply(movement.item_id, self._delta(movement.movement_type, movement.quantity))
+        with transaction.atomic():
+            super().perform_create(serializer)
+            movement = serializer.instance
+            self._apply(movement.item_id, self._delta(movement.movement_type, movement.quantity))
 
     def perform_update(self, serializer):
         # Reverse the old effect, then apply the new one (handles item/type/qty changes).
-        old = StockMovement.objects.get(pk=serializer.instance.pk)
-        old_item_id, old_delta = old.item_id, self._delta(old.movement_type, old.quantity)
-        movement = serializer.save()
-        self._apply(old_item_id, -old_delta)
-        self._apply(movement.item_id, self._delta(movement.movement_type, movement.quantity))
+        with transaction.atomic():
+            old = StockMovement.objects.get(pk=serializer.instance.pk)
+            old_item_id, old_delta = old.item_id, self._delta(old.movement_type, old.quantity)
+            movement = serializer.save()
+            self._apply(old_item_id, -old_delta)
+            self._apply(movement.item_id, self._delta(movement.movement_type, movement.quantity))
 
     def perform_destroy(self, instance):
-        item_id, delta = instance.item_id, self._delta(instance.movement_type, instance.quantity)
-        instance.delete()
-        self._apply(item_id, -delta)
+        with transaction.atomic():
+            item_id, delta = instance.item_id, self._delta(instance.movement_type, instance.quantity)
+            instance.delete()
+            self._apply(item_id, -delta)

@@ -4,6 +4,7 @@ import {
   Plus, Pencil, Trash2, Search, Download, Printer, ChevronLeft, ChevronRight, ChevronDown,
 } from "lucide-react";
 import { resource } from "../lib/api";
+import { formatApiError } from "../lib/errors";
 import { exportExcel, printTable } from "../lib/export";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -259,8 +260,7 @@ export default function CrudResource({
       setModal(null);
       load();
     } catch (e) {
-      const d = e.response?.data;
-      setError(typeof d === "object" ? JSON.stringify(d) : d || t("crud.saveFailed"));
+      setError(formatApiError(e, t("crud.saveFailed")));
     } finally {
       setSaving(false);
     }
@@ -272,7 +272,7 @@ export default function CrudResource({
       await repo.remove(row.id);
       load();
     } catch (e) {
-      setError(e.response?.data?.detail || t("crud.saveFailed"));
+      setError(formatApiError(e, t("crud.saveFailed")));
     }
   };
 

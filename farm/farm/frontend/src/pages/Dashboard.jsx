@@ -110,17 +110,54 @@ export default function Dashboard() {
   const [kpi, setKpi] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [waking, setWaking] = useState(false);
   const pollingRef = useRef(null);
+  const retryRef = useRef(null);
+  const kpiRef = useRef(null);
 
-  const loadDashboard = () => {
+  // Keep a ref in sync with the latest data so the loader can decide whether a
+  // failed *background* refresh should be surfaced (no data yet) or swallowed
+  // (we already have good data on screen).
+  useEffect(() => {
+    kpiRef.current = kpi;
+  }, [kpi]);
+
+  // The backend runs on a free tier that sleeps when idle, so the first request
+  // after a while can fail or be slow while it wakes up. Retry transient errors
+  // with backoff instead of immediately giving up.
+  const MAX_RETRIES = 4;
+
+  const loadDashboard = (attempt = 0) => {
+    if (retryRef.current) {
+      clearTimeout(retryRef.current);
+      retryRef.current = null;
+    }
     setLoading(true);
     api
-      .get("/reporting/dashboard/")
+      .get("/reporting/dashboard/", { timeout: 20000 })
       .then((r) => {
         setKpi(r.data);
         setError("");
+        setWaking(false);
       })
-      .catch(() => setError("Could not load dashboard."))
+      .catch((err) => {
+        // A 401 is handled by the axios interceptor (refresh / redirect); don't
+        // overwrite the screen for it here.
+        if (err?.response?.status === 401) return;
+
+        // If we already have data on screen, a failed background poll shouldn't
+        // wipe the dashboard — just keep the last good values.
+        if (kpiRef.current) return;
+
+        if (attempt < MAX_RETRIES) {
+          setWaking(true);
+          const delay = Math.min(2000 * 2 ** attempt, 15000);
+          retryRef.current = setTimeout(() => loadDashboard(attempt + 1), delay);
+        } else {
+          setWaking(false);
+          setError("Could not load dashboard. The server may be waking up — please retry.");
+        }
+      })
       .finally(() => setLoading(false));
   };
 
@@ -128,18 +165,40 @@ export default function Dashboard() {
     loadDashboard();
 
     // Auto-refresh every 30 seconds so new farms/employees appear automatically
-    pollingRef.current = setInterval(loadDashboard, 30000);
+    pollingRef.current = setInterval(() => loadDashboard(0), 30000);
 
     return () => {
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
+      if (retryRef.current) {
+        clearTimeout(retryRef.current);
+        retryRef.current = null;
+      }
     };
   }, [location]);
 
-  if (error) return <p className="text-red-500">{error}</p>;
-  if (!kpi) return <p className="text-gray-400">{t("common.loading")}</p>;
+  if (error && !kpi) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+        <p className="text-red-500">{error}</p>
+        <button
+          onClick={() => { setError(""); loadDashboard(0); }}
+          className="rounded-lg bg-brand-700 px-4 py-2 text-sm font-medium text-white hover:bg-brand-800"
+        >
+          {t("common.retry", "Retry")}
+        </button>
+      </div>
+    );
+  }
+  if (!kpi) {
+    return (
+      <p className="text-gray-400">
+        {waking ? t("common.wakingServer", "Waking up the server, please wait…") : t("common.loading")}
+      </p>
+    );
+  }
 
   const visibleModules = ALL_MODULES.filter((m) => canAccess(m.roles, user?.role));
 

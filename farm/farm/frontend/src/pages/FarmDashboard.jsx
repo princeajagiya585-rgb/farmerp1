@@ -18,16 +18,23 @@ export default function FarmDashboard() {
   const navigate = useNavigate();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     api
       .get("/farms/dashboard/")
-      .then((r) => setData(r.data))
-      .catch(() => {})
+      .then((r) => {
+        // Tolerate either a plain array or a paginated {results:[...]} payload.
+        const rows = Array.isArray(r.data) ? r.data : r.data?.results || [];
+        setData(rows);
+        setError("");
+      })
+      .catch(() => setError(t("common.loadFailed", "Could not load the farm dashboard.")))
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <p className="text-gray-400">Loading dashboard…</p>;
+  if (loading) return <p className="text-gray-400">{t("common.loading")}</p>;
+  if (error) return <p className="text-red-500">{error}</p>;
 
   const totalFarms = data.length;
   const totalFields = data.reduce((s, d) => s + d.fields_count, 0);
@@ -41,7 +48,7 @@ export default function FarmDashboard() {
 
   // Chart data: farm-wise revenue vs expenses
   const chartData = data.map((d) => ({
-    name: d.farm.name,
+    name: d.farm?.name ?? "—",
     Revenue: Math.round(d.total_revenue),
     Expenses: Math.round(d.total_expenses),
   }));

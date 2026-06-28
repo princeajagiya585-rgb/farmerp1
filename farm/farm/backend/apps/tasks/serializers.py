@@ -27,7 +27,9 @@ class TaskWorkSessionSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
         ]
-        read_only_fields = ["start_time", "created_by", "created_at"]
+        # "user" is server-stamped on create (see TaskWorkSessionViewSet) so a
+        # user cannot attribute tracked time to a coworker.
+        read_only_fields = ["start_time", "user", "created_by", "created_at"]
 
 
 class TaskUpdateSerializer(serializers.ModelSerializer):

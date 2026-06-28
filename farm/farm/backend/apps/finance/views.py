@@ -80,6 +80,11 @@ class ExpenseViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         expense = self.get_object()
         expense.status = Expense.Status.REJECTED
         expense.save(update_fields=["status", "updated_at"])
+        # If this expense was previously approved, its ledger DEBIT must be
+        # reversed — otherwise the rejected expense keeps inflating the books.
+        LedgerEntry.objects.filter(
+            source_type="expense", source_id=str(expense.id)
+        ).delete()
         return Response(self.get_serializer(expense).data)
 
 

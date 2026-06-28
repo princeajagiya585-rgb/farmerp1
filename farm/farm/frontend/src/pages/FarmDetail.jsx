@@ -63,7 +63,7 @@ export default function FarmDetail() {
 
   if (loading) return <p className="text-gray-400">{t("farmDetail.loading")}</p>;
   if (error) return <p className="text-red-500">{error}</p>;
-  if (!data) return <p className="text-gray-400">{t("farmDetail.notFound")}</p>;
+  if (!data || !data.farm_data) return <p className="text-gray-400">{t("farmDetail.notFound")}</p>;
 
   const farm = data.farm_data;
   const tabs = [

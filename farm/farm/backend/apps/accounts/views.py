@@ -4,7 +4,9 @@ from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.core.mail import send_mail
 from rest_framework import status, viewsets
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import (
+    action, api_view, permission_classes, throttle_classes,
+)
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -14,6 +16,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from apps.core.permissions import IsSuperAdmin
 
 from .otp import OTP
+from .throttling import OtpSendThrottle, OtpVerifyThrottle
 from .serializers import (
     ChangePasswordSerializer,
     FarmTokenObtainPairSerializer,
@@ -37,6 +40,7 @@ class LoginView(TokenObtainPairView):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([OtpSendThrottle])
 def send_otp(request):
     """Send OTP to a phone number OR email. For demo, returns the OTP in response."""
     serializer = OtpSendSerializer(data=request.data)
@@ -57,6 +61,7 @@ def send_otp(request):
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([OtpVerifyThrottle])
 def verify_otp(request):
     """Verify an OTP and return JWT tokens on success."""
     serializer = OtpVerifySerializer(data=request.data)
@@ -354,8 +359,10 @@ class UserViewSet(viewsets.ModelViewSet):
     def me(self, request):
         if request.method == "PATCH":
             data = request.data.copy()
-            # Nobody may change their own role / active status via /me/.
-            for f in ("role", "is_active"):
+            # Nobody may change their own role / active status via /me/, nor
+            # their username — it's the identity key for phone/OTP login lookups,
+            # so self-service renames could enable impersonation or lockout.
+            for f in ("role", "is_active", "username"):
                 data.pop(f, None)
             # Regular users may only view their identity — super admins can edit
             # their own profile (name, contact, language, Aadhaar) from here.

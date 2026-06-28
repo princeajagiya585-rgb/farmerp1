@@ -210,7 +210,14 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     @action(detail=True, methods=["post"])
     def update_progress(self, request, pk=None):
         task = self.get_object()
-        task.progress = int(request.data.get("progress", task.progress))
+        try:
+            progress = int(request.data.get("progress", task.progress))
+        except (TypeError, ValueError):
+            return Response(
+                {"progress": ["Must be an integer between 0 and 100."]},
+                status=400,
+            )
+        task.progress = max(0, min(100, progress))
         task.status = Task.Status.IN_PROGRESS
         task.save(update_fields=["progress", "status", "updated_at"])
         return Response(self.get_serializer(task).data)
@@ -281,6 +288,11 @@ class TaskWorkSessionViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         if user.role == Role.EMPLOYEE:
             qs = qs.filter(user=user)
         return qs
+
+    def perform_create(self, serializer):
+        # Always attribute a manually-created session to the caller; "user" is
+        # read-only on the serializer so it cannot be spoofed to a coworker.
+        serializer.save(user=self.request.user, created_by=self.request.user)
 
     @action(detail=True, methods=["post"])
     def force_stop(self, request, pk=None):

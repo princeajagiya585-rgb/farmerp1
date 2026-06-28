@@ -177,6 +177,12 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.StandardPagination",
     "PAGE_SIZE": 25,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    # Throttle the passwordless OTP endpoints so the 6-digit code can't be
+    # brute-forced and codes can't be requested in bulk (see accounts/throttling).
+    "DEFAULT_THROTTLE_RATES": {
+        "otp_send": "5/min",
+        "otp_verify": "5/min",
+    },
 }
 
 SIMPLE_JWT = {

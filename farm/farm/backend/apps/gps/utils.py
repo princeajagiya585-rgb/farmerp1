@@ -8,11 +8,28 @@ from channels.layers import get_channel_layer
 from django.conf import settings
 
 
-LOCATION_GROUP = "locations"
+# Super admins subscribe to this firehose group; everyone else subscribes only
+# to their own farm group(s) so they never receive another farm's live tracking.
+LOCATION_GROUP = "locations_all"
+
+
+def farm_group(farm_id):
+    """Channel-layer group name for a single farm's live GPS stream."""
+    return f"locations_farm_{farm_id}"
+
+
+def _broadcast(message_type, data, farm_id):
+    """Fan a payload out to the farm's group and the super-admin firehose."""
+    channel_layer = get_channel_layer()
+    targets = [LOCATION_GROUP]
+    if farm_id is not None:
+        targets.append(farm_group(farm_id))
+    for group in targets:
+        async_to_sync(channel_layer.group_send)(group, {"type": message_type, "data": data})
 
 
 def broadcast_ping(instance, request=None):
-    """Send a location ping to all connected WebSocket clients (best-effort).
+    """Send a location ping to clients scoped to that ping's farm (best-effort).
 
     Call this after creating a LocationPing so that connected clients receive
     the update in real time.  This function is shared across the gps and
@@ -24,17 +41,13 @@ def broadcast_ping(instance, request=None):
         from .serializers import LocationPingSerializer
         ctx = {"request": request} if request else {}
         data = LocationPingSerializer(instance, context=ctx).data
-        channel_layer = get_channel_layer()
-        async_to_sync(channel_layer.group_send)(
-            LOCATION_GROUP,
-            {"type": "location.ping", "data": data},
-        )
+        _broadcast("location.ping", data, getattr(instance, "farm_id", None))
     except Exception:
         pass
 
 
 def broadcast_field_activity(instance):
-    """Send a field activity update to all connected WebSocket clients (best-effort).
+    """Send a field activity update to clients scoped to that activity's farm.
 
     Call this after creating a FieldActivity so that the GPS Location Map
     page receives the update in real time.
@@ -42,11 +55,7 @@ def broadcast_field_activity(instance):
     try:
         from .serializers import FieldActivitySerializer
         data = FieldActivitySerializer(instance).data
-        channel_layer = get_channel_layer()
-        async_to_sync(channel_layer.group_send)(
-            LOCATION_GROUP,
-            {"type": "field_activity", "data": data},
-        )
+        _broadcast("field_activity", data, getattr(instance, "farm_id", None))
     except Exception:
         pass
 

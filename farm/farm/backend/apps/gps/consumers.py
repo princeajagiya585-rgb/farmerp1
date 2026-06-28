@@ -3,10 +3,14 @@
 import json
 from datetime import timedelta
 
+from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import AccessToken
+
+from apps.accounts.models import Role
+from .utils import LOCATION_GROUP, farm_group
 
 User = get_user_model()
 
@@ -19,8 +23,6 @@ class LocationConsumer(AsyncWebsocketConsumer):
     """
 
     async def connect(self):
-        self.group_name = "locations"
-
         # ── Authenticate via JWT query parameter ──────────────────────
         token = self.scope.get("query_string", b"").decode()
         # Parse query string manually (simple key=value, no library needed)
@@ -41,12 +43,26 @@ class LocationConsumer(AsyncWebsocketConsumer):
 
         self.user = user
 
-        # ── Join the global broadcast group ──────────────────────────
-        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        # ── Join only the groups this user is allowed to see ──────────
+        # Super admins get the firehose; everyone else gets only their own
+        # farm groups, so no one receives another farm's live tracking.
+        if user.role == Role.SUPER_ADMIN:
+            self.groups_joined = [LOCATION_GROUP]
+        else:
+            farm_ids = await self._user_farm_ids(user)
+            self.groups_joined = [farm_group(fid) for fid in farm_ids]
+
+        for group in self.groups_joined:
+            await self.channel_layer.group_add(group, self.channel_name)
         await self.accept()
 
+    @database_sync_to_async
+    def _user_farm_ids(self, user):
+        return list(user.farms.values_list("id", flat=True))
+
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        for group in getattr(self, "groups_joined", []):
+            await self.channel_layer.group_discard(group, self.channel_name)
 
     # ── Handlers for messages sent by the channel layer ───────────────
     async def location_ping(self, event):
