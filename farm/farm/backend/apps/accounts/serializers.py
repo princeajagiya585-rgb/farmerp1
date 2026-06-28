@@ -163,7 +163,7 @@ class FarmTokenObtainPairSerializer(TokenObtainPairSerializer):
                 attrs[self.username_field] = user.username
 
         data = super().validate(attrs)
-        data["user"] = UserSerializer(self.user).data
+        data["user"] = UserSerializer(self.user, context=self.context).data
         return data
 
 
