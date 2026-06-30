@@ -1,9 +1,11 @@
 import axios from "axios";
 
-// In dev, VITE_API_URL is unset → "/api/v1" goes through the Vite proxy to the
-// local backend. In production (Vercel), set VITE_API_URL to the backend origin
-// (e.g. https://farmerp-api.onrender.com) so calls hit the deployed API.
-const API_ORIGIN = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+// ── API Base URL ────────────────────────────────────────────────────────
+//  Production (Vercel): use relative URLs → vercel.json rewrites /api/* → Railway.
+//  Development:         use VITE_API_URL (if set) or Vite proxy → localhost:8000.
+const API_ORIGIN = import.meta.env.PROD
+  ? ""
+  : (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 const API_BASE = `${API_ORIGIN}/api/v1`;
 
 export const api = axios.create({ baseURL: API_BASE });

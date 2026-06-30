@@ -10,16 +10,19 @@
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 15000;
 
-// WebSocket base URL.
-//  - dev: the Channels/Daphne backend runs on :8000, so connect there directly.
-//  - prod: same origin (wss when the page is https), assuming the reverse proxy
-//    forwards /ws to the ASGI server.
-// Override either with VITE_WS_URL.
+// ── WebSocket Base URL ──────────────────────────────────────────────────
+//  Production:  VITE_WS_URL must be set in Vercel dashboard to Railway WS URL.
+//               Vercel does NOT proxy WebSocket connections, so a direct URL is
+//               required: wss://farmerp-backend-production.up.railway.app
+//  Development: falls back to ws://localhost:8000 (the Daphne dev server).
 function resolveWsBase() {
   if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+  if (import.meta.env.PROD) {
+    // Default to Railway WebSocket in production
+    return "wss://farmerp-backend-production.up.railway.app";
+  }
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
-  const host = import.meta.env.DEV ? `${window.location.hostname}:8000` : window.location.host;
-  return `${proto}://${host}`;
+  return `${proto}://${window.location.hostname}:8000`;
 }
 const WS_BASE = resolveWsBase();
 

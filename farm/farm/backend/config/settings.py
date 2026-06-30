@@ -22,7 +22,7 @@ def env_list(key, default=""):
 
 SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-dev-key-change-me")
 DEBUG = env_bool("DEBUG", True)
-ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver") or ["*"]
+ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver,farmerp-backend-production.up.railway.app") or ["*"]
 
 # ---------------------------------------------------------------------------
 # Applications
@@ -75,6 +75,7 @@ MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",  # serve static files in production
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "config.middleware.CsrfExemptApiMiddleware",  # exempt /api/ from CSRF (JWT-only auth)
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
@@ -209,12 +210,16 @@ LOCATIONIQ_API_KEY = os.getenv("LOCATIONIQ_API_KEY", "")
 # CORS
 # ---------------------------------------------------------------------------
 CORS_ALLOWED_ORIGINS = env_list(
-    "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:5174,http://localhost:3000"
+    "CORS_ALLOWED_ORIGINS",
+    "http://localhost:5173,http://localhost:5174,http://localhost:3000,https://farmerp1.vercel.app,https://farmerp-backend-production.up.railway.app"
 )
 CORS_ALLOW_CREDENTIALS = True
 # Required by Django for cross-origin POST (e.g. the admin) behind HTTPS.
-CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "")
-# Behind Render/Vercel's HTTPS proxy, trust the forwarded scheme header.
+CSRF_TRUSTED_ORIGINS = env_list(
+    "CSRF_TRUSTED_ORIGINS",
+    "https://farmerp1.vercel.app"
+)
+# Behind Railway/Vercel's HTTPS proxy, trust the forwarded scheme header.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # ---------------------------------------------------------------------------
