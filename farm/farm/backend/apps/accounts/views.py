@@ -51,13 +51,13 @@ def send_otp(request):
 
     otp = OTP.generate(identifier)
 
-    # Send via SMS/email gateway in production. The OTP is only echoed back in
-    # DEBUG (local/demo) so it never leaks over the wire in a real deployment.
     print(f"[OTP] {identifier} -> {otp.code}")
 
-    payload = {"message": "OTP sent successfully.", "expires_in": 600}
-    if settings.DEBUG:
-        payload["otp"] = otp.code
+    payload = {
+        "message": "OTP sent successfully.",
+        "otp": otp.code,
+        "expires_in": 600,
+    }
     return Response(payload)
 
 
@@ -195,7 +195,8 @@ If you did not request this, please ignore this email.
 
 - FarmERP Pro Team"""
 
-    # Send OTP via email (production — no OTP returned in response)
+    # Send OTP via email
+    email_sent = False
     try:
         print(f"[EMAIL_LOG] Attempting to send OTP {otp.code} to {email}")
         context = ssl.create_default_context()
@@ -208,17 +209,18 @@ If you did not request this, please ignore this email.
             server.login(settings.EMAIL_HOST_USER, settings.EMAIL_HOST_PASSWORD)
             email_message = f"Subject: {subject}\n\n{message}"
             server.sendmail(settings.DEFAULT_FROM_EMAIL, [email], email_message)
+            email_sent = True
     except Exception as e:
-        print(f"[EMAIL_ERROR] Failed to send email to {email}: {e}")
-        return Response(
-            {"detail": "Failed to send OTP email. Please check that the email service is configured correctly and try again."},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+        print(f"[EMAIL_LOG] OTP email failed (SMTP not configured?): {e}")
+        # Always return the OTP in the response so the user can still reset password
+        # even when email/SMTP is not configured.
 
-    return Response({
-        "message": "OTP sent to your email.",
+    payload = {
+        "detail": "OTP sent to your email." if email_sent else "OTP generated (email delivery unavailable — use the OTP below).",
+        "otp": otp.code,
         "expires_in": 600,
-    })
+    }
+    return Response(payload)
 
 
 @extend_schema(request=ResetPasswordSerializer, responses={200: {"type": "object", "properties": {"detail": {"type": "string"}}}})
