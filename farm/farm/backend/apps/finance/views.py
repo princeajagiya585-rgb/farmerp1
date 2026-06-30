@@ -2,8 +2,8 @@ from decimal import Decimal
 
 from django.db.models import Sum
 from django.utils.dateparse import parse_date
-
-from rest_framework import viewsets
+from drf_spectacular.utils import extend_schema
+from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -297,6 +297,7 @@ class FinanceReportViewSet(viewsets.ViewSet):
 
     permission_classes = [RoleAllowed]
     allowed_roles = [Role.FARM_MANAGER]
+    serializer_class = serializers.Serializer
     readonly_roles = [Role.FARM_MANAGER]
     GLOBAL_ROLES = {Role.SUPER_ADMIN}
 

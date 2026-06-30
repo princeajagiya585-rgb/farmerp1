@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
@@ -28,12 +29,15 @@ class UserSerializer(serializers.ModelSerializer):
             "fcm_token": {"write_only": True, "required": False},
         }
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_farm_names(self, instance):
         return [farm.name for farm in instance.farms.all()]
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_farm_ids(self, instance):
         return [str(farm.id) for farm in instance.farms.all()]
 
+    @extend_schema_field(serializers.URLField(allow_null=True))
     def get_aadhaar_photo_url(self, instance):
         if not instance.aadhaar_photo:
             return None
@@ -41,6 +45,7 @@ class UserSerializer(serializers.ModelSerializer):
         url = instance.aadhaar_photo.url
         return request.build_absolute_uri(url) if request else url
 
+    @extend_schema_field(serializers.BooleanField())
     def get_aadhaar_submitted(self, instance):
         return bool(instance.aadhaar_number or instance.aadhaar_photo)
 

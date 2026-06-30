@@ -1,5 +1,6 @@
 from django.db.models import Count, ExpressionWrapper, F, DurationField, Q, Sum
 from django.utils import timezone
+from rest_framework import serializers
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -27,6 +28,7 @@ def get_accessible_farm_ids(user):
 
 class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = serializers.Serializer
 
     def get(self, request):
         farm_ids = get_accessible_farm_ids(request.user)
@@ -297,6 +299,7 @@ class DashboardView(APIView):
 
 class AttendanceReportView(APIView):
     permission_classes = [IsManagerOrAdmin]
+    serializer_class = serializers.Serializer
 
     def get(self, request):
         farm_ids = get_accessible_farm_ids(request.user)
@@ -326,6 +329,7 @@ class AttendanceReportView(APIView):
 
 class PayrollReportView(APIView):
     permission_classes = [IsManagerOrAdmin]
+    serializer_class = serializers.Serializer
 
     def get(self, request):
         from apps.payroll.models import Payslip
@@ -356,6 +360,7 @@ class TimeTrackingReportView(APIView):
     """
 
     permission_classes = [IsManagerOrAdmin]
+    serializer_class = serializers.Serializer
 
     def get(self, request):
         farm_ids = get_accessible_farm_ids(request.user)
@@ -455,6 +460,7 @@ class TimeTrackingReportView(APIView):
 
 class InventoryReportView(APIView):
     permission_classes = [IsManagerOrAdmin]
+    serializer_class = serializers.Serializer
 
     def get(self, request):
         farm_ids = get_accessible_farm_ids(request.user)
@@ -486,6 +492,7 @@ class InventoryReportView(APIView):
 
 class CropReportView(APIView):
     permission_classes = [IsManagerOrAdmin]
+    serializer_class = serializers.Serializer
 
     def get(self, request):
         farm_ids = get_accessible_farm_ids(request.user)
@@ -508,6 +515,7 @@ class CropReportView(APIView):
 
 class FinanceReportView(APIView):
     permission_classes = [IsManagerOrAdmin]
+    serializer_class = serializers.Serializer
 
     def get(self, request):
         farm_ids = get_accessible_farm_ids(request.user)

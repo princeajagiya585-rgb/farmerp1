@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
 from .models import (
@@ -59,6 +60,7 @@ class PayslipSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+@extend_schema_serializer(component_name="PayrollPayment")
 class PaymentSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source="employee.name", read_only=True)
 

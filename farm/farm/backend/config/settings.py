@@ -199,6 +199,11 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Enterprise Farm ERP platform for agricultural and plantation management.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    "ENUM_NAME_OVERRIDES": {
+        "StatusEnum": "apps.agronomy.models.Crop.Status",
+        "ApprovalStatusEnum": "apps.workforce.models.Attendance.ApprovalStatus",
+        "CategoryEnum": "apps.workforce.models.Employee.Category",
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -217,7 +222,7 @@ CORS_ALLOW_CREDENTIALS = True
 # Required by Django for cross-origin POST (e.g. the admin) behind HTTPS.
 CSRF_TRUSTED_ORIGINS = env_list(
     "CSRF_TRUSTED_ORIGINS",
-    "https://farmerp1.vercel.app"
+    "https://farmerp1.vercel.app,https://farmerp-backend-production.up.railway.app"
 )
 # Behind Railway/Vercel's HTTPS proxy, trust the forwarded scheme header.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

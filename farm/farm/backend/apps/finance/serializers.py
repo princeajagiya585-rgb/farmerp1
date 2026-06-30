@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -29,6 +30,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
         fields = "__all__"
         extra_kwargs = {"bill_file": {"write_only": True}}
 
+    @extend_schema_field(serializers.URLField(allow_null=True))
     def get_bill_file_url(self, obj):
         if obj.bill_file:
             request = self.context.get("request")
@@ -65,6 +67,7 @@ class PurchaseSerializer(serializers.ModelSerializer):
         fields = "__all__"
         extra_kwargs = {"bill_file": {"write_only": True}}
 
+    @extend_schema_field(serializers.URLField(allow_null=True))
     def get_bill_file_url(self, obj):
         if obj.bill_file:
             request = self.context.get("request")
@@ -98,6 +101,7 @@ class PaymentSerializer(serializers.ModelSerializer):
         fields = "__all__"
         extra_kwargs = {"bill_file": {"write_only": True}}
 
+    @extend_schema_field(serializers.URLField(allow_null=True))
     def get_bill_file_url(self, obj):
         if obj.bill_file:
             request = self.context.get("request")
@@ -122,6 +126,7 @@ class CostCenterSerializer(serializers.ModelSerializer):
         fields = "__all__"
         extra_kwargs = {"bill_file": {"write_only": True}}
 
+    @extend_schema_field(serializers.URLField(allow_null=True))
     def get_bill_file_url(self, obj):
         if obj.bill_file:
             request = self.context.get("request")
@@ -141,9 +146,11 @@ class BudgetSerializer(serializers.ModelSerializer):
         model = Budget
         fields = "__all__"
 
+    @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
     def get_spent(self, obj):
         return obj.spent
 
+    @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
     def get_remaining(self, obj):
         return obj.remaining
 
@@ -161,6 +168,7 @@ class SaleSerializer(serializers.ModelSerializer):
         fields = "__all__"
         extra_kwargs = {"bill_file": {"write_only": True}}
 
+    @extend_schema_field(serializers.URLField(allow_null=True))
     def get_bill_file_url(self, obj):
         if obj.bill_file:
             request = self.context.get("request")

@@ -1,5 +1,6 @@
 from django.utils import timezone
-from rest_framework import status
+from drf_spectacular.utils import extend_schema
+from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -27,7 +28,9 @@ class ClearAllPingsView(APIView):
     permission_classes = [RoleAllowed]
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = []
+    serializer_class = serializers.Serializer
 
+    @extend_schema(responses={200: {"type": "object", "properties": {"detail": {"type": "string"}, "deleted": {"type": "integer"}}}})
     def post(self, request):
         # Super admin clears everything; a farm manager may only clear pings
         # for the farms they're assigned to (never other farms' history).

@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import Task, TaskUpdate, TaskWorkSession
@@ -63,12 +64,14 @@ class TaskSerializer(serializers.ModelSerializer):
         model = Task
         fields = "__all__"
 
+    @extend_schema_field(TaskWorkSessionSerializer(allow_null=True))
     def get_active_session(self, obj):
         session = obj.work_sessions.filter(end_time__isnull=True).first()
         if session:
             return TaskWorkSessionSerializer(session).data
         return None
 
+    @extend_schema_field(serializers.FloatField())
     def get_total_tracked_minutes(self, obj):
         sessions = obj.work_sessions.filter(end_time__isnull=False)
         total = 0

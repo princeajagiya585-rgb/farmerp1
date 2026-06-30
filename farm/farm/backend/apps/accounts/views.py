@@ -3,6 +3,7 @@ import ssl
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.core.mail import send_mail
+from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
@@ -38,6 +39,7 @@ class LoginView(TokenObtainPairView):
 
 # ─── OTP & Phone Auth Endpoints ────────────────────────────────────────
 
+@extend_schema(request=OtpSendSerializer, responses={200: {"type": "object", "properties": {"message": {"type": "string"}, "expires_in": {"type": "integer"}}}})
 @api_view(["POST"])
 @permission_classes([AllowAny])
 @throttle_classes([OtpSendThrottle])
@@ -59,6 +61,7 @@ def send_otp(request):
     return Response(payload)
 
 
+@extend_schema(request=OtpVerifySerializer, responses={200: {"type": "object"}})
 @api_view(["POST"])
 @permission_classes([AllowAny])
 @throttle_classes([OtpVerifyThrottle])
@@ -104,6 +107,7 @@ def verify_otp(request):
     })
 
 
+@extend_schema(request=PhoneLoginSerializer, responses={200: {"type": "object"}})
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def phone_login(request):
@@ -152,6 +156,7 @@ def phone_login(request):
 
 # ─── Forgot / Reset Password ────────────────────────────────────────────
 
+@extend_schema(request=ForgotPasswordSerializer, responses={200: {"type": "object", "properties": {"message": {"type": "string"}, "expires_in": {"type": "integer"}}}})
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def forgot_password(request):
@@ -216,6 +221,7 @@ If you did not request this, please ignore this email.
     })
 
 
+@extend_schema(request=ResetPasswordSerializer, responses={200: {"type": "object", "properties": {"detail": {"type": "string"}}}})
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def reset_password(request):

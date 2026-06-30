@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import ActivityPhoto, FieldActivity, Geofence, LocationPing
@@ -43,16 +44,19 @@ class LocationPingSerializer(serializers.ModelSerializer):
         model = LocationPing
         fields = "__all__"
 
+    @extend_schema_field(serializers.BooleanField(allow_null=True))
     def get_location_verified(self, obj):
         if not obj.farm_id:
             return None
         return location_inside_farm(obj.farm, obj.latitude, obj.longitude)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_location_name(self, obj):
         if obj.latitude is None or obj.longitude is None:
             return None
         return reverse_geocode(float(obj.latitude), float(obj.longitude))
         
+    @extend_schema_field(serializers.URLField(allow_null=True))
     def get_photo(self, obj):
         if obj.photo:
             request = self.context.get('request')
@@ -109,14 +113,17 @@ class FieldActivitySerializer(serializers.ModelSerializer):
             "recorded_at": {"required": False},
         }
 
+    @extend_schema_field(serializers.BooleanField(allow_null=True))
     def get_location_verified(self, obj):
         return location_inside_farm(obj.farm, obj.latitude, obj.longitude)
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_location_name(self, obj):
         if obj.latitude is None or obj.longitude is None:
             return None
         return reverse_geocode(float(obj.latitude), float(obj.longitude))
 
+    @extend_schema_field(serializers.URLField(allow_null=True))
     def get_photo_url(self, obj):
         if obj.photo:
             request = self.context.get('request')

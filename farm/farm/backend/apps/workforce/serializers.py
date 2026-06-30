@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -21,6 +22,7 @@ class DepartmentSerializer(serializers.ModelSerializer):
         model = Department
         fields = "__all__"
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_employees(self, obj):
         return [{"id": e.id, "name": e.name} for e in obj.employees.all()]
 
@@ -32,6 +34,7 @@ class SkillSerializer(serializers.ModelSerializer):
         model = Skill
         fields = "__all__"
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_employees(self, obj):
         return [{"id": e.id, "name": e.name} for e in obj.employees.all()]
 
@@ -64,14 +67,17 @@ class EmployeeSerializer(serializers.ModelSerializer):
             'skills': {'required': False},
         }
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_skill_names(self, obj):
         return [s.name for s in obj.skills.all()]
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_assigned_farms(self, obj):
         if obj.user:
             return [farm.name for farm in obj.user.farms.all()]
         return []
 
+    @extend_schema_field(serializers.ListField(child=serializers.IntegerField()))
     def get_skill_ids(self, obj):
         return [s.id for s in obj.skills.all()]
 
@@ -136,12 +142,14 @@ class AttendanceSerializer(serializers.ModelSerializer):
         # attendance and have it counted by payroll.
         read_only_fields = ["approval_status", "approved_by"]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_location_name(self, obj):
         if obj.check_in_lat is None or obj.check_in_lng is None:
             return None
         from apps.gps.utils import reverse_geocode
         return reverse_geocode(float(obj.check_in_lat), float(obj.check_in_lng))
         
+    @extend_schema_field(serializers.URLField(allow_null=True))
     def get_check_in_photo(self, obj):
         if obj.check_in_photo:
             request = self.context.get('request')
@@ -150,6 +158,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
             return obj.check_in_photo.url
         return None
         
+    @extend_schema_field(serializers.URLField(allow_null=True))
     def get_check_out_photo(self, obj):
         if obj.check_out_photo:
             request = self.context.get('request')
