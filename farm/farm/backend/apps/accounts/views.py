@@ -335,18 +335,10 @@ class UserViewSet(viewsets.ModelViewSet):
                 pass
 
     def perform_destroy(self, instance):
-        """Soft delete: restrict (deactivate) the user instead of removing them.
-
-        The user can no longer log in, but the account and ALL related data are
-        preserved — nothing is ever permanently deleted.
-        """
-        instance.is_active = False
-        instance.save(update_fields=["is_active"])
+        """Permanently delete the user and their linked Employee record."""
         from apps.workforce.models import Employee
-        emp = Employee.objects.filter(user=instance).first()
-        if emp is not None and hasattr(emp, "is_active"):
-            emp.is_active = False
-            emp.save(update_fields=["is_active"])
+        Employee.objects.filter(user=instance).delete()
+        instance.delete()
 
     @action(detail=True, methods=["post"])
     def activate(self, request, pk=None):
