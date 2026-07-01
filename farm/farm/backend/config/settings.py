@@ -23,6 +23,7 @@ def env_list(key, default=""):
 SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-dev-key-change-me")
 DEBUG = env_bool("DEBUG", True)
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver,farmerp-backend-production.up.railway.app") or ["*"]
+BACKEND_URL = os.getenv("BACKEND_URL", "https://farmerp-backend-production.up.railway.app")
 
 # ---------------------------------------------------------------------------
 # Applications

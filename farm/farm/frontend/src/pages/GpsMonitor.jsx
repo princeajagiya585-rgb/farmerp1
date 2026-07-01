@@ -11,6 +11,42 @@ const PAGE_SIZE = 25;
 const statusColor = { SUBMITTED: "yellow", VERIFIED: "green", REJECTED: "red" };
 const phaseColor = { BEFORE: "blue", DURING: "purple", COMPLETION: "green" };
 
+function PhotoWithFallback({ src, alt, title, phase, onClick }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return (
+      <span className="inline-flex items-center justify-center h-10 w-10 rounded-md bg-gray-100 text-xs text-gray-400">
+        <Camera size={14} />
+      </span>
+    );
+  }
+  return (
+    <div className="relative group">
+      <img
+        src={src}
+        alt={alt || "Photo"}
+        className="h-10 w-10 object-cover rounded-md cursor-pointer ring-1 ring-gray-200"
+        onClick={onClick}
+        title={title}
+        onError={() => setFailed(true)}
+      />
+      {phase && (
+        <span
+          className="absolute -top-1.5 -right-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[8px] font-bold text-white ring-1 ring-white"
+          style={{
+            backgroundColor:
+              phase === "BEFORE" ? "#2563eb" :
+              phase === "DURING" ? "#9333ea" :
+              phase === "COMPLETION" ? "#16a34a" : "#6b7280"
+          }}
+        >
+          {phase === "BEFORE" ? "B" : phase === "DURING" ? "D" : phase === "COMPLETION" ? "C" : "?"}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function renderPhotos(r) {
   const phases = Array.isArray(r.photos) ? r.photos : [];
   const hasMainPhoto = r.photo_url;
@@ -24,37 +60,20 @@ function renderPhotos(r) {
   return (
     <div className="flex flex-wrap gap-1.5 max-w-[180px]">
       {phases.length > 0 ? phases.map((p, i) => (
-        <div key={i} className="relative group">
-          <img
-            src={p.photo_url}
-            alt={p.phase_display || p.phase}
-            className="h-10 w-10 object-cover rounded-md cursor-pointer ring-1 ring-gray-200"
-            onClick={() => window.open(p.photo_url, "_blank")}
-            title={p.phase_display || p.phase}
-          />
-          {p.phase && (
-            <span
-              className="absolute -top-1.5 -right-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[8px] font-bold text-white ring-1 ring-white"
-              style={{
-                backgroundColor:
-                  p.phase === "BEFORE" ? "#2563eb" :
-                  p.phase === "DURING" ? "#9333ea" :
-                  p.phase === "COMPLETION" ? "#16a34a" : "#6b7280"
-              }}
-            >
-              {p.phase === "BEFORE" ? "B" : p.phase === "DURING" ? "D" : p.phase === "COMPLETION" ? "C" : "?"}
-            </span>
-          )}
-        </div>
+        <PhotoWithFallback
+          key={i}
+          src={p.photo_url}
+          alt={p.phase_display || p.phase}
+          title={p.phase_display || p.phase}
+          phase={p.phase}
+          onClick={() => window.open(p.photo_url, "_blank")}
+        />
       )) : hasMainPhoto ? (
-        <div className="relative group">
-          <img
-            src={r.photo_url}
-            alt="Activity"
-            className="h-10 w-10 object-cover rounded-md cursor-pointer ring-1 ring-gray-200"
-            onClick={() => window.open(r.photo_url, "_blank")}
-          />
-        </div>
+        <PhotoWithFallback
+          src={r.photo_url}
+          alt="Activity"
+          onClick={() => window.open(r.photo_url, "_blank")}
+        />
       ) : null}
     </div>
   );

@@ -15,6 +15,39 @@ const attRepo = resource("workforce/attendance");
 const activityLabelMap = { CHECKIN: "gps.activityCheckin", CHECKOUT: "gps.activityCheckout", DURING_WORK: "gps.duringWork", TASK: "gps.activityTask", PATROL: "gps.activityPatrol", TRACK: "gps.activityTrack" };
 const activityColorMap = { CHECKIN: "green", CHECKOUT: "red", DURING_WORK: "purple", TASK: "blue", TRACK: "purple", PATROL: "gray" };
 
+/** Photo thumbnail with broken-image fallback. */
+function PhotoWithFallbackInline({ url, noPhotoLabel, size = 40 }) {
+  const [failed, setFailed] = useState(false);
+  if (!url || failed) {
+    return (
+      <span
+        className="inline-flex items-center justify-center rounded-md bg-gray-100 text-xs text-gray-400"
+        style={{ width: size, height: size }}
+      >
+        {noPhotoLabel || "—"}
+      </span>
+    );
+  }
+  return (
+    <div className="relative group">
+      <img
+        src={url}
+        alt="Photo"
+        className="object-cover rounded-md cursor-pointer ring-1 ring-gray-200"
+        style={{ width: size, height: size }}
+        onClick={() => window.open(url, "_blank")}
+        onError={() => setFailed(true)}
+      />
+      <span
+        className="hidden group-hover:flex absolute inset-0 items-center justify-center rounded-md bg-black/50 text-[10px] text-white cursor-pointer"
+        onClick={() => window.open(url, "_blank")}
+      >
+        {noPhotoLabel || "View"}
+      </span>
+    </div>
+  );
+}
+
 /** Append a new ping to the live array (keeps ALL pings, no dedup). */
 function appendPing(list, ping) {
   return [ping, ...list];
@@ -1105,26 +1138,7 @@ export default function GPS() {
               {
                 key: "photo",
                 header: t("header.photo"),
-                render: (r) => r.photo ? (
-                  <div className="relative group">
-                    <img
-                      src={r.photo}
-                      alt="Check-in"
-                      className="h-10 w-10 object-cover rounded-md cursor-pointer ring-1 ring-gray-200"
-                      onClick={() => window.open(r.photo, "_blank")}
-                    />
-                    <span
-                      className="hidden group-hover:flex absolute inset-0 items-center justify-center rounded-md bg-black/50 text-[10px] text-white cursor-pointer"
-                      onClick={() => window.open(r.photo, "_blank")}
-                    >
-                      {t("gps.viewPhoto")}
-                    </span>
-                  </div>
-                ) : (
-                  <span className="inline-flex items-center justify-center h-10 w-10 rounded-md bg-gray-100 text-xs text-gray-400">
-                    {t("gps.noPhoto")}
-                  </span>
-                ),
+                render: (r) => <PhotoWithFallbackInline url={r.photo} noPhotoLabel={t("gps.noPhoto")} />,
               },
               {
                 key: "location_name",
