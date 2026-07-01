@@ -64,7 +64,7 @@ class EmployeeViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMode
         return qs
     farm_lookup = "farm_id"
     employee_self_lookup = "user"  # Employee links directly to the user
-    allowed_roles = [Role.FARM_MANAGER]
+    allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = [Role.EMPLOYEE]
     filterset_fields = ["farm", "category", "employment_type", "is_active", "department"]
     search_fields = ["first_name", "last_name", "employee_code", "phone"]
@@ -311,7 +311,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
                 status=FieldActivity.Status.SUBMITTED,
                 recorded_at=attendance.check_in_time,
             )
-            broadcast_field_activity(fa)
+            broadcast_field_activity(fa, request=request)
 
         return attendance
 
@@ -426,7 +426,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
                 status=FieldActivity.Status.SUBMITTED,
                 recorded_at=now,
             )
-            broadcast_field_activity(fa)
+            broadcast_field_activity(fa, request=request)
 
         serializer = self.get_serializer(attendance)
         return Response(serializer.data, status=200)

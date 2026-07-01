@@ -372,13 +372,14 @@ class UserViewSet(viewsets.ModelViewSet):
                     "first_name", "last_name", "email", "phone",
                 ):
                     data.pop(f, None)
-            serializer = UserSerializer(
+            # Use UserCreateSerializer for PATCH since it has to_internal_value for FormData
+            serializer = UserCreateSerializer(
                 request.user, data=data, partial=True,
                 context={"request": request},
             )
             serializer.is_valid(raise_exception=True)
-            serializer.save()
-            return Response(serializer.data)
+            user = serializer.save()
+            return Response(UserSerializer(user, context={"request": request}).data)
         return Response(UserSerializer(request.user, context={"request": request}).data)
 
     @action(detail=False, methods=["post"])

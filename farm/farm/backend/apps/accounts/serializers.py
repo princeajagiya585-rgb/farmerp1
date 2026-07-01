@@ -24,7 +24,7 @@ class UserSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "date_joined", "role"]
         extra_kwargs = {
-            "aadhaar_photo": {"write_only": True, "required": False},
+            "aadhaar_photo": {"required": False},
             "aadhaar_number": {"required": False},
             "fcm_token": {"write_only": True, "required": False},
         }

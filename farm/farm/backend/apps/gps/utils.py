@@ -46,7 +46,7 @@ def broadcast_ping(instance, request=None):
         pass
 
 
-def broadcast_field_activity(instance):
+def broadcast_field_activity(instance, request=None):
     """Send a field activity update to clients scoped to that activity's farm.
 
     Call this after creating a FieldActivity so that the GPS Location Map
@@ -54,7 +54,8 @@ def broadcast_field_activity(instance):
     """
     try:
         from .serializers import FieldActivitySerializer
-        data = FieldActivitySerializer(instance).data
+        ctx = {"request": request} if request else {}
+        data = FieldActivitySerializer(instance, context=ctx).data
         _broadcast("field_activity", data, getattr(instance, "farm_id", None))
     except Exception:
         pass

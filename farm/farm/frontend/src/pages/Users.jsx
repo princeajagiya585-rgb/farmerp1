@@ -285,7 +285,8 @@ export default function Users() {
     return true;
   });
 
-  const adminUsers = filteredUsers.filter(u => u.role === "SUPER_ADMIN");
+  // Only show active super admins in the Administrators table
+  const adminUsers = filteredUsers.filter(u => u.role === "SUPER_ADMIN" && u.is_active);
   const otherUsers = filteredUsers.filter(u => u.role !== "SUPER_ADMIN");
 
   const renderUserRow = (user) => {
