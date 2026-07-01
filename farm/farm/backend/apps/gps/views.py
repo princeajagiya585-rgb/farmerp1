@@ -110,7 +110,7 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
         for ping in qs:
             if ping.user_id not in latest:
                 latest[ping.user_id] = ping
-        serializer = self.get_serializer(list(latest.values()), many=True)
+        serializer = self.get_serializer(list(latest.values()), many=True, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=False, methods=["get"])
