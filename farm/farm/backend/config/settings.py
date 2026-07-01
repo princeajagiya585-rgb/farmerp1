@@ -179,16 +179,10 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.StandardPagination",
     "PAGE_SIZE": 25,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    # Throttling settings to prevent 429 errors
-    "DEFAULT_THROTTLE_CLASSES": [
-        "rest_framework.throttling.AnonRateThrottle",
-        "rest_framework.throttling.UserRateThrottle",
-    ],
+    # Throttling settings - only OTP endpoints are throttled for security
     "DEFAULT_THROTTLE_RATES": {
         "otp_send": "5/min",
         "otp_verify": "5/min",
-        "anon": "100/min",
-        "user": "500/min",
     },
 }
 
