@@ -1,10 +1,10 @@
 import axios from "axios";
 
 // ── API Base URL ────────────────────────────────────────────────────────
-//  Production (Vercel): use relative URLs → vercel.json rewrites /api/* → Railway.
-//  Development:         use VITE_API_URL (if set) or Vite proxy → localhost:8000.
+//  Production: use Railway URL directly to avoid Vercel proxy rate limits.
+//  Development: use VITE_API_URL (if set) or Vite proxy → localhost:8000.
 const API_ORIGIN = import.meta.env.PROD
-  ? ""
+  ? "https://farmerp-backend-production.up.railway.app"
   : (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 const API_BASE = `${API_ORIGIN}/api/v1`;
 
