@@ -179,10 +179,14 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.StandardPagination",
     "PAGE_SIZE": 25,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    # Throttling settings - only OTP endpoints are throttled for security
+
+    # TEMPORARY: All throttle limits raised to extremely high levels for development.
+    # Revert before production.
     "DEFAULT_THROTTLE_RATES": {
-        "otp_send": "5/min",
-        "otp_verify": "5/min",
+        "anon": "1000000/min",
+        "user": "1000000/min",
+        "otp_send": "100000/min",
+        "otp_verify": "100000/min",
     },
 }
 

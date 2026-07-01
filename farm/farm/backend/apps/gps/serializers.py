@@ -47,11 +47,20 @@ class LocationPingSerializer(serializers.ModelSerializer):
     recorded_at = serializers.DateTimeField(required=False)
     location_verified = serializers.SerializerMethodField()
     location_name = serializers.SerializerMethodField()
-    photo = serializers.SerializerMethodField()
+    # NOTE: 'photo' is intentionally NOT declared as a SerializerMethodField.
+    # We let DRF auto-generate it as an ImageField from the model so it can
+    # accept file uploads (multipart → request.FILES). The to_representation
+    # override below converts the relative URL to an absolute URL on output.
 
     class Meta:
         model = LocationPing
         fields = "__all__"
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get('photo'):
+            data['photo'] = build_absolute_photo_url(instance.photo, self.context.get('request'))
+        return data
 
     @extend_schema_field(serializers.BooleanField(allow_null=True))
     def get_location_verified(self, obj):
@@ -64,10 +73,6 @@ class LocationPingSerializer(serializers.ModelSerializer):
         if obj.latitude is None or obj.longitude is None:
             return None
         return reverse_geocode(float(obj.latitude), float(obj.longitude))
-        
-    @extend_schema_field(serializers.URLField(allow_null=True))
-    def get_photo(self, obj):
-        return build_absolute_photo_url(obj.photo, self.context.get('request'))
 
     def validate_recorded_at(self, value):
         return _validate_not_future(value)

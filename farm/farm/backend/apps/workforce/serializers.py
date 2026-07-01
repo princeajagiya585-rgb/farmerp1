@@ -144,8 +144,10 @@ class AttendanceSerializer(serializers.ModelSerializer):
         source="approved_by.get_full_name", read_only=True
     )
     location_name = serializers.SerializerMethodField()
-    check_in_photo = serializers.SerializerMethodField()
-    check_out_photo = serializers.SerializerMethodField()
+    # NOTE: check_in_photo / check_out_photo are intentionally NOT declared
+    # as SerializerMethodField. We let DRF auto-generate them as ImageFields
+    # from the model so they can accept file uploads via multipart forms.
+    # The to_representation override converts relative URLs to absolute.
 
     class Meta:
         model = Attendance
@@ -156,20 +158,21 @@ class AttendanceSerializer(serializers.ModelSerializer):
         # attendance and have it counted by payroll.
         read_only_fields = ["approval_status", "approved_by"]
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        if data.get('check_in_photo'):
+            data['check_in_photo'] = build_absolute_photo_url(instance.check_in_photo, request)
+        if data.get('check_out_photo'):
+            data['check_out_photo'] = build_absolute_photo_url(instance.check_out_photo, request)
+        return data
+
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_location_name(self, obj):
         if obj.check_in_lat is None or obj.check_in_lng is None:
             return None
         from apps.gps.utils import reverse_geocode
         return reverse_geocode(float(obj.check_in_lat), float(obj.check_in_lng))
-        
-    @extend_schema_field(serializers.URLField(allow_null=True))
-    def get_check_in_photo(self, obj):
-        return build_absolute_photo_url(obj.check_in_photo, self.context.get('request'))
-        
-    @extend_schema_field(serializers.URLField(allow_null=True))
-    def get_check_out_photo(self, obj):
-        return build_absolute_photo_url(obj.check_out_photo, self.context.get('request'))
 
 
 class EmploymentHistorySerializer(serializers.ModelSerializer):

@@ -17,7 +17,6 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from apps.core.permissions import IsSuperAdmin
 
 from .otp import OTP
-from .throttling import OtpSendThrottle, OtpVerifyThrottle
 from .serializers import (
     ChangePasswordSerializer,
     FarmTokenObtainPairSerializer,
@@ -42,7 +41,7 @@ class LoginView(TokenObtainPairView):
 @extend_schema(request=OtpSendSerializer, responses={200: {"type": "object", "properties": {"message": {"type": "string"}, "expires_in": {"type": "integer"}}}})
 @api_view(["POST"])
 @permission_classes([AllowAny])
-@throttle_classes([OtpSendThrottle])
+@throttle_classes([])
 def send_otp(request):
     """Send OTP to a phone number OR email. For demo, returns the OTP in response."""
     serializer = OtpSendSerializer(data=request.data)
@@ -64,7 +63,7 @@ def send_otp(request):
 @extend_schema(request=OtpVerifySerializer, responses={200: {"type": "object"}})
 @api_view(["POST"])
 @permission_classes([AllowAny])
-@throttle_classes([OtpVerifyThrottle])
+@throttle_classes([])
 def verify_otp(request):
     """Verify an OTP and return JWT tokens on success."""
     serializer = OtpVerifySerializer(data=request.data)
