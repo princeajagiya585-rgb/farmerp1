@@ -217,7 +217,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             return Response({"detail": "You may only check in for yourself."}, status=403)
 
         attendance = self._do_check_in(employee, request)
-        serializer = self.get_serializer(attendance)
+        serializer = self.get_serializer(attendance, context={'request': request})
         return Response(serializer.data, status=200)
 
     @action(detail=False, methods=["post"])
@@ -247,7 +247,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             employee.user = request.user
 
         attendance = self._do_check_in(employee, request)
-        serializer = self.get_serializer(attendance)
+        serializer = self.get_serializer(attendance, context={'request': request})
         return Response(serializer.data, status=200)
 
     def _do_check_in(self, employee, request):
@@ -359,7 +359,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             )
             broadcast_ping(ping, request=request)
 
-        serializer = self.get_serializer(attendance)
+        serializer = self.get_serializer(attendance, context={'request': request})
         return Response(serializer.data, status=200)
 
     @action(detail=False, methods=["post"])
@@ -428,7 +428,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             )
             broadcast_field_activity(fa, request=request)
 
-        serializer = self.get_serializer(attendance)
+        serializer = self.get_serializer(attendance, context={'request': request})
         return Response(serializer.data, status=200)
 
     @action(detail=True, methods=["post"])
@@ -441,7 +441,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         attendance.approved_by = request.user
         attendance.save()
 
-        serializer = self.get_serializer(attendance)
+        serializer = self.get_serializer(attendance, context={'request': request})
         return Response(serializer.data, status=200)
 
     @action(detail=True, methods=["post"])
@@ -456,7 +456,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             attendance.remarks = request.data.get("remarks")
         attendance.save()
 
-        serializer = self.get_serializer(attendance)
+        serializer = self.get_serializer(attendance, context={'request': request})
         return Response(serializer.data, status=200)
 
     @action(detail=False, methods=["get"])

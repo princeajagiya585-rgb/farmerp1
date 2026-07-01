@@ -192,7 +192,7 @@ class FieldActivityViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Bas
         activity.save(
             update_fields=["status", "verified_by", "verified_at", "updated_at"]
         )
-        return Response(self.get_serializer(activity).data)
+        return Response(self.get_serializer(activity, context={'request': request}).data)
 
     @action(detail=True, methods=["post"])
     def reject(self, request, pk=None):
@@ -203,13 +203,13 @@ class FieldActivityViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Bas
         activity.save(
             update_fields=["status", "verified_by", "verified_at", "updated_at"]
         )
-        return Response(self.get_serializer(activity).data)
+        return Response(self.get_serializer(activity, context={'request': request}).data)
 
     @action(detail=False, methods=["get"])
     def feed(self, request):
         """Live activity feed: the most recent field activities."""
         qs = self.filter_queryset(self.get_queryset()).order_by("-created_at")[:50]
-        return Response(self.get_serializer(qs, many=True).data)
+        return Response(self.get_serializer(qs, many=True, context={'request': request}).data)
 
     @action(detail=False, methods=["get"])
     def field_progress(self, request):
