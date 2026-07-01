@@ -63,10 +63,30 @@ function redirectToLogin() {
   }
 }
 
+// Retry configuration for 429 errors
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY = 1000; // 1 second
+
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
     const original = error.config;
+    if (!original) return Promise.reject(error);
+
+    // Initialize retry count if not present
+    original._retryCount = original._retryCount || 0;
+
+    // Handle 429 Too Many Requests with exponential backoff
+    if (error.response?.status === 429 && original._retryCount < MAX_RETRIES) {
+      original._retryCount += 1;
+      const retryAfter = error.response.headers["retry-after"]
+        ? parseInt(error.response.headers["retry-after"], 10) * 1000
+        : INITIAL_RETRY_DELAY * Math.pow(2, original._retryCount - 1);
+
+      await new Promise((resolve) => setTimeout(resolve, retryAfter));
+      return api(original);
+    }
+
     const isAuthEndpoint = original?.url?.includes("/auth/login") || original?.url?.includes("/auth/refresh");
     if (error.response?.status === 401 && original && !original._retry && !isAuthEndpoint) {
       if (!tokenStore.refresh) {
@@ -85,7 +105,7 @@ api.interceptors.response.use(
       }
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 // Generic REST helpers for a DRF resource (paginated).
