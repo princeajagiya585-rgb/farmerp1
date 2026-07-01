@@ -226,6 +226,7 @@ CSRF_TRUSTED_ORIGINS = env_list(
 )
 # Behind Railway/Vercel's HTTPS proxy, trust the forwarded scheme header.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
 
 # ---------------------------------------------------------------------------
 # I18N
@@ -246,14 +247,14 @@ LANGUAGES = [
 # ---------------------------------------------------------------------------
 # Static / Media
 # ---------------------------------------------------------------------------
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 # Compressed, cache-busted static files served by WhiteNoise in production.
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
-MEDIA_URL = "media/"
+MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 if env_bool("USE_S3", False):

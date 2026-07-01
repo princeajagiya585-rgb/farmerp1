@@ -46,6 +46,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source="department.name", read_only=True)
     skill_names = serializers.SerializerMethodField()
     skill_ids = serializers.SerializerMethodField()
+    photo_url = serializers.SerializerMethodField()
     skills = serializers.PrimaryKeyRelatedField(
         many=True,
         queryset=Skill.objects.all(),
@@ -58,7 +59,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "employee_code", "first_name", "last_name", "phone",
                   "employment_type", "designation", "farm", "farm_name", "assigned_farms", "department",
                   "department_name", "skills", "skill_names", "skill_ids", "address",
-                  "photo", "is_active", "category", "user", "created_at", "updated_at",
+                  "photo", "photo_url", "is_active", "category", "user", "created_at", "updated_at",
                   "daily_wage", "monthly_salary", "date_of_joining"]
         extra_kwargs = {
             'first_name': {'required': False},
@@ -66,6 +67,15 @@ class EmployeeSerializer(serializers.ModelSerializer):
             'phone': {'required': False},
             'skills': {'required': False},
         }
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_photo_url(self, obj):
+        if obj.photo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.photo.url)
+            return obj.photo.url
+        return None
 
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_skill_names(self, obj):

@@ -59,7 +59,9 @@ class LocationPingSerializer(serializers.ModelSerializer):
     @extend_schema_field(serializers.URLField(allow_null=True))
     def get_photo(self, obj):
         if obj.photo:
-            # Always return relative URL - Vercel rewrites /media/* to Railway backend
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.photo.url)
             return obj.photo.url
         return None
 
@@ -77,7 +79,9 @@ class ActivityPhotoSerializer(serializers.ModelSerializer):
 
     def get_photo_url(self, obj):
         if obj.photo:
-            # Always return relative URL - Vercel rewrites /media/* to Railway backend
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.photo.url)
             return obj.photo.url
         return None
 
@@ -122,7 +126,9 @@ class FieldActivitySerializer(serializers.ModelSerializer):
     @extend_schema_field(serializers.URLField(allow_null=True))
     def get_photo_url(self, obj):
         if obj.photo:
-            # Always return relative URL - Vercel rewrites /media/* to Railway backend
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.photo.url)
             return obj.photo.url
         return None
 
