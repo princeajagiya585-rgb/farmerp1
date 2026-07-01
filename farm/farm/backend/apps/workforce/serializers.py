@@ -1,3 +1,4 @@
+from django.conf import settings
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -12,6 +13,14 @@ from .models import (
     PerformanceReview,
     Availability,
 )
+
+
+def build_absolute_photo_url(photo, request=None):
+    if not photo:
+        return None
+    if request:
+        return request.build_absolute_uri(photo.url)
+    return f"{settings.BACKEND_URL}{photo.url}"
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
@@ -70,12 +79,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.URLField(allow_null=True))
     def get_photo_url(self, obj):
-        if obj.photo:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.photo.url)
-            return obj.photo.url
-        return None
+        return build_absolute_photo_url(obj.photo, self.context.get('request'))
 
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_skill_names(self, obj):
@@ -161,21 +165,11 @@ class AttendanceSerializer(serializers.ModelSerializer):
         
     @extend_schema_field(serializers.URLField(allow_null=True))
     def get_check_in_photo(self, obj):
-        if obj.check_in_photo:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.check_in_photo.url)
-            return obj.check_in_photo.url
-        return None
+        return build_absolute_photo_url(obj.check_in_photo, self.context.get('request'))
         
     @extend_schema_field(serializers.URLField(allow_null=True))
     def get_check_out_photo(self, obj):
-        if obj.check_out_photo:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.check_out_photo.url)
-            return obj.check_out_photo.url
-        return None
+        return build_absolute_photo_url(obj.check_out_photo, self.context.get('request'))
 
 
 class EmploymentHistorySerializer(serializers.ModelSerializer):

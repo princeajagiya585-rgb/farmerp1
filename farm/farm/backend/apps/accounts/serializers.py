@@ -1,9 +1,18 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 User = get_user_model()
+
+
+def build_absolute_photo_url(photo, request=None):
+    if not photo:
+        return None
+    if request:
+        return request.build_absolute_uri(photo.url)
+    return f"{settings.BACKEND_URL}{photo.url}"
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -39,11 +48,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.URLField(allow_null=True))
     def get_aadhaar_photo_url(self, instance):
-        if not instance.aadhaar_photo:
-            return None
-        request = self.context.get("request")
-        url = instance.aadhaar_photo.url
-        return request.build_absolute_uri(url) if request else url
+        return build_absolute_photo_url(instance.aadhaar_photo, self.context.get("request"))
 
     @extend_schema_field(serializers.BooleanField())
     def get_aadhaar_submitted(self, instance):

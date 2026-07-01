@@ -1,11 +1,20 @@
 from datetime import timedelta
 
+from django.conf import settings
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import ActivityPhoto, FieldActivity, Geofence, LocationPing
 from .utils import location_inside_farm, reverse_geocode
+
+
+def build_absolute_photo_url(photo, request=None):
+    if not photo:
+        return None
+    if request:
+        return request.build_absolute_uri(photo.url)
+    return f"{settings.BACKEND_URL}{photo.url}"
 
 
 def _validate_not_future(value):
@@ -58,12 +67,7 @@ class LocationPingSerializer(serializers.ModelSerializer):
         
     @extend_schema_field(serializers.URLField(allow_null=True))
     def get_photo(self, obj):
-        if obj.photo:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.photo.url)
-            return obj.photo.url
-        return None
+        return build_absolute_photo_url(obj.photo, self.context.get('request'))
 
     def validate_recorded_at(self, value):
         return _validate_not_future(value)
@@ -78,12 +82,7 @@ class ActivityPhotoSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def get_photo_url(self, obj):
-        if obj.photo:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.photo.url)
-            return obj.photo.url
-        return None
+        return build_absolute_photo_url(obj.photo, self.context.get('request'))
 
     def validate_recorded_at(self, value):
         return _validate_not_future(value)
@@ -125,12 +124,7 @@ class FieldActivitySerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.URLField(allow_null=True))
     def get_photo_url(self, obj):
-        if obj.photo:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.photo.url)
-            return obj.photo.url
-        return None
+        return build_absolute_photo_url(obj.photo, self.context.get('request'))
 
     def validate_recorded_at(self, value):
         return _validate_not_future(value)

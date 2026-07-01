@@ -257,6 +257,7 @@ STORAGES = {
 }
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
+BACKEND_URL = os.getenv("BACKEND_URL", "https://farmerp-backend-production.up.railway.app")
 
 if env_bool("USE_S3", False):
     AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
