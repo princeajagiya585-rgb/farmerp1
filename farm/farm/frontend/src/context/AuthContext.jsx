@@ -127,7 +127,15 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      // Attempt to blacklist the refresh token on the server
+      if (tokenStore.refresh) {
+        await api.post("/auth/logout/", { refresh: tokenStore.refresh });
+      }
+    } catch {
+      // Server logout is best-effort — always clear locally regardless
+    }
     tokenStore.clear();
     localStorage.removeItem("user");
     setUser(null);

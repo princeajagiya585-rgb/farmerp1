@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
-import { LogOut, Menu, X, ChevronDown, Users, Sprout, ClipboardList, Wallet, Languages } from "lucide-react";
+import { LogOut, Menu, X, ChevronDown, Users, Sprout, ClipboardList, Wallet, Languages, AlertTriangle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../context/AuthContext";
 import { navGroups, roleLabels } from "../config/nav";
@@ -8,6 +8,7 @@ import Logo from "./Logo";
 import NotificationBell from "./NotificationBell";
 import ThemeToggle from "./ThemeToggle";
 import AadhaarBanner from "./AadhaarBanner";
+import ApkDownload from "./ApkDownload";
 import { api } from "../lib/api";
 
 
@@ -125,8 +126,10 @@ export default function Layout() {
     })
     .filter(Boolean);
 
-  const handleLogout = () => {
-    logout();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  const handleLogout = async () => {
+    await logout();
     navigate("/login");
   };
 
@@ -251,7 +254,7 @@ export default function Layout() {
               </div>
             </NavLink>
             <button
-              onClick={handleLogout}
+              onClick={() => setShowLogoutConfirm(true)}
               className="rounded-xl p-2 text-gray-500 transition hover:bg-red-50 hover:text-red-600"
               title={t("common.logout")}
             >
@@ -259,15 +262,46 @@ export default function Layout() {
             </button>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          <div className="mx-auto max-w-7xl animate-fade-in">
-            <AadhaarBanner />
-            <Outlet />
+        <main className="flex-1 overflow-y-auto">
+          <div className="p-4 md:p-6">
+            <div className="mx-auto max-w-7xl animate-fade-in">
+              <AadhaarBanner />
+              <Outlet />
+            </div>
           </div>
+          <ApkDownload />
         </main>
       </div>
 
 
+      {/* Logout confirmation modal */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm animate-fade-in rounded-2xl bg-white shadow-lift">
+            <div className="p-6 text-center">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
+                <AlertTriangle size={28} className="text-red-600" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-800">Confirm Logout</h3>
+              <p className="mt-2 text-sm text-gray-500">Are you sure you want to sign out?</p>
+            </div>
+            <div className="flex gap-3 border-t border-gray-100 px-6 py-4">
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex-1 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

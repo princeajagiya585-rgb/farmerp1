@@ -1,6 +1,17 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE } from '../config';
+import {
+  ensureFreshAccessToken,
+  getStoredTokens,
+  storeTokens,
+  clearStored,
+  isTokenExpired,
+  refreshAccessTokenOnServer,
+  getStored as getStoredFromAuth,
+  loginServer,
+  logoutServer as logoutServerFromAuth,
+} from './auth';
 
 // AsyncStorage keys
 const ACCESS_KEY = 'access_token';
@@ -10,16 +21,30 @@ const USER_KEY = 'user';
 // Axios instance pointed at the FarmERP Pro backend.
 const client = axios.create({
   baseURL: API_BASE,
-  timeout: 15000,
+  timeout: 60000,
 });
 
-// ---- Request interceptor: attach Bearer token --------------------------------
+// ---- Request interceptor: attach Bearer token + proactive refresh -----------
 client.interceptors.request.use(async (config) => {
-  const token = await AsyncStorage.getItem(ACCESS_KEY);
-  if (token) {
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
+  // Skip auth endpoints — login and refresh don't need a token
+  const url = config.url || '';
+  if (
+    url.includes('/auth/login') ||
+    url.includes('/auth/refresh') ||
+    url.includes('/auth/logout')
+  ) {
+    return config;
   }
+
+  // Proactively refresh the access token if it's expired.
+  // This eliminates the 401 -> refresh -> retry cycle for the common case
+  // where the access token expired while the user was idle.
+  const freshToken = await ensureFreshAccessToken();
+  if (freshToken) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${freshToken}`;
+  }
+
   return config;
 });
 
@@ -50,8 +75,9 @@ client.interceptors.response.use(
     ) {
       original._retry = true;
 
-      const refresh = await AsyncStorage.getItem(REFRESH_KEY);
+      const { refresh } = await getStoredTokens();
       if (!refresh) {
+        // No refresh token — can't recover, force re-login
         await clearStored();
         return Promise.reject(error);
       }
@@ -68,11 +94,9 @@ client.interceptors.response.use(
 
       isRefreshing = true;
       try {
-        const { data } = await axios.post(`${API_BASE}/auth/refresh/`, { refresh });
-        await AsyncStorage.setItem(ACCESS_KEY, data.access);
-        if (data.refresh) await AsyncStorage.setItem(REFRESH_KEY, data.refresh);
-        processQueue(null, data.access);
-        original.headers.Authorization = `Bearer ${data.access}`;
+        const freshToken = await refreshAccessTokenOnServer();
+        original.headers.Authorization = `Bearer ${freshToken}`;
+        processQueue(null, freshToken);
         return client(original);
       } catch (refreshErr) {
         processQueue(refreshErr, null);
@@ -89,35 +113,16 @@ client.interceptors.response.use(
 
 // ---- Storage helpers ---------------------------------------------------------
 export async function getStored() {
-  const [access, refresh, userRaw] = await Promise.all([
-    AsyncStorage.getItem(ACCESS_KEY),
-    AsyncStorage.getItem(REFRESH_KEY),
-    AsyncStorage.getItem(USER_KEY),
-  ]);
-  let user = null;
-  try {
-    user = userRaw ? JSON.parse(userRaw) : null;
-  } catch (e) {
-    user = null;
-  }
-  return { access, refresh, user };
-}
-
-async function clearStored() {
-  await AsyncStorage.multiRemove([ACCESS_KEY, REFRESH_KEY, USER_KEY]);
+  return getStoredFromAuth();
 }
 
 // ---- Auth helpers ------------------------------------------------------------
 export async function login(username, password) {
-  const { data } = await client.post('/auth/login/', { username, password });
-  await AsyncStorage.setItem(ACCESS_KEY, data.access);
-  await AsyncStorage.setItem(REFRESH_KEY, data.refresh);
-  await AsyncStorage.setItem(USER_KEY, JSON.stringify(data.user));
-  return data.user;
+  return loginServer(username, password);
 }
 
 export async function logout() {
-  await clearStored();
+  await logoutServerFromAuth();
 }
 
 export default client;

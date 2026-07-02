@@ -13,6 +13,7 @@ import {
   Alert,
   Modal,
   ScrollView,
+  BackHandler,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as Location from 'expo-location';
@@ -70,6 +71,7 @@ export default function LocationScreen() {
   const [selectedTask, setSelectedTask] = useState('');
 
   const toastOpacity = useRef(new Animated.Value(0)).current;
+  const webViewRef = useRef(null);
   const wsCleanup = useRef(null);
 
   const showToast = (msg, isError = false) => {
@@ -141,6 +143,33 @@ export default function LocationScreen() {
       if (wsCleanup.current) wsCleanup.current();
     };
   }, [load, loadTasks]);
+
+  const webViewCanGoBackRef = useRef(false);
+
+  // ── Android back button: WebView go back or exit confirm ──────────
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const onBackPress = () => {
+      if (webViewCanGoBackRef.current && webViewRef.current) {
+        webViewRef.current.goBack();
+        return true; // Prevent default, handled by WebView
+      }
+      // No WebView history — show exit confirmation
+      Alert.alert('Do you want to exit?', '', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Exit',
+          style: 'destructive',
+          onPress: () => BackHandler.exitApp(),
+        },
+      ]);
+      return true; // Prevent default back behavior
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, []);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -359,10 +388,12 @@ export default function LocationScreen() {
       <Card style={styles.mapCard}>
         <View style={styles.mapContainer}>
           <WebView
+            ref={webViewRef}
             source={{ html: `<iframe src="${INDIA_EMBED}" width="100%" height="100%" style="border:0;border-radius:12px" allowfullscreen loading="lazy"></iframe>` }}
             style={styles.map}
             scrollEnabled={false}
             bounces={false}
+            onNavigationStateChange={(navState) => { webViewCanGoBackRef.current = navState.canGoBack; }}
           />
         </View>
         {(lastCheckin || currentCoords) && (

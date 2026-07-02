@@ -1,5 +1,5 @@
-import React from 'react';
-import { Text } from 'react-native';
+import React, { useEffect } from 'react';
+import { Text, BackHandler, Alert, Platform } from 'react-native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
@@ -69,5 +69,27 @@ function AppTabs() {
 
 export default function RootNavigator() {
   const { user } = useAuth();
+
+  // Android: intercept the hardware back button so it doesn't close the app
+  // or log the user out. Show an exit confirmation instead.
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const onBackPress = () => {
+      Alert.alert('Exit Application?', 'Are you sure you want to exit the app?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Exit',
+          style: 'destructive',
+          onPress: () => BackHandler.exitApp(),
+        },
+      ]);
+      return true; // Prevent default back behavior
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, []);
+
   return user ? <AppTabs /> : <AuthStack />;
 }

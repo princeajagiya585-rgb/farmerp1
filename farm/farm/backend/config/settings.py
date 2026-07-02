@@ -195,12 +195,28 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    # TEMPORARY: Increased token lifetimes for development to reduce 401 errors.
-    # Revert before production.
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=int(os.getenv("ACCESS_TOKEN_LIFETIME_DAYS", "7"))),
+    # ACCESS_TOKEN_LIFETIME = 24 hours — short enough to be secure, long enough
+    # to avoid frequent refreshes during an active session.
+    # Supports both the new ACCESS_TOKEN_LIFETIME_HOURS (24h default) and the
+    # legacy ACCESS_TOKEN_LIFETIME_DAYS env var for backward compatibility.
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=int(
+        os.getenv("ACCESS_TOKEN_LIFETIME_HOURS") or os.getenv("ACCESS_TOKEN_LIFETIME_DAYS", "24")
+    )),
+    # REFRESH_TOKEN_LIFETIME = 30 days — users stay logged in for 30 days
+    # unless they explicitly log out (which blacklists the refresh token).
     "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.getenv("REFRESH_TOKEN_LIFETIME_DAYS", "30"))),
+    # Rotate the refresh token on each refresh so the old refresh token is
+    # replaced — this means a stolen refresh token is only usable for one
+    # refresh cycle instead of indefinitely.
     "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": True,
+    # Do NOT blacklist the old refresh token after rotation. This avoids a
+    # race condition where two concurrent refresh attempts (because the access
+    # token expired while multiple requests were in-flight) would each see
+    # the other's refresh token as already blacklisted.
+    "BLACKLIST_AFTER_ROTATION": False,
+    # Update the user's last_login timestamp on each successful token refresh
+    # so admins can see when a user was last active.
+    "UPDATE_LAST_LOGIN": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 

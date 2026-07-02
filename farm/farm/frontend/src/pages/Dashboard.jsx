@@ -554,6 +554,9 @@ function getModuleMetrics(mod, kpi) {
       return [
         { label: "dashboard.employees", value: wk.total_employees },
         { label: "dashboard.presentToday", value: wk.present_today },
+        { label: "Absent Today", value: wk.absent_today ?? 0 },
+        { label: "Managers", value: wk.manager_count ?? 0 },
+        { label: "Pending Approvals", value: wk.pending_approvals ?? 0 },
       ];
     case "payroll":
       return [

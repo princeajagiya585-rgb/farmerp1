@@ -44,9 +44,13 @@ class DashboardView(APIView):
         present_today = att_qs.filter(
             date=today, status=Attendance.Status.PRESENT
         ).count()
+        absent_today = att_qs.filter(
+            date=today, status=Attendance.Status.ABSENT
+        ).count()
         pending_approvals = att_qs.filter(
             approval_status=Attendance.ApprovalStatus.PENDING
         ).count()
+        manager_count = emp_qs.filter(category="MANAGER").count()
 
         # Farm-wise employee breakdown with present/total counts
         farm_employee_breakdown = []
@@ -252,6 +256,8 @@ class DashboardView(APIView):
                 "workforce_kpis": {
                     "total_employees": emp_qs.count(),
                     "present_today": present_today,
+                    "absent_today": absent_today,
+                    "manager_count": manager_count,
                     "pending_approvals": pending_approvals,
                     "farm_breakdown": farm_employee_breakdown,
                 },

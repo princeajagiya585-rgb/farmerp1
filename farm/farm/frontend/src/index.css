@@ -110,6 +110,18 @@ html.dark .scrollable-content::-webkit-scrollbar-thumb {
   @apply bg-slate-600;
 }
 
+/* Loading dots bounce animation */
+@keyframes loading-bounce {
+  0%, 80%, 100% {
+    opacity: 0.3;
+    transform: scale(0.7);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 /* Toast slide-in animation */
 @keyframes slide-in {
   from {
