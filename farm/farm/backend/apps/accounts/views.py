@@ -12,7 +12,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenBlacklistView, TokenObtainPairView, TokenRefreshView
 
 from apps.core.permissions import IsSuperAdmin
 
@@ -34,6 +34,17 @@ User = get_user_model()
 
 class LoginView(TokenObtainPairView):
     serializer_class = FarmTokenObtainPairSerializer
+    throttle_classes = []
+
+
+class NoThrottleTokenRefreshView(TokenRefreshView):
+    """Token refresh endpoint with throttling disabled for development."""
+    throttle_classes = []
+
+
+class NoThrottleTokenBlacklistView(TokenBlacklistView):
+    """Token blacklist (logout) endpoint with throttling disabled for development."""
+    throttle_classes = []
 
 
 # ─── OTP & Phone Auth Endpoints ────────────────────────────────────────
@@ -109,6 +120,7 @@ def verify_otp(request):
 @extend_schema(request=PhoneLoginSerializer, responses={200: {"type": "object"}})
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([])
 def phone_login(request):
     """Login with phone + password, username + password, OR email + password."""
     serializer = PhoneLoginSerializer(data=request.data)
@@ -158,6 +170,7 @@ def phone_login(request):
 @extend_schema(request=ForgotPasswordSerializer, responses={200: {"type": "object", "properties": {"message": {"type": "string"}, "expires_in": {"type": "integer"}}}})
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([])
 def forgot_password(request):
     """Send OTP to the Super Admin's email for password reset."""
     serializer = ForgotPasswordSerializer(data=request.data)
@@ -225,6 +238,7 @@ If you did not request this, please ignore this email.
 @extend_schema(request=ResetPasswordSerializer, responses={200: {"type": "object", "properties": {"detail": {"type": "string"}}}})
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([])
 def reset_password(request):
     """Verify OTP and set a new password for the Super Admin."""
     serializer = ResetPasswordSerializer(data=request.data)

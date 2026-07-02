@@ -182,11 +182,15 @@ REST_FRAMEWORK = {
 
     # TEMPORARY: All throttle limits raised to extremely high levels for development.
     # Revert before production.
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ),
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "1000000/min",
-        "user": "1000000/min",
-        "otp_send": "100000/min",
-        "otp_verify": "100000/min",
+        "anon": "10000000/min",
+        "user": "10000000/min",
+        "otp_send": "1000000/min",
+        "otp_verify": "1000000/min",
     },
 }
 
