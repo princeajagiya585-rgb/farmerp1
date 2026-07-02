@@ -96,7 +96,10 @@ export default function DailyTaskReport() {
 
   useEffect(() => {
     loadReport();
-    const id = setInterval(loadReport, 30000);
+    // Poll every ~120s with jitter to avoid thundering herd
+    const base = 120000;
+    const jitter = Math.floor(Math.random() * base * 0.4) - Math.floor(base * 0.2); // ±20%
+    const id = setInterval(loadReport, base + jitter);
     return () => clearInterval(id);
   }, []);
 

@@ -27,11 +27,51 @@ export const tokenStore = {
   },
 };
 
-api.interceptors.request.use((config) => {
-  const token = tokenStore.access;
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+// ── Request concurrency limiter ────────────────────────────────────
+// Many pages fire 5-8 API calls simultaneously on mount (e.g. GPS.jsx).
+// In Railway this burst can trigger rate limits. We limit to 3 concurrent
+// requests and queue the rest.
+let inFlight = 0;
+const requestQueue = [];
+const MAX_CONCURRENCY = 3;
+
+function processQueue() {
+  while (inFlight < MAX_CONCURRENCY && requestQueue.length > 0) {
+    const next = requestQueue.shift();
+    inFlight++;
+    next()
+      .finally(() => {
+        inFlight--;
+        processQueue();
+      });
+  }
+}
+
+function enqueueRequest(requestFn) {
+  return new Promise((resolve, reject) => {
+    requestQueue.push(() =>
+      requestFn().then(resolve, reject)
+    );
+    processQueue();
+  });
+}
+
+const originalRequest = api.request.bind(api);
+api.request = function (config) {
+  const doRequest = async () => {
+    // If a 429 triggered a global cooldown, wait before sending ANY request.
+    if (isInGlobalCooldown()) {
+      const wait = globalCooldownUntil - Date.now();
+      if (wait > 0) {
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      }
+    }
+    const token = tokenStore.access;
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+    return originalRequest(config);
+  };
+  return enqueueRequest(doRequest);
+};
 
 // Single-flight token refresh: every request that hits a 401 at the same time
 // shares ONE refresh call. The promise is only cleared once it has fully
@@ -63,9 +103,28 @@ function redirectToLogin() {
   }
 }
 
-// Retry configuration for 429 errors
-const MAX_RETRIES = 3;
-const INITIAL_RETRY_DELAY = 1000; // 1 second
+// ── 429 Too Many Requests: Global cooldown ──────────────────────────
+// When the backend or Railway rate-limits us, retrying the SAME request
+// only makes the problem worse (more load → more 429s). Instead we apply
+// a global cooldown that pauses ALL outgoing requests for a few seconds.
+let globalCooldownUntil = 0;
+let globalCooldownTimer = null;
+
+function isInGlobalCooldown() {
+  return Date.now() < globalCooldownUntil;
+}
+
+function activateGlobalCooldown(retryAfterSeconds = 10) {
+  const duration = Math.min(retryAfterSeconds * 1000, 30000); // cap at 30s
+  globalCooldownUntil = Date.now() + duration + 1000; // +1s buffer
+
+  // Auto-clear the cooldown after the duration
+  if (globalCooldownTimer) clearTimeout(globalCooldownTimer);
+  globalCooldownTimer = setTimeout(() => {
+    globalCooldownUntil = 0;
+    globalCooldownTimer = null;
+  }, duration + 1000);
+}
 
 api.interceptors.response.use(
   (res) => res,
@@ -73,18 +132,20 @@ api.interceptors.response.use(
     const original = error.config;
     if (!original) return Promise.reject(error);
 
-    // Initialize retry count if not present
-    original._retryCount = original._retryCount || 0;
+    // Handle 429 Too Many Requests — activate a global cooldown
+    // instead of retrying (retrying would compound the load).
+    if (error.response?.status === 429) {
+      const retryAfter = parseInt(error.response.headers["retry-after"] || "10", 10);
+      activateGlobalCooldown(retryAfter);
+      return Promise.reject(error);
+    }
 
-    // Handle 429 Too Many Requests with exponential backoff
-    if (error.response?.status === 429 && original._retryCount < MAX_RETRIES) {
-      original._retryCount += 1;
-      const retryAfter = error.response.headers["retry-after"]
-        ? parseInt(error.response.headers["retry-after"], 10) * 1000
-        : INITIAL_RETRY_DELAY * Math.pow(2, original._retryCount - 1);
-
-      await new Promise((resolve) => setTimeout(resolve, retryAfter));
-      return api(original);
+    // Wait for global cooldown on every erroring request before proceeding
+    if (isInGlobalCooldown()) {
+      const wait = globalCooldownUntil - Date.now();
+      if (wait > 0) {
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      }
     }
 
     const isAuthEndpoint = original?.url?.includes("/auth/login") || original?.url?.includes("/auth/refresh");
@@ -98,7 +159,10 @@ api.interceptors.response.use(
         const access = await refreshAccessToken();
         original.headers = original.headers || {};
         original.headers.Authorization = `Bearer ${access}`;
-        return api(original);
+        // Use originalRequest directly to bypass the concurrency queue.
+        // If we used `api(original)` here, it would be re-queued and could
+        // deadlock when all 3 in-flight slots are held by 401-responding requests.
+        return originalRequest(original);
       } catch (e) {
         redirectToLogin();
         return Promise.reject(e);

@@ -262,17 +262,35 @@ STORAGES = {
 }
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-BACKEND_URL = os.getenv("BACKEND_URL", "https://farmerp-backend-production.up.railway.app")
+# Ensure the media directory exists
+MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
 
 if env_bool("USE_S3", False):
     AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
     AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
     AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
-    AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME")
+    AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "ap-south-1")
+    AWS_S3_CUSTOM_DOMAIN = os.getenv("AWS_S3_CUSTOM_DOMAIN", "")
+    # Optional S3-compatible endpoint (e.g. DigitalOcean Spaces, MinIO).
+    # Do NOT set this to a CloudFront/CDN domain — that would break API calls.
+    AWS_S3_ENDPOINT_URL = os.getenv("AWS_S3_ENDPOINT_URL", "")
+    # Security: don't generate query-string auth for public bucket
+    AWS_QUERYSTRING_AUTH = env_bool("AWS_QUERYSTRING_AUTH", False)
+    # Public read access for uploaded photos
+    AWS_DEFAULT_ACL = os.getenv("AWS_DEFAULT_ACL", "public-read")
+    # Object-level settings
+    AWS_S3_OBJECT_PARAMETERS = {
+        "CacheControl": "max-age=86400",
+    }
     STORAGES = {
         "default": {"BACKEND": "storages.backends.s3.S3Storage"},
         "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
     }
+    # Override MEDIA_URL so build_absolute_photo_url can detect absolute URLs
+    if AWS_S3_CUSTOM_DOMAIN:
+        MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
+    else:
+        MEDIA_URL = f"https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/"
 
 # ---------------------------------------------------------------------------
 # Email (Resend SMTP)

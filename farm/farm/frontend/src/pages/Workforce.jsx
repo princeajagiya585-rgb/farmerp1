@@ -121,7 +121,11 @@ export default function Workforce() {
         columns={[
             { key: "name", header: t("header.name") },
             { key: "assigned_farms", header: t("users.assignedFarm"), render: (r) => r.assigned_farms?.length ? r.assigned_farms.join(", ") : "—" },
-            { key: "category", header: t("header.category"), render: (r) => <Badge color="blue">{r.category === "EMPLOYEE" ? t("skills.employeeLabour") : t("skills.labour")}</Badge> },
+            { key: "category", header: t("header.category"), render: (r) => {
+                if (r.category === "MANAGER") return <Badge color="purple">{t("workforce.manager")}</Badge>;
+                if (r.category === "EMPLOYEE") return <Badge color="blue">{t("skills.employeeLabour")}</Badge>;
+                return <Badge color="gray">{t("skills.labour")}</Badge>;
+            } },
             { key: "employment_type", header: t("header.type") },
             { key: "designation", header: t("header.designation"), render: (r) => r.designation || "—" },
             { key: "department_name", header: t("header.department"), render: (r) => r.department_name || "—" },
@@ -152,8 +156,9 @@ export default function Workforce() {
               label: t("workforce.category"),
               type: "select",
               options: [
-                { value: "LABOUR", label: t("workforce.labour") },
+                { value: "MANAGER", label: t("workforce.manager") },
                 { value: "EMPLOYEE", label: t("skills.employeeLabour") },
+                { value: "LABOUR", label: t("workforce.labour") },
               ],
             },
             {

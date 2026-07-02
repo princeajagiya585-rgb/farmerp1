@@ -8,11 +8,20 @@ User = get_user_model()
 
 
 def build_absolute_photo_url(photo, request=None):
+    """
+    Convert a photo field to an absolute URL.
+    When using S3 storage, photo.url already returns a full absolute URL
+    (e.g. https://bucket.s3.amazonaws.com/media/photo.jpg), so we must
+    NOT wrap it with build_absolute_uri again.
+    """
     if not photo:
         return None
+    url = photo.url
+    if url.startswith(("http://", "https://")):
+        return url
     if request:
-        return request.build_absolute_uri(photo.url)
-    return f"{settings.BACKEND_URL}{photo.url}"
+        return request.build_absolute_uri(url)
+    return f"{settings.BACKEND_URL}{url}"
 
 
 class UserSerializer(serializers.ModelSerializer):

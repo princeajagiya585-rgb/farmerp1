@@ -49,11 +49,15 @@ export default function NotificationBell() {
     }
   }, []);
 
-  // Poll unread count on mount and every 30s.
+  // Poll unread count on mount and every 120s.
+  // New notifications arrive via WebSocket in real-time, so this poll
+  // is only a fallback for when the WebSocket reconnects.
   useEffect(() => {
     if (!tokenStore.access) return;
     loadCount();
-    const id = setInterval(loadCount, 30000);
+    const base = 120000;
+    const jitter = Math.floor(Math.random() * base * 0.4) - Math.floor(base * 0.2); // ±20%
+    const id = setInterval(loadCount, base + jitter);
     return () => clearInterval(id);
   }, [loadCount]);
 

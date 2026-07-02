@@ -137,10 +137,14 @@ export default function Users() {
     }
   }, []);
 
-  // Fetch active sessions and tick every 10s for live counter
+  // Fetch active sessions and tick every 120s for live counter
+  // (Reduced to avoid Railway 429 rate limits. Live sessions don't need
+  // sub-minute granularity — the timer counters update locally via JS.)
   useEffect(() => {
     loadSessions();
-    const id = setInterval(loadSessions, 10000);
+    const base = 120000;
+    const jitter = Math.floor(Math.random() * base * 0.4) - Math.floor(base * 0.2); // ±20%
+    const id = setInterval(loadSessions, base + jitter);
     return () => clearInterval(id);
   }, [loadSessions]);
 

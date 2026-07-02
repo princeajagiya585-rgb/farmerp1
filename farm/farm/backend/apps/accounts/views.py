@@ -287,12 +287,13 @@ class UserViewSet(viewsets.ModelViewSet):
                     code = f"{base_code}-{counter}"
                     counter += 1
                 try:
+                    category = Employee.Category.MANAGER if user.role == 'FARM_MANAGER' else Employee.Category.EMPLOYEE
                     Employee.objects.create(
                         user=user,
                         employee_code=code,
                         first_name=user.first_name or user.username,
                         last_name=user.last_name or "",
-                        category=Employee.Category.EMPLOYEE,
+                        category=category,
                         employment_type=Employee.EmploymentType.PERMANENT,
                         farm=farm,
                         phone=user.phone or "",
@@ -301,7 +302,7 @@ class UserViewSet(viewsets.ModelViewSet):
                     pass
 
     def perform_update(self, serializer):
-        """Update the user, then sync name & farm to the linked Employee record."""
+        """Update the user, then sync name, farm & category to the linked Employee record."""
         user = serializer.save()
         from apps.workforce.models import Employee
         farms = list(user.farms.all())
@@ -311,9 +312,10 @@ class UserViewSet(viewsets.ModelViewSet):
             employee.first_name = user.first_name or user.username
             employee.last_name = user.last_name or ""
             employee.phone = user.phone or ""
+            employee.category = Employee.Category.MANAGER if user.role == 'FARM_MANAGER' else Employee.Category.EMPLOYEE
             if farm:
                 employee.farm = farm
-            employee.save(update_fields=["first_name", "last_name", "phone", "farm"])
+            employee.save(update_fields=["first_name", "last_name", "phone", "farm", "category"])
         elif farm:
             base_code = f"EMP-{user.username}"
             code = base_code
@@ -322,12 +324,13 @@ class UserViewSet(viewsets.ModelViewSet):
                 code = f"{base_code}-{counter}"
                 counter += 1
             try:
+                category = Employee.Category.MANAGER if user.role == 'FARM_MANAGER' else Employee.Category.EMPLOYEE
                 Employee.objects.create(
                     user=user,
                     employee_code=code,
                     first_name=user.first_name or user.username,
                     last_name=user.last_name or "",
-                    category=Employee.Category.EMPLOYEE,
+                    category=category,
                     employment_type=Employee.EmploymentType.PERMANENT,
                     farm=farm,
                     phone=user.phone or "",

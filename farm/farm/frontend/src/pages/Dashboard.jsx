@@ -123,9 +123,9 @@ export default function Dashboard() {
   }, [kpi]);
 
   // The backend runs on a free tier that sleeps when idle, so the first request
-  // after a while can fail or be slow while it wakes up. Retry transient errors
-  // with backoff instead of immediately giving up.
-  const MAX_RETRIES = 4;
+  // after a while can fail or be slow while it wakes up. Retry the initial load
+  // with backoff, but DO NOT retry on subsequent polls (to avoid 429 pile-ups).
+  const INITIAL_MAX_RETRIES = 3;
 
   const loadDashboard = (attempt = 0) => {
     if (retryRef.current) {
@@ -149,35 +149,42 @@ export default function Dashboard() {
         // wipe the dashboard — just keep the last good values.
         if (kpiRef.current) return;
 
-        if (attempt < MAX_RETRIES) {
+        // Only retry on the initial load (attempt tracked), not on background polls
+        if (attempt < INITIAL_MAX_RETRIES) {
           setWaking(true);
-          const delay = Math.min(2000 * 2 ** attempt, 15000);
+          const delay = Math.min(2000 * 2 ** attempt, 10000);
           retryRef.current = setTimeout(() => loadDashboard(attempt + 1), delay);
         } else {
           setWaking(false);
-          setError("Could not load dashboard. The server may be waking up — please retry.");
+          setError("Could not load dashboard. Please retry.");
         }
       })
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => {
-    loadDashboard();
+ useEffect(() => {
+  loadDashboard();
 
-    // Auto-refresh every 30 seconds so new farms/employees appear automatically
-    pollingRef.current = setInterval(() => loadDashboard(0), 30000);
+  if (!pollingRef.current) {
+    const base = 120000;
+    const jitter = Math.floor(Math.random() * base * 0.4) - Math.floor(base * 0.2); // ±20%
+    pollingRef.current = setInterval(() => {
+      loadDashboard(0);
+    }, base + jitter); // ~2 minutes with jitter
+  }
 
-    return () => {
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
-      if (retryRef.current) {
-        clearTimeout(retryRef.current);
-        retryRef.current = null;
-      }
-    };
-  }, [location]);
+  return () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+
+    if (retryRef.current) {
+      clearTimeout(retryRef.current);
+      retryRef.current = null;
+    }
+  };
+}, []);
 
   if (error && !kpi) {
     return (

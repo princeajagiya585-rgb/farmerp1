@@ -381,7 +381,11 @@ export default function GPS() {
     }
 
     // Keep the Work column (pending + active tasks) fresh while the page is open
-    const workTasksTimer = setInterval(() => loadWorkTasks(), 30000);
+    // Using a long interval (5 min + jitter) since tasks rarely change mid-session.
+    // Live location updates come via WebSocket, not polling.
+    const base = 300000;
+    const jitter = Math.floor(Math.random() * base * 0.4) - Math.floor(base * 0.2); // ±20%
+    const workTasksTimer = setInterval(() => loadWorkTasks(), base + jitter);
 
     return () => {
       if (wsCleanup.current) wsCleanup.current();

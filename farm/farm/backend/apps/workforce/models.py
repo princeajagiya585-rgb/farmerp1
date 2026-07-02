@@ -9,6 +9,7 @@ class Employee(TimeStampedModel):
     class Category(models.TextChoices):
         EMPLOYEE = "EMPLOYEE", "Employee"
         LABOUR = "LABOUR", "Labour"
+        MANAGER = "MANAGER", "Manager"
 
     class EmploymentType(models.TextChoices):
         PERMANENT = "PERMANENT", "Permanent"

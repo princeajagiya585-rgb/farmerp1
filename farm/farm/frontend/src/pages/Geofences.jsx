@@ -14,7 +14,8 @@ export default function Geofences() {
       subtitle={t("geofences.subtitle")}
       path="gps/geofences"
       canWrite={canWrite}
-      refreshInterval={30}
+      // Auto-refresh removed to avoid Railway 429 rate limits.
+      // Data changes infrequently (geofences are rarely modified).
       columns={[
         { key: "farm_name", header: t("header.farm") },
         {

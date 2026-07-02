@@ -30,7 +30,8 @@ export default function GpsActivities() {
       subtitle={t("gpsActivities.subtitle")}
       path="gps/activities"
       canWrite={canWrite}
-      refreshInterval={30}
+      // Auto-refresh removed to avoid Railway 429 rate limits.
+      // Users can manually reload or use WebSocket updates.
       rowActions={(row, reload) =>
         canVerify && row.status === "SUBMITTED" ? (
           <div className="flex gap-1">

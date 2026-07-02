@@ -7,6 +7,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   TouchableOpacity,
+  Platform,
   Linking,
   Image,
   Alert,
@@ -19,6 +20,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { ScreenContainer, Card, theme, Badge, PrimaryButton } from '../components/ui';
 import client from '../api/client';
 import { connectLocationStream } from '../lib/realtime';
+import { exportCSV } from '../lib/export';
 
 const INDIA_EMBED =
   'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d30773484.55170563!2d61.0245165611659!3d19.69009515037612!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x30635ff06b92b791%3A0xd78c4fa1854213a6!2sIndia!5e0!3m2!1sen!2sin!4v1781959490463!5m2!1sen!2sin';
@@ -289,8 +291,25 @@ export default function LocationScreen() {
   };
 
   const openInMaps = (lat, lng) => {
-    const url = `https://www.google.com/maps?q=${lat},${lng}`;
-    Linking.openURL(url).catch(() => showToast('⚠️ Could not open Google Maps.'));
+    const coords = `${lat},${lng}`;
+    let url;
+    if (Platform.OS === 'android') {
+      // Android: use geo: URI to open in Google Maps app directly
+      url = `geo:0,0?q=${coords}`;
+    } else {
+      // iOS: use maps URL scheme for Apple Maps, fall back to Google Maps web
+      url = `maps://app?ll=${coords}&q=${coords}`;
+    }
+    Linking.canOpenURL(url)
+      .then((supported) => {
+        if (supported) {
+          return Linking.openURL(url);
+        }
+        // Fallback: open in browser
+        const fallbackUrl = `https://www.google.com/maps?q=${coords}`;
+        return Linking.openURL(fallbackUrl);
+      })
+      .catch(() => showToast('⚠️ Could not open Maps. Please check your map app is installed.'));
   };
 
 
@@ -469,6 +488,31 @@ export default function LocationScreen() {
           <Text style={styles.mapLinkIcon}>🗺️</Text>
           <Text style={styles.mapLinkText}>View on Google Maps</Text>
         </TouchableOpacity>
+      )}
+
+      {/* Export button */}
+      {pings.length > 0 && (
+        <PrimaryButton
+          title="📊  Export Location History (CSV)"
+          variant="outline"
+          onPress={async () => {
+            try {
+              await exportCSV(
+                pings,
+                [
+                  { key: 'activity', header: 'Activity' },
+                  { key: 'latitude', header: 'Latitude' },
+                  { key: 'longitude', header: 'Longitude' },
+                  { key: 'location_name', header: 'Location' },
+                  { key: 'recorded_at', header: 'Timestamp' },
+                ],
+                'location-history.csv',
+              );
+            } catch (e) {
+              showToast('⚠️ Could not export data.');
+            }
+          }}
+        />
       )}
 
       {/* Quick Stats */}

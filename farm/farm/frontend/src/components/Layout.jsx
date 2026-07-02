@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { LogOut, Menu, X, ChevronDown, Users, Sprout, ClipboardList, Wallet, Languages } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -99,7 +99,6 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(false);
-  const [kpi, setKpi] = useState(null);
   const [langOpen, setLangOpen] = useState(false);
 
   const role = user?.role;
@@ -115,15 +114,6 @@ export default function Layout() {
       localStorage.setItem("user", JSON.stringify({ ...stored, preferred_language: code }));
     }).catch(() => {});
   };
-
-  useEffect(() => {
-    if (hasRole("SUPER_ADMIN", "FARM_MANAGER")) {
-      api
-        .get("/reporting/dashboard/")
-        .then((r) => setKpi(r.data))
-        .catch(() => {});
-    }
-  }, [hasRole]);
 
   // Build the visible menu: keep links the user can see, and groups that have
   // at least one visible child (children filtered to the user's role).
