@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import i18n from "../i18n";
-import { api, tokenStore } from "../lib/api";
+import { api, tokenStore, isTokenExpired, refreshAccessToken } from "../lib/api";
 
 const AuthContext = createContext(null);
 
@@ -9,7 +9,9 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
+    let cancelled = false;
+
+    (async () => {
       const stored = localStorage.getItem("user");
       if (stored && tokenStore.access) {
         // A corrupt cached user (partial write, manual edit) must not throw and
@@ -21,24 +23,69 @@ export function AuthProvider({ children }) {
           localStorage.removeItem("user");
           tokenStore.clear();
         }
+
         if (parsed) {
-          setUser(parsed);
           // Apply the cached language immediately (no flash)…
           i18n.changeLanguage(parsed?.preferred_language || "en");
-          // …then refresh from the server so any admin-side change (e.g. the
+
+          // ── Proactive token refresh ───────────────────────────────
+          // If the access token is already expired, refresh it BEFORE
+          // making any API calls. This prevents the initial 401 burst
+          // on page reload.
+          if (isTokenExpired(tokenStore.access) && tokenStore.refresh) {
+            try {
+              await refreshAccessToken();
+            } catch {
+              // Refresh failed (refresh token expired / blacklisted).
+              // Clear everything and force re-login.
+              tokenStore.clear();
+              localStorage.removeItem("user");
+              if (!cancelled) {
+                setUser(null);
+                setLoading(false);
+              }
+              return;
+            }
+          }
+
+          // Still have a valid token (original or refreshed) — set the
+          // cached user immediately so the UI renders without delay, then
+          // verify from the server in the background.
+          if (!cancelled) {
+            setUser(parsed);
+          }
+
+          // …refresh from the server so any admin-side change (e.g. the
           // language) is picked up on reload — not only after a full re-login.
-          api.get("/auth/users/me/")
-            .then(({ data }) => {
+          // Use a 15-second timeout so a sleeping Railway backend doesn't
+          // block the loading screen indefinitely.
+          try {
+            const { data } = await api.get("/auth/users/me/", { timeout: 15000 });
+            if (!cancelled) {
               setUser(data);
               localStorage.setItem("user", JSON.stringify(data));
               i18n.changeLanguage(data?.preferred_language || "en");
-            })
-            .catch(() => {});
+            }
+          } catch {
+            // /auth/users/me/ failed even after a proactive refresh.
+            // The response interceptor already tried to handle 401 by
+            // refreshing, so if we're here, something is truly wrong
+            // (network error, server down, or refresh token also expired).
+            // Keep the cached user — they can still navigate the app
+            // and the interceptor will redirect to login on the next
+            // protected request if the token is truly invalid.
+          }
         }
       }
-    } finally {
-      setLoading(false);
-    }
+
+      if (!cancelled) {
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Standard username/password login

@@ -66,12 +66,50 @@ api.request = function (config) {
         await new Promise((resolve) => setTimeout(resolve, wait));
       }
     }
+
+    // ── Proactive token refresh ─────────────────────────────────────
+    // Instead of waiting for a 401 response, refresh the access token
+    // *before* sending the request if it has expired. This eliminates
+    // the initial 401 burst on page load / after login.
+    const currentAccess = tokenStore.access;
+    if (currentAccess && isTokenExpired(currentAccess) && tokenStore.refresh) {
+      try {
+        await refreshAccessToken();
+      } catch {
+        // Refresh failed (e.g. refresh token blacklisted/expired).
+        // Fall through — the response interceptor will handle the 401
+        // and redirect to login if needed.
+      }
+    }
+
     const token = tokenStore.access;
     if (token) config.headers.Authorization = `Bearer ${token}`;
     return originalRequest(config);
   };
   return enqueueRequest(doRequest);
 };
+
+/**
+ * Decode a JWT payload (base64url -> JSON) without a library.
+ * Returns null if the token is malformed.
+ */
+export function decodeJwtPayload(token) {
+  try {
+    const payload = token.split(".")[1];
+    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check whether a JWT access token is expired (or will expire within `bufferSeconds`).
+ */
+export function isTokenExpired(token, bufferSeconds = 30) {
+  const decoded = decodeJwtPayload(token);
+  if (!decoded || !decoded.exp) return true;
+  return decoded.exp * 1000 <= Date.now() + bufferSeconds * 1000;
+}
 
 // Single-flight token refresh: every request that hits a 401 at the same time
 // shares ONE refresh call. The promise is only cleared once it has fully
@@ -81,7 +119,7 @@ api.request = function (config) {
 // and surprise logouts once the access token expired.
 let refreshPromise = null;
 
-function refreshAccessToken() {
+export function refreshAccessToken() {
   if (!refreshPromise) {
     refreshPromise = axios
       .post(`${API_BASE}/auth/refresh/`, { refresh: tokenStore.refresh })
