@@ -8,7 +8,6 @@ import Logo from "./Logo";
 import NotificationBell from "./NotificationBell";
 import ThemeToggle from "./ThemeToggle";
 import AadhaarBanner from "./AadhaarBanner";
-import ApkDownload from "./ApkDownload";
 import { api } from "../lib/api";
 
 
@@ -269,7 +268,6 @@ export default function Layout() {
               <Outlet />
             </div>
           </div>
-          <ApkDownload />
         </main>
       </div>
 

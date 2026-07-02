@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download, MapPin, Check, X, LogIn, LogOut, Clock, Navigation, Camera, Loader2, Pencil, Trash2 } from "lucide-react";
+import { openMapUrl, hasValidCoords } from "../lib/maps";
 import { api, resource, toFormData } from "../lib/api";
-import { Badge, Button, Card, PageHeader, Table, Select, ToastContainer, useToast } from "../components/ui";
+import { Badge, Button, Card, PageHeader, PhotoThumb, Table, Select, ToastContainer, useToast } from "../components/ui";
 import { exportExcel } from "../lib/export";
 import { useAuth } from "../context/AuthContext";
 
@@ -355,14 +356,16 @@ export default function Attendance() {
               {todayAttendance.location_name && (
                 <span className="text-gray-500 truncate max-w-[300px]">· {todayAttendance.location_name}</span>
               )}
-              <a
-                href={`https://www.google.com/maps?q=${todayAttendance.check_in_lat},${todayAttendance.check_in_lng}`}
-                target="_blank"
-                rel="noreferrer"
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  openMapUrl(todayAttendance.check_in_lat, todayAttendance.check_in_lng);
+                }}
                 className="ml-auto inline-flex items-center gap-1 text-brand-600 hover:text-brand-700"
               >
                 <Navigation size={12} /> {t("common.view")}
-              </a>
+              </button>
             </div>
           )}
         </Card>
@@ -529,16 +532,18 @@ export default function Attendance() {
                       <Camera size={15} />
                     </button>
                   )}
-                  {r.check_in_lat && (
-                    <a
-                      href={`https://www.google.com/maps?q=${r.check_in_lat},${r.check_in_lng}`}
-                      target="_blank"
-                      rel="noreferrer"
+                  {hasValidCoords(r.check_in_lat, r.check_in_lng) && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        openMapUrl(r.check_in_lat, r.check_in_lng);
+                      }}
                       className="rounded p-1.5 text-gray-500 hover:bg-gray-100"
                       title={t("common.viewOnMap")}
                     >
                       <Navigation size={15} />
-                    </a>
+                    </button>
                   )}
                   {r.check_in_photo && (
                     <a

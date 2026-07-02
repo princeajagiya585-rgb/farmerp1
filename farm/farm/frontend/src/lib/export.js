@@ -4,11 +4,59 @@ import * as XLSX from "xlsx";
 function cell(value) {
   if (value == null) return "";
   const s = String(value).replace(/\"/g, '""');
-  return /[\",\n]/.test(s) ? `"${s}"` : s;
+  return /[",\n]/.test(s) ? `"${s}"` : s;
+}
+
+/**
+ * Download a blob using multiple fallback strategies for maximum browser/WebView
+ * compatibility. In regular browsers we use the standard <a> download trick; in
+ * Android WebViews (which block programmatic <a>.click()), we fall back to
+ * window.location.href which forces the WebView to handle the download natively.
+ */
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+
+  // 1. Try msSaveBlob (IE / Edge Legacy)
+  if (navigator.msSaveBlob) {
+    navigator.msSaveBlob(blob, filename);
+    URL.revokeObjectURL(url);
+    return;
+  }
+
+  // 2. Create an <a> element and click it (works in desktop browsers,
+  //    newer mobile browsers)
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+
+  // 3. Fallback for WebViews / mobile browsers where <a>.click() is blocked:
+  //    After a short delay, if the download didn't start (common in WebViews),
+  //    navigate directly to the blob URL. This forces the WebView to handle
+  //    the download through its native download manager.
+  setTimeout(() => {
+    // Check if the <a> element is still in the DOM — if so, the click likely
+    // didn't trigger a download (WebView blocked it).
+    if (document.body.contains(a)) {
+      // Try window.location.href first (most WebView-compatible)
+      window.location.href = url;
+      // Also try window.open as a secondary fallback (for some WebView configs)
+      setTimeout(() => {
+        window.open(url, "_blank");
+      }, 200);
+    }
+    document.body.removeChild(a);
+    // Revoke the URL after a generous delay to ensure download has started
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }, 500);
 }
 
 /**
  * Export rows to a proper Excel .xlsx file with formatted headers.
+ * Uses multi-fallback download for Android WebView compatibility.
+ *
  * @param {Array} rows
  * @param {Array} columns - [{key, header, render?}]  (render is used if available, otherwise row[key])
  * @param {string} filename  (e.g. "field-activities.xlsx")
@@ -51,7 +99,13 @@ export function exportExcel(rows, columns, filename = "export.xlsx", sheetName =
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  XLSX.writeFile(wb, filename);
+
+  // Generate the XLSX file as a blob and download with fallbacks
+  const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  const blob = new Blob([wbout], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  downloadBlob(blob, filename);
 }
 
 /** Extract text from a React rendered value (simple heuristic). */
@@ -70,6 +124,8 @@ function extractText(vnode) {
 
 /**
  * Export rows to plain CSV (fallback).
+ * Uses multi-fallback download for Android WebView compatibility.
+ *
  * @param {Array} rows
  * @param {Array} columns - [{key, header, render?}]
  * @param {string} filename
@@ -91,12 +147,7 @@ export function exportCSV(rows, columns, filename = "export.csv") {
     .join("\n");
   const csv = `${header}\n${body}`;
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, filename);
 }
 
 /**

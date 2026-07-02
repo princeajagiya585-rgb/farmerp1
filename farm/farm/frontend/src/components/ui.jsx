@@ -402,6 +402,47 @@ export function ToastContainer({ toasts = [], onClose }) {
  *
  * addToast(message, type = "info", durationMs = 3000)
  */
+/**
+ * Photo thumbnail with broken-image fallback. Reusable across pages.
+ */
+export function PhotoThumb({ url, alt = "Photo", noPhotoLabel = "—", size = 40, onClick }) {
+  const [failed, setFailed] = useState(false);
+  if (!url || failed) {
+    return (
+      <span
+        className="inline-flex items-center justify-center rounded-md bg-gray-100 text-xs text-gray-400"
+        style={{ width: size, height: size }}
+      >
+        {noPhotoLabel || "—"}
+      </span>
+    );
+  }
+  return (
+    <div className="relative group">
+      <img
+        src={url}
+        alt={alt}
+        className="object-cover rounded-md cursor-pointer ring-1 ring-gray-200"
+        style={{ width: size, height: size }}
+        onClick={() => {
+          if (onClick) onClick(url);
+          else window.open(url, "_blank");
+        }}
+        onError={() => setFailed(true)}
+      />
+      <span
+        className="hidden group-hover:flex absolute inset-0 items-center justify-center rounded-md bg-black/50 text-[10px] text-white cursor-pointer"
+        onClick={() => {
+          if (onClick) onClick(url);
+          else window.open(url, "_blank");
+        }}
+      >
+        View
+      </span>
+    </div>
+  );
+}
+
 export function useToast() {
   const [toasts, setToasts] = useState([]);
   const timersRef = useRef({});

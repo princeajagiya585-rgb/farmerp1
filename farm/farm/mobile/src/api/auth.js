@@ -113,8 +113,20 @@ export async function refreshAccessTokenOnServer() {
       return data.access;
     })
     .catch(async (err) => {
-      // Refresh failed — clear everything
-      await clearStored();
+      // ── Don't clear stored tokens on transient errors ───────────
+      // Network errors (timeout, no internet), server 5xx, or any
+      // non-401 error should NOT wipe the user's session. Only clear
+      // when the server definitively rejects the refresh token (401).
+      // The response interceptor in client.js handles the 401 case
+      // by calling clearStored() before redirecting to login.
+      //
+      // This is critical for persistent login: if the user opens the
+      // app without internet (flight mode, poor signal), the stored
+      // tokens remain and the session is restored on next successful
+      // attempt.
+      if (err.response?.status === 401) {
+        await clearStored();
+      }
       throw err;
     })
     .finally(() => {
@@ -128,6 +140,10 @@ export async function refreshAccessTokenOnServer() {
  * Ensure we have a fresh access token before making a request.
  * If the current access token is expired (or about to expire within 30s),
  * proactively refresh it. Returns the fresh access token.
+ *
+ * On failure (network error, server down, or expired refresh token),
+ * returns null but does NOT clear stored tokens. The stored tokens
+ * survive so the next app launch can retry the refresh.
  */
 export async function ensureFreshAccessToken() {
   const { access, refresh } = await getStoredTokens();
@@ -140,7 +156,9 @@ export async function ensureFreshAccessToken() {
     try {
       return await refreshAccessTokenOnServer();
     } catch {
-      // Refresh failed — token is gone, user must re-login
+      // Refresh failed — keep stored tokens intact for next retry.
+      // The response interceptor in client.js will clear them only
+      // on a definitive 401 response.
       return null;
     }
   }

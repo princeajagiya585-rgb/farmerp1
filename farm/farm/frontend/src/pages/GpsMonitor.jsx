@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Download, List, Navigation, ChevronLeft, ChevronRight, Camera } from "lucide-react";
 import { resource } from "../lib/api";
+import { openMapUrl, hasValidCoords } from "../lib/maps";
 import { Badge, Button, Card, PageHeader, Table } from "../components/ui";
 import { exportExcel } from "../lib/export";
 import { connectLocationStream } from "../lib/realtime";
@@ -289,17 +290,19 @@ export default function GpsMonitor() {
                 key: "map",
                 header: t("header.map"),
                 render: (r) =>
-                  r.latitude ? (
-                    <a
-                      href={`https://www.google.com/maps?q=${r.latitude},${r.longitude}`}
-                      target="_blank"
-                      rel="noreferrer"
+                  hasValidCoords(r.latitude, r.longitude) ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        openMapUrl(r.latitude, r.longitude);
+                      }}
                       className="inline-flex items-center gap-1 rounded-lg bg-brand-50 px-2 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100"
                     >
                       <Navigation size={12} />
-                    </a>
+                    </button>
                   ) : (
-                    "—"
+                    <span className="text-xs text-gray-400">Location not available</span>
                   ),
               },
             ]}

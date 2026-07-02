@@ -1,8 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useState } from "react";
-import { Clock, Lock, Play, LogIn, Square, CheckCircle, Plus, Pencil, Trash2, Search, Filter, X, Ban } from "lucide-react";
+import { Clock, Lock, Play, LogIn, Square, CheckCircle, Plus, Pencil, Trash2, Search, Filter, X } from "lucide-react";
 import { api, resource, toFormData } from "../lib/api";
-import { Badge, Button, Card, Input, Modal, MultiSelect, Select } from "../components/ui";
+import { Badge, Button, Card, Input, Modal, MultiSelect, Select, ToastContainer, useToast } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import i18n from "../i18n";
 import { roleLabels } from "../config/nav";
@@ -50,6 +50,8 @@ export default function Users() {
   const [modalOpen, setModalOpen] = useState(null); // 'create' or { edit: id }
   const [formData, setFormData] = useState({});
   const [saving, setSaving] = useState(false);
+  const [toasts, addToast, removeToast] = useToast();
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // user to delete
 
   // Load users, farms, employees & attendance
   const loadData = useCallback(async () => {
@@ -195,15 +197,33 @@ export default function Users() {
     setModalOpen({ mode: "edit", id: user.id });
   };
 
-  // "Delete" only restricts (deactivates) the user — data is never removed.
-  const deleteUser = async (user) => {
-    if (confirm(t("users.confirmRestrict", { username: user.username }))) {
-      try {
-        await usersRepo.remove(user.id);
-        loadData();
-      } catch {
-        // ignore
-      }
+  // ── Delete user with confirmation modal ──────────────────────────────
+  const confirmDeleteUser = (user) => {
+    // Prevent deleting the logged-in Super Admin
+    if (user.id === currentUser?.id) {
+      addToast("You cannot delete your own account.", "error");
+      return;
+    }
+    // Prevent deleting the last remaining Super Admin
+    const superAdmins = users.filter((u) => u.role === "SUPER_ADMIN" && u.is_active);
+    if (user.role === "SUPER_ADMIN" && superAdmins.length <= 1) {
+      addToast("Cannot delete the last Super Administrator.", "error");
+      return;
+    }
+    setDeleteConfirm(user);
+  };
+
+  const executeDelete = async () => {
+    if (!deleteConfirm) return;
+    const user = deleteConfirm;
+    setDeleteConfirm(null);
+    try {
+      await usersRepo.remove(user.id);
+      addToast(`User "${user.username}" deleted successfully.`, "success");
+      loadData();
+    } catch (e) {
+      const detail = e?.response?.data?.detail || e?.response?.data || "Failed to delete user.";
+      addToast(typeof detail === "string" ? detail : JSON.stringify(detail), "error");
     }
   };
 
@@ -373,14 +393,14 @@ export default function Users() {
                 >
                   <Pencil size={15} />
                 </button>
-                {canDelete && user.role !== "SUPER_ADMIN" && (
+                {canDelete && (
                   user.is_active ? (
                     <button
-                      onClick={() => deleteUser(user)}
+                      onClick={() => confirmDeleteUser(user)}
                       className="rounded p-1.5 text-red-500 hover:bg-red-50"
-                      title={t("users.restrict")}
+                      title={t("common.delete")}
                     >
-                      <Ban size={15} />
+                      <Trash2 size={15} />
                     </button>
                   ) : (
                     <button
@@ -488,14 +508,14 @@ export default function Users() {
                 >
                   <Pencil size={15} />
                 </button>
-                {canDelete && user.role !== "SUPER_ADMIN" && (
+                {canDelete && (
                   user.is_active ? (
                     <button
-                      onClick={() => deleteUser(user)}
+                      onClick={() => confirmDeleteUser(user)}
                       className="rounded p-1.5 text-red-500 hover:bg-red-50"
-                      title={t("users.restrict")}
+                      title={t("common.delete")}
                     >
-                      <Ban size={15} />
+                      <Trash2 size={15} />
                     </button>
                   ) : (
                     <button
@@ -710,6 +730,36 @@ export default function Users() {
           )}
         </div>
       </Card>
+
+      {/* ── Delete Confirmation Modal ─────────────────────────────────── */}
+      <Modal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete User" width="max-w-sm">
+        {deleteConfirm && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Are you sure you want to delete this user?
+            </p>
+            <div className="rounded-lg bg-gray-50 p-3 text-sm">
+              <p><span className="font-medium text-gray-700">Username:</span> {deleteConfirm.username}</p>
+              <p><span className="font-medium text-gray-700">Name:</span> {deleteConfirm.full_name || "—"}</p>
+              <p><span className="font-medium text-gray-700">Role:</span> {roleLabels[deleteConfirm.role] || deleteConfirm.role}</p>
+            </div>
+            <p className="text-xs text-red-600">
+              This action permanently deletes the user and their linked Employee record. This cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="secondary" onClick={() => setDeleteConfirm(null)}>
+                Cancel
+              </Button>
+              <Button type="button" variant="danger" onClick={executeDelete}>
+                <Trash2 size={15} /> Delete
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Toast notifications */}
+      <ToastContainer toasts={toasts} onClose={removeToast} />
 
       {/* User Form Modal */}
       {modalOpen && (

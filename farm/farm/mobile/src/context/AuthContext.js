@@ -1,31 +1,66 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { loginServer, logoutServer, clearStored, getStored, ensureFreshAccessToken } from '../api/auth';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
+import { loginServer, logoutServer, getStored, ensureFreshAccessToken } from '../api/auth';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const appStateRef = useRef(AppState.currentState);
 
-  // On mount, hydrate the session from AsyncStorage and verify token validity.
+  // ── Startup: restore cached user immediately, refresh in background ──
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
-      try {
-        const { access, refresh, user: storedUser } = await getStored();
-        if (access && storedUser) {
-          // Proactively refresh if the access token is expired so the user
-          // doesn't hit a 401 on the very first API call after app restart.
-          if (refresh) {
+      const { access, refresh, user: storedUser } = await getStored();
+
+      if (!cancelled && storedUser && access) {
+        // 1. Restore the cached user RIGHT NOW so the UI renders the
+        //    dashboard immediately without flashing the login screen.
+        setUser(storedUser);
+
+        // 2. Try to refresh the access token in the background.
+        //    If this fails (network error, server down), the user stays
+        //    logged in with their cached tokens. The next API call will
+        //    handle a 401 response properly if the token is truly invalid.
+        if (refresh) {
+          try {
             await ensureFreshAccessToken();
+          } catch {
+            // Silently ignored — stored tokens survive for next retry.
           }
-          setUser(storedUser);
         }
-      } catch (e) {
-        // Ignore hydration failures — user stays logged out
-      } finally {
+      }
+
+      if (!cancelled) {
         setLoading(false);
       }
     })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ── Re-check tokens when app returns from background ────────────────
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (appStateRef.current.match(/inactive|background/) && nextState === 'active') {
+        // App came to foreground — proactively refresh if token is stale
+        (async () => {
+          try {
+            await ensureFreshAccessToken();
+          } catch {
+            // Silently ignored
+          }
+        })();
+      }
+      appStateRef.current = nextState;
+    });
+
+    return () => subscription.remove();
   }, []);
 
   const login = async (username, password) => {

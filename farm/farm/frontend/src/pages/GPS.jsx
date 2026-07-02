@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { MapPin, Navigation, Users, Clock, Check, X, Crosshair, Download, Target, Camera, Loader2, Pencil, Trash2 } from "lucide-react";
 import { api, resource, toFormData } from "../lib/api";
+import { openMapUrl, hasValidCoords } from "../lib/maps";
 import { connectLocationStream } from "../lib/realtime";
 import { Badge, Button, Card, PageHeader, Table, ToastContainer, useToast } from "../components/ui";
 import { exportExcel } from "../lib/export";
@@ -14,6 +15,27 @@ const attRepo = resource("workforce/attendance");
 
 const activityLabelMap = { CHECKIN: "gps.activityCheckin", CHECKOUT: "gps.activityCheckout", DURING_WORK: "gps.duringWork", TASK: "gps.activityTask", PATROL: "gps.activityPatrol", TRACK: "gps.activityTrack" };
 const activityColorMap = { CHECKIN: "green", CHECKOUT: "red", DURING_WORK: "purple", TASK: "blue", TRACK: "purple", PATROL: "gray" };
+
+/** Component: shows "Location not available" when coords are missing. */
+function MapViewButton({ lat, lng, label }) {
+  if (!hasValidCoords(lat, lng)) {
+    return <span className="text-xs text-gray-400">Location not available</span>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        openMapUrl(lat, lng);
+      }}
+      className="inline-flex items-center gap-1.5 rounded-lg bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition hover:bg-brand-100"
+      title="Open in Google Maps"
+    >
+      <Navigation size={13} />
+      {label || "View"}
+    </button>
+  );
+}
 
 /** Photo thumbnail with broken-image fallback. */
 function PhotoWithFallbackInline({ url, noPhotoLabel, size = 40 }) {
@@ -987,14 +1009,16 @@ export default function GPS() {
                 )}
               </p>
             </div>
-            <a
-              href={`https://www.google.com/maps?q=${currentPos.lat},${currentPos.lng}`}
-              target="_blank"
-              rel="noreferrer"
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                openMapUrl(currentPos.lat, currentPos.lng);
+              }}
               className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-brand-700 shadow-sm ring-1 ring-brand-200 hover:bg-brand-50"
             >
               <Navigation size={13} /> {t("common.viewOnMap")}
-            </a>
+            </button>
           </div>
         ) : null}
         {watchError && (
@@ -1152,16 +1176,18 @@ export default function GPS() {
                     <span className="max-w-[220px] truncate text-xs text-gray-600 block" title={r.location_name}>
                       {r.location_name}
                     </span>
-                  ) : r.latitude != null ? (
+                  ) : hasValidCoords(r.latitude, r.longitude) ? (
                     <span className="flex items-center gap-1 text-xs text-gray-400">
-                      <a
-                        href={`https://www.google.com/maps?q=${r.latitude},${r.longitude}`}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          openMapUrl(r.latitude, r.longitude);
+                        }}
                         className="text-brand-600 hover:underline"
                       >
                         {Number(r.latitude).toFixed(4)}, {Number(r.longitude).toFixed(4)}
-                      </a>
+                      </button>
                     </span>
                   ) : (
                     "—"
@@ -1232,20 +1258,7 @@ export default function GPS() {
               {
                 key: "map",
                 header: t("common.openInMaps"),
-                render: (r) =>
-                  r.latitude ? (
-                    <a
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-brand-50 px-3 py-1.5 text-xs font-medium text-brand-700 transition hover:bg-brand-100"
-                      href={`https://www.google.com/maps?q=${r.latitude},${r.longitude}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <Navigation size={13} />
-                      {t("common.view")}
-                    </a>
-                  ) : (
-                    "—"
-                  ),
+                render: (r) => <MapViewButton lat={r.latitude} lng={r.longitude} label={t("common.view")} />,
               },
               ...(canEdit
                 ? [

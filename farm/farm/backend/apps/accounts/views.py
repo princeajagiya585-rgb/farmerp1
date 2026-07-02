@@ -1,5 +1,7 @@
+import logging
 import smtplib
-import ssl
+import traceback
+
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.core.mail import send_mail
@@ -28,6 +30,8 @@ from .serializers import (
     UserCreateSerializer,
     UserSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -172,7 +176,11 @@ def phone_login(request):
 @permission_classes([AllowAny])
 @throttle_classes([])
 def forgot_password(request):
-    """Send OTP to the Super Admin's email for password reset."""
+    """Send OTP to the Super Admin's email for password reset.
+
+    Uses Django's configured EMAIL_BACKEND so it works with any email provider
+    (SMTP, console, file-based, etc.) and respects all EMAIL_* settings.
+    """
     serializer = ForgotPasswordSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     email = serializer.validated_data["email"]
@@ -193,7 +201,10 @@ def forgot_password(request):
     # Generate OTP using email as the identifier (reusing OTP model with PASSWORD_RESET purpose)
     otp = OTP.generate(email, purpose="PASSWORD_RESET")
 
-    # Send OTP via email
+    # ── Send OTP via Django's email framework ───────────────────────────
+    # Using send_mail() instead of raw smtplib so EMAIL_BACKEND, EMAIL_USE_TLS,
+    # and all other EMAIL_* settings are properly respected. This also makes it
+    # trivial to switch backends (e.g. console backend for testing).
     subject = "FarmERP Pro - Password Reset OTP"
     message = f"""Hello {user.get_full_name() or user.username},
 
@@ -207,32 +218,66 @@ If you did not request this, please ignore this email.
 
 - FarmERP Pro Team"""
 
-    # Send OTP via email
     email_sent = False
+    error_detail = None
+
     try:
-        print(f"[EMAIL_LOG] Attempting to send OTP {otp.code} to {email}")
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-
-        with smtplib.SMTP(settings.EMAIL_HOST, settings.EMAIL_PORT) as server:
-            server.ehlo()
-            server.starttls(context=context)
-            server.login(settings.EMAIL_HOST_USER, settings.EMAIL_HOST_PASSWORD)
-            email_message = f"Subject: {subject}\n\n{message}"
-            server.sendmail(settings.DEFAULT_FROM_EMAIL, [email], email_message)
-            email_sent = True
+        logger.info(
+            "[PASSWORD_RESET] Attempting to send OTP %s to %s via %s:%s",
+            otp.code, email, settings.EMAIL_HOST, settings.EMAIL_PORT,
+        )
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+            fail_silently=False,
+        )
+        email_sent = True
+        logger.info("[PASSWORD_RESET] OTP email sent successfully to %s", email)
+    except smtplib.SMTPAuthenticationError as e:
+        error_detail = "SMTP Authentication Failed. Check EMAIL_HOST_USER and EMAIL_HOST_PASSWORD."
+        logger.error(
+            "[PASSWORD_RESET] SMTP authentication failed for %s: %s",
+            settings.EMAIL_HOST_USER, e,
+        )
+    except smtplib.SMTPConnectError as e:
+        error_detail = f"Unable to connect to SMTP server at {settings.EMAIL_HOST}:{settings.EMAIL_PORT}."
+        logger.error("[PASSWORD_RESET] SMTP connection failed: %s", e)
+    except smtplib.SMTPServerDisconnected as e:
+        error_detail = "SMTP server disconnected unexpectedly. Check EMAIL_HOST and EMAIL_PORT."
+        logger.error("[PASSWORD_RESET] SMTP disconnected: %s", e)
+    except smtplib.SMTPException as e:
+        error_detail = f"SMTP error: {e}"
+        logger.error("[PASSWORD_RESET] SMTP error: %s", e)
+    except ConnectionRefusedError:
+        error_detail = f"Connection refused by SMTP server at {settings.EMAIL_HOST}:{settings.EMAIL_PORT}. Is the server running?"
+        logger.error("[PASSWORD_RESET] Connection refused to %s:%s", settings.EMAIL_HOST, settings.EMAIL_PORT)
+    except TimeoutError:
+        error_detail = f"Connection timed out connecting to SMTP server at {settings.EMAIL_HOST}:{settings.EMAIL_PORT}."
+        logger.error("[PASSWORD_RESET] Connection timeout to %s:%s", settings.EMAIL_HOST, settings.EMAIL_PORT)
     except Exception as e:
-        print(f"[EMAIL_LOG] OTP email failed (SMTP not configured?): {e}")
-        # Always return the OTP in the response so the user can still reset password
-        # even when email/SMTP is not configured.
+        error_detail = f"Unexpected email error: {type(e).__name__}: {e}"
+        logger.error("[PASSWORD_RESET] Unexpected email error:\n%s", traceback.format_exc())
 
-    payload = {
-        "detail": "OTP sent to your email." if email_sent else "OTP generated (email delivery unavailable — use the OTP below).",
-        "otp": otp.code,
-        "expires_in": 600,
-    }
-    return Response(payload)
+    if email_sent:
+        logger.info("[PASSWORD_RESET] OTP %s for %s stored in DB, expires in 10 min", otp.code, email)
+        return Response({
+            "detail": "OTP sent to your email.",
+            "expires_in": 600,
+        })
+
+    # Email failed — return a proper error response with the real error detail.
+    # The OTP is still generated so the user can use it from the server logs
+    # if needed, but we don't return it to the client for security.
+    logger.warning(
+        "[PASSWORD_RESET] Email delivery failed for %s. OTP %s is in DB.",
+        email, otp.code,
+    )
+    return Response(
+        {"detail": error_detail or "Failed to send OTP email. Please check your email configuration."},
+        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+    )
 
 
 @extend_schema(request=ResetPasswordSerializer, responses={200: {"type": "object", "properties": {"detail": {"type": "string"}}}})

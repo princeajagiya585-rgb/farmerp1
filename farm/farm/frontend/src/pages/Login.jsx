@@ -4,6 +4,7 @@ import { Leaf, Users, BarChart3, MapPin, ShieldCheck, Lock, Mail } from "lucide-
 import { useAuth } from "../context/AuthContext";
 import { Button, Input } from "../components/ui";
 import { LogoMark } from "../components/Logo";
+import ApkDownload from "../components/ApkDownload";
 import { api } from "../lib/api";
 
 const FEATURES = [
@@ -380,6 +381,7 @@ export default function Login() {
           )}
         </div>
       </div>
+      <ApkDownload />
     </div>
   );
 }
