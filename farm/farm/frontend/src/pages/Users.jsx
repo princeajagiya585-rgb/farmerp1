@@ -54,6 +54,8 @@ export default function Users() {
   const [toasts, addToast, removeToast] = useToast();
   const [deleteConfirm, setDeleteConfirm] = useState(null); // user to delete
   const [suspendConfirm, setSuspendConfirm] = useState(null); // user to suspend
+  const [deletedUserIds, setDeletedUserIds] = useState(new Set()); // soft-deleted (hidden from table)
+  const [showDeleted, setShowDeleted] = useState(false); // show soft-deleted users
 
   // Load users, farms, employees & attendance
   const loadData = useCallback(async () => {
@@ -220,11 +222,15 @@ export default function Users() {
     const user = deleteConfirm;
     setDeleteConfirm(null);
     try {
-      await usersRepo.remove(user.id);
-      addToast(`User "${user.username}" deleted successfully.`, "success");
+      // Soft-delete: suspend the account + hide from users table.
+      // All user data (attendance, tasks, etc.) remains in the DB
+      // and continues to display on other pages.
+      await usersRepo.action(user.id, "suspend");
+      setDeletedUserIds((prev) => new Set([...prev, user.id]));
+      addToast(`User "${user.username}" deleted. Account deactivated, data preserved.`, "success");
       loadData();
     } catch (e) {
-      const detail = e?.response?.data?.detail || e?.response?.data || "Failed to delete user.";
+      const detail = e?.response?.data?.detail || "Failed to delete user.";
       addToast(typeof detail === "string" ? detail : JSON.stringify(detail), "error");
     }
   };
@@ -233,6 +239,12 @@ export default function Users() {
     try {
       await usersRepo.action(user.id, "activate");
       addToast(`User "${user.username}" activated successfully.`, "success");
+      // Remove from deleted set so they reappear in the table immediately
+      setDeletedUserIds((prev) => {
+        const next = new Set(prev);
+        next.delete(user.id);
+        return next;
+      });
       loadData();
     } catch {
       addToast("Failed to activate user.", "error");
@@ -317,6 +329,9 @@ export default function Users() {
 
   // Apply search + filters
   const filteredUsers = users.filter((u) => {
+    // Hide soft-deleted users unless showDeleted is checked
+    if (!showDeleted && deletedUserIds.has(u.id)) return false;
+
     // Search text filter
     const matchesSearch =
       u.username.toLowerCase().includes(search.toLowerCase()) ||
@@ -418,6 +433,7 @@ export default function Users() {
             )}
             {canManage && (
               <>
+                {/* Edit */}
                 <button
                   onClick={() => openEdit(user)}
                   className="rounded p-1.5 text-gray-500 hover:bg-gray-100"
@@ -426,32 +442,47 @@ export default function Users() {
                   <Pencil size={15} />
                 </button>
                 {canDelete && (
-                  user.is_active ? (
-                    <>
-                      <button
-                        onClick={() => confirmSuspendUser(user)}
-                        className="rounded p-1.5 text-amber-600 hover:bg-amber-50"
-                        title={t("users.suspend")}
-                      >
-                        <AlertTriangle size={15} />
-                      </button>
-                      <button
-                        onClick={() => confirmDeleteUser(user)}
-                        className="rounded p-1.5 text-red-500 hover:bg-red-50"
-                        title={t("common.delete")}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </>
-                  ) : (
+                  <>
+                    {/* Toggle Activate / Deactivate */}
                     <button
-                      onClick={() => activateUser(user)}
-                      className="rounded p-1.5 text-green-600 hover:bg-green-50"
-                      title={t("users.activate")}
+                      onClick={() =>
+                        user.is_active
+                          ? confirmSuspendUser(user)
+                          : activateUser(user)
+                      }
+                      className={`rounded p-1.5 transition ${
+                        user.is_active
+                          ? "text-green-600 hover:bg-green-50"
+                          : "text-gray-400 hover:bg-gray-100"
+                      }`}
+                      title={
+                        user.is_active
+                          ? t("users.deactivate")
+                          : t("users.activate")
+                      }
                     >
-                      <CheckCircle size={15} />
+                      {/* Toggle switch visual */}
+                      <span
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          user.is_active ? "bg-green-500" : "bg-gray-300"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${
+                            user.is_active ? "translate-x-[18px]" : "translate-x-[2px]"
+                          }`}
+                        />
+                      </span>
                     </button>
-                  )
+                    {/* Delete */}
+                    <button
+                      onClick={() => confirmDeleteUser(user)}
+                      className="rounded p-1.5 text-red-500 hover:bg-red-50"
+                      title={t("common.delete")}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </>
                 )}
               </>
             )}
@@ -542,6 +573,7 @@ export default function Users() {
             )}
             {canManage && (
               <>
+                {/* Edit */}
                 <button
                   onClick={() => openEdit(user)}
                   className="rounded p-1.5 text-gray-500 hover:bg-gray-100"
@@ -550,32 +582,47 @@ export default function Users() {
                   <Pencil size={15} />
                 </button>
                 {canDelete && (
-                  user.is_active ? (
-                    <>
-                      <button
-                        onClick={() => confirmSuspendUser(user)}
-                        className="rounded p-1.5 text-amber-600 hover:bg-amber-50"
-                        title={t("users.suspend")}
-                      >
-                        <AlertTriangle size={15} />
-                      </button>
-                      <button
-                        onClick={() => confirmDeleteUser(user)}
-                        className="rounded p-1.5 text-red-500 hover:bg-red-50"
-                        title={t("common.delete")}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </>
-                  ) : (
+                  <>
+                    {/* Toggle Activate / Deactivate */}
                     <button
-                      onClick={() => activateUser(user)}
-                      className="rounded p-1.5 text-green-600 hover:bg-green-50"
-                      title={t("users.activate")}
+                      onClick={() =>
+                        user.is_active
+                          ? confirmSuspendUser(user)
+                          : activateUser(user)
+                      }
+                      className={`rounded p-1.5 transition ${
+                        user.is_active
+                          ? "text-green-600 hover:bg-green-50"
+                          : "text-gray-400 hover:bg-gray-100"
+                      }`}
+                      title={
+                        user.is_active
+                          ? t("users.deactivate")
+                          : t("users.activate")
+                      }
                     >
-                      <CheckCircle size={15} />
+                      {/* Toggle switch visual */}
+                      <span
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          user.is_active ? "bg-green-500" : "bg-gray-300"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-sm transition-transform ${
+                            user.is_active ? "translate-x-[18px]" : "translate-x-[2px]"
+                          }`}
+                        />
+                      </span>
                     </button>
-                  )
+                    {/* Delete */}
+                    <button
+                      onClick={() => confirmDeleteUser(user)}
+                      className="rounded p-1.5 text-red-500 hover:bg-red-50"
+                      title={t("common.delete")}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </>
                 )}
               </>
             )}
@@ -712,6 +759,16 @@ export default function Users() {
                 <X size={15} /> {t("workforce.clear")}
               </button>
             )}
+            {/* Show deleted toggle */}
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showDeleted}
+                onChange={(e) => setShowDeleted(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+              />
+              <span className="text-xs text-gray-500">Show deleted</span>
+            </label>
             <span className="ml-auto text-xs text-gray-400">
               {t("users.userCount", { count: filteredUsers.length, plural: filteredUsers.length !== 1 ? "s" : "" })}
             </span>
@@ -820,7 +877,7 @@ export default function Users() {
               <p><span className="font-medium text-gray-700">Role:</span> {roleLabels[deleteConfirm.role] || deleteConfirm.role}</p>
             </div>
             <p className="text-xs text-red-600">
-              This action permanently deletes the user and their linked Employee record. This cannot be undone.
+              The user will be deactivated and hidden from the users table. Their data (attendance, tasks, etc.) will still be visible in other pages. You can reactivate them anytime by enabling "Show deleted" and using the toggle.
             </p>
             <div className="flex justify-end gap-3">
               <Button type="button" variant="secondary" onClick={() => setDeleteConfirm(null)}>

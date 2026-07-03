@@ -1611,6 +1611,7 @@
   "users.confirmRestrict": "{{username}} को प्रतिबंधित करें? वे लॉग इन नहीं कर पाएंगे, लेकिन उनका सारा डेटा सुरक्षित रहेगा — कुछ भी हटाया नहीं जाएगा।",
   "users.restrict": "प्रतिबंधित करें",
   "users.activate": "उपयोगकर्ता सक्रिय करें",
+  "users.deactivate": "निष्क्रिय करें",
   "common.trackedTimeLabel": "आज ट्रैक किया गया कुल समय:",
   "payroll.create": "बनाएं",
   "payroll.cancel": "रद्द करें",

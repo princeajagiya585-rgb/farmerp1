@@ -175,3 +175,35 @@ html.dark .scrollable-content::-webkit-scrollbar-thumb {
 .animate-fade-in-row {
   animation: fade-in-row 0.25s ease-out both;
 }
+
+/* ── PWA Update Popup Animations ────────────────────────────────────── */
+
+@keyframes update-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes update-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85) translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes update-float {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-4px) rotate(8deg);
+  }
+}
+
+@keyframes update-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

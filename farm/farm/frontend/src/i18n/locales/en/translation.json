@@ -1611,6 +1611,7 @@
   "users.confirmRestrict": "Restrict {{username}}? They will not be able to log in, but all their data is kept — nothing is deleted.",
   "users.restrict": "Restrict (deactivate)",
   "users.activate": "Activate user",
+  "users.deactivate": "Deactivate",
   "users.suspend": "Suspend",
   "users.suspendUser": "Suspend User",
   "users.confirmSuspend": "Are you sure you want to suspend \"{{username}}\"? They will not be able to log in, but all their data is kept — nothing is deleted.",

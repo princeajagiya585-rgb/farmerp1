@@ -1661,6 +1661,7 @@
   "users.confirmRestrict": "{{username}} ને પ્રતિબંધિત કરવા? તેઓ લોગ ઇન કરી શકશે નહીં, પરંતુ તેમનો બધો ડેટા સચવાશે — કંઈપણ કાઢી નાખવામાં આવશે નહીં.",
   "users.restrict": "પ્રતિબંધિત કરો",
   "users.activate": "વપરાશકર્તા સક્રિય કરો",
+  "users.deactivate": "નિષ્ક્રિય કરો",
   "common.photo": "ફોટો",
   "common.tasks": "કાર્યો",
   "financeReports.pnl": "નફો-નુકસાન",
