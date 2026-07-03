@@ -128,17 +128,19 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    try {
-      // Attempt to blacklist the refresh token on the server
-      if (tokenStore.refresh) {
-        await api.post("/auth/logout/", { refresh: tokenStore.refresh });
-      }
-    } catch {
-      // Server logout is best-effort — always clear locally regardless
-    }
+    // Save refresh token BEFORE clearing local state so we can still send
+    // the server logout request in the background.
+    const refreshToken = tokenStore.refresh;
+    // Clear local state FIRST — immediate feedback, no waiting for the server.
     tokenStore.clear();
     localStorage.removeItem("user");
     setUser(null);
+    // Fire the server logout in the background (best-effort) so the refresh
+    // token is blacklisted on the backend too. We do NOT await this because
+    // a sleeping backend must not delay the client-side redirect.
+    if (refreshToken) {
+      api.post("/auth/logout/", { refresh: refreshToken }).catch(() => {});
+    }
   };
 
   const hasRole = (...roles) => user && roles.includes(user.role);

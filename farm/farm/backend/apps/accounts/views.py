@@ -416,6 +416,19 @@ class UserViewSet(viewsets.ModelViewSet):
             emp.save(update_fields=["is_active"])
         return Response(UserSerializer(user, context={"request": request}).data)
 
+    @action(detail=True, methods=["post"])
+    def suspend(self, request, pk=None):
+        """Suspend (deactivate) a user account. They will not be able to log in."""
+        user = self.get_object()
+        user.is_active = False
+        user.save(update_fields=["is_active"])
+        from apps.workforce.models import Employee
+        emp = Employee.objects.filter(user=user).first()
+        if emp is not None and hasattr(emp, "is_active"):
+            emp.is_active = False
+            emp.save(update_fields=["is_active"])
+        return Response(UserSerializer(user, context={"request": request}).data)
+
     @action(detail=False, methods=["get", "patch"])
     def me(self, request):
         if request.method == "PATCH":

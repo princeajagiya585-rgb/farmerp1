@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useState } from "react";
-import { Clock, Lock, Play, LogIn, Square, CheckCircle, Plus, Pencil, Trash2, Search, Filter, X } from "lucide-react";
+import { Clock, Lock, Play, LogIn, Square, CheckCircle, Plus, Pencil, Trash2, Search, Filter, X, AlertTriangle } from "lucide-react";
+import LoadingSpinner from "../components/LoadingSpinner";
 import { api, resource, toFormData } from "../lib/api";
 import { Badge, Button, Card, Input, Modal, MultiSelect, Select, ToastContainer, useToast } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
@@ -52,6 +53,7 @@ export default function Users() {
   const [saving, setSaving] = useState(false);
   const [toasts, addToast, removeToast] = useToast();
   const [deleteConfirm, setDeleteConfirm] = useState(null); // user to delete
+  const [suspendConfirm, setSuspendConfirm] = useState(null); // user to suspend
 
   // Load users, farms, employees & attendance
   const loadData = useCallback(async () => {
@@ -230,9 +232,39 @@ export default function Users() {
   const activateUser = async (user) => {
     try {
       await usersRepo.action(user.id, "activate");
+      addToast(`User "${user.username}" activated successfully.`, "success");
       loadData();
     } catch {
-      // ignore
+      addToast("Failed to activate user.", "error");
+    }
+  };
+
+  const confirmSuspendUser = (user) => {
+    // Prevent suspending the logged-in Super Admin
+    if (user.id === currentUser?.id) {
+      addToast("You cannot suspend your own account.", "error");
+      return;
+    }
+    // Prevent suspending the last remaining active Super Admin
+    const superAdmins = users.filter((u) => u.role === "SUPER_ADMIN" && u.is_active);
+    if (user.role === "SUPER_ADMIN" && superAdmins.length <= 1) {
+      addToast("Cannot suspend the last active Super Administrator.", "error");
+      return;
+    }
+    setSuspendConfirm(user);
+  };
+
+  const executeSuspend = async () => {
+    if (!suspendConfirm) return;
+    const user = suspendConfirm;
+    setSuspendConfirm(null);
+    try {
+      await usersRepo.action(user.id, "suspend");
+      addToast(`User "${user.username}" suspended successfully.`, "success");
+      loadData();
+    } catch (e) {
+      const detail = e?.response?.data?.detail || "Failed to suspend user.";
+      addToast(typeof detail === "string" ? detail : JSON.stringify(detail), "error");
     }
   };
 
@@ -395,13 +427,22 @@ export default function Users() {
                 </button>
                 {canDelete && (
                   user.is_active ? (
-                    <button
-                      onClick={() => confirmDeleteUser(user)}
-                      className="rounded p-1.5 text-red-500 hover:bg-red-50"
-                      title={t("common.delete")}
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    <>
+                      <button
+                        onClick={() => confirmSuspendUser(user)}
+                        className="rounded p-1.5 text-amber-600 hover:bg-amber-50"
+                        title={t("users.suspend")}
+                      >
+                        <AlertTriangle size={15} />
+                      </button>
+                      <button
+                        onClick={() => confirmDeleteUser(user)}
+                        className="rounded p-1.5 text-red-500 hover:bg-red-50"
+                        title={t("common.delete")}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </>
                   ) : (
                     <button
                       onClick={() => activateUser(user)}
@@ -510,13 +551,22 @@ export default function Users() {
                 </button>
                 {canDelete && (
                   user.is_active ? (
-                    <button
-                      onClick={() => confirmDeleteUser(user)}
-                      className="rounded p-1.5 text-red-500 hover:bg-red-50"
-                      title={t("common.delete")}
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    <>
+                      <button
+                        onClick={() => confirmSuspendUser(user)}
+                        className="rounded p-1.5 text-amber-600 hover:bg-amber-50"
+                        title={t("users.suspend")}
+                      >
+                        <AlertTriangle size={15} />
+                      </button>
+                      <button
+                        onClick={() => confirmDeleteUser(user)}
+                        className="rounded p-1.5 text-red-500 hover:bg-red-50"
+                        title={t("common.delete")}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </>
                   ) : (
                     <button
                       onClick={() => activateUser(user)}
@@ -668,7 +718,7 @@ export default function Users() {
           </div>
 
           {loading ? (
-            <div className="py-8 text-center text-gray-500">{t("common.loading")}</div>
+            <LoadingSpinner fullScreen={false} size="md" message={t("common.loading")} />
           ) : (
             <div className="space-y-8">
               {/* Admin Users Section */}
@@ -730,6 +780,32 @@ export default function Users() {
           )}
         </div>
       </Card>
+
+      {/* ── Suspend Confirmation Modal ────────────────────────────────── */}
+      <Modal open={!!suspendConfirm} onClose={() => setSuspendConfirm(null)} title={t("users.suspendUser")} width="max-w-sm">
+        {suspendConfirm && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 rounded-xl bg-amber-50 p-4 text-sm text-amber-800 ring-1 ring-amber-200">
+              <AlertTriangle size={20} className="shrink-0 text-amber-600" />
+              <p>{t("users.confirmSuspend", { username: suspendConfirm.username })}</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-3 text-sm">
+              <p><span className="font-medium text-gray-700">Username:</span> {suspendConfirm.username}</p>
+              <p><span className="font-medium text-gray-700">Name:</span> {suspendConfirm.full_name || "—"}</p>
+              <p><span className="font-medium text-gray-700">Role:</span> {roleLabels[suspendConfirm.role] || suspendConfirm.role}</p>
+              <p><span className="font-medium text-gray-700">Current:</span> <Badge color="green">Active</Badge></p>
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="secondary" onClick={() => setSuspendConfirm(null)}>
+                Cancel
+              </Button>
+              <Button type="button" variant="danger" onClick={executeSuspend}>
+                <AlertTriangle size={15} /> Suspend
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* ── Delete Confirmation Modal ─────────────────────────────────── */}
       <Modal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete User" width="max-w-sm">

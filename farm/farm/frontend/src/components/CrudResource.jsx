@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   Plus, Pencil, Trash2, Search, Download, Printer, ChevronLeft, ChevronRight, ChevronDown,
 } from "lucide-react";
+import LoadingSpinner from "./LoadingSpinner";
 import { resource } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { exportExcel, printTable } from "../lib/export";
@@ -462,10 +463,10 @@ export default function CrudResource({
             )}
             {!hideExport && (
               <div className="flex gap-2">
-                <Button variant="secondary" onClick={exportAll}>
+                <Button variant="secondary" disabled={loading} onClick={exportAll}>
                   <Download size={15} /> {t("crud.excel")}
                 </Button>
-                <Button variant="secondary" onClick={() => printTable(title, rows, columns)}>
+                <Button variant="secondary" disabled={loading} onClick={() => printTable(title, rows, columns)}>
                   <Printer size={15} /> {t("crud.print")}
                 </Button>
               </div>
@@ -475,7 +476,9 @@ export default function CrudResource({
 
         {error && <p className="mb-3 rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
         {loading ? (
-          <p className="py-8 text-center text-gray-400">{t("crud.loading")}</p>
+          <div className="py-4">
+            <LoadingSpinner fullScreen={false} size="md" message={t("crud.loading")} />
+          </div>
         ) : (
           <Table
             columns={allColumns}
