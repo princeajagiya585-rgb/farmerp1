@@ -9,6 +9,7 @@ import NotificationBell from "./NotificationBell";
 import ThemeToggle from "./ThemeToggle";
 import AadhaarBanner from "./AadhaarBanner";
 import PageTransitionLoader from "./PageTransitionLoader";
+import InstallAppButton from "./InstallAppButton";
 import { api } from "../lib/api";
 
 
@@ -269,6 +270,7 @@ export default function Layout() {
               <PageTransitionLoader>
                 <Outlet />
               </PageTransitionLoader>
+              <InstallAppButton />
             </div>
           </div>
         </main>
