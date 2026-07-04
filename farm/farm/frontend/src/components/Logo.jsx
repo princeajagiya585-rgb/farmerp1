@@ -1,37 +1,25 @@
-// Brand logo for FarmERP Pro — a leaf mark on a green gradient badge.
+// Brand logo for FarmERP Pro — uses the new logo image.
+// eslint-disable-next-line no-unused-vars
+import logoUrl from "/logo.png";
 
-export function LogoMark({ size = 40, rounded = 13 }) {
+export function LogoMark({ size = 40, light = false }) {
+  // Use a larger source image so it stays sharp on high-DPI screens
+  const src = "/icons/icon-128.png";
   return (
-    <svg width={size} height={size} viewBox="0 0 48 48" aria-label="FarmERP Pro">
-      <defs>
-        <linearGradient id="farmerpLogoGrad" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#4ade80" />
-          <stop offset="100%" stopColor="#15803d" />
-        </linearGradient>
-      </defs>
-      <rect width="48" height="48" rx={rounded} fill="url(#farmerpLogoGrad)" />
-      <g
-        transform="translate(10,9) scale(1.15)"
-        fill="none"
-        stroke="#ffffff"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path
-          d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"
-          fill="#ffffff"
-        />
-        <path d="M2 21c0-3 1.85-5.36 5.08-6" />
-      </g>
-    </svg>
+    <img
+      src={src}
+      alt="FarmERP Pro"
+      width={size}
+      height={size}
+      className={`inline-block ${light ? "opacity-95 brightness-110 drop-shadow-sm" : ""}`}
+    />
   );
 }
 
 export default function Logo({ size = 36, light = false, tagline = false }) {
   return (
     <div className="flex items-center gap-2.5">
-      <LogoMark size={size} />
+      <LogoMark size={size} light={light} />
       <div className="leading-tight">
         <div className="flex items-center gap-1">
           <span className={`text-lg font-extrabold tracking-tight ${light ? "text-white" : "text-gray-800"}`}>

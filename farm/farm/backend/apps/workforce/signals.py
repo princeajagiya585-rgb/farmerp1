@@ -144,15 +144,8 @@ def user_created_for_employee(sender, instance, created, **kwargs):
             logger.error(f"Failed to auto-create/link employee profile for user {instance.username}: {str(e)}")
 
 
-@receiver(post_delete, sender=User)
-def user_deleted_cleanup_employee(sender, instance, **kwargs):
-    """When a User (especially with role EMPLOYEE) is deleted, delete
-    the associated Employee record from Workforce module.
-    """
-    try:
-        # Get employee profile related to this user
-        employee = instance.employee_profile
-        if employee:
-            employee.delete()
-    except Employee.DoesNotExist:
-        pass
+# NOTE: No post_delete handler for User here.
+# When a User is deleted (from the Users admin page), the linked Employee
+# record is deliberately preserved (on_delete=SET_NULL) so that all work
+# history (attendance, tasks, payroll, etc.) remains intact across every
+# other page in the system.

@@ -398,9 +398,13 @@ class UserViewSet(viewsets.ModelViewSet):
                 pass
 
     def perform_destroy(self, instance):
-        """Permanently delete the user and their linked Employee record."""
-        from apps.workforce.models import Employee
-        Employee.objects.filter(user=instance).delete()
+        """Permanently delete the user account.
+
+        The linked Employee record and all related data (attendance, tasks,
+        payroll, etc.) are preserved — the Employee's `user` field becomes
+        NULL via SET_NULL on the FK, so their work history stays intact
+        across all other pages.
+        """
         instance.delete()
 
     @action(detail=True, methods=["post"])

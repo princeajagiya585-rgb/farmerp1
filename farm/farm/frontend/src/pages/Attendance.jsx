@@ -545,9 +545,9 @@ export default function Attendance() {
                       <Navigation size={15} />
                     </button>
                   )}
-                  {r.check_in_photo && (
+                  {r.check_in_photo_url && (
                     <a
-                      href={r.check_in_photo}
+                      href={r.check_in_photo_url}
                       target="_blank"
                       rel="noreferrer"
                       className="rounded p-1.5 text-green-500 hover:bg-green-50"
@@ -556,9 +556,9 @@ export default function Attendance() {
                       <Camera size={15} />
                     </a>
                   )}
-                  {r.check_out_photo && (
+                  {r.check_out_photo_url && (
                     <a
-                      href={r.check_out_photo}
+                      href={r.check_out_photo_url}
                       target="_blank"
                       rel="noreferrer"
                       className="rounded p-1.5 text-blue-500 hover:bg-blue-50"

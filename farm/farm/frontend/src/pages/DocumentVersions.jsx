@@ -28,8 +28,8 @@ export default function DocumentVersions() {
             {
               key: "file",
               header: t("header.file"),
-              render: (r) => r.file ? (
-                <a href={r.file} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand-600 hover:underline">
+              render: (r) => r.file_url ? (
+                <a href={r.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand-600 hover:underline">
                   <Download size={14} /> Download
                 </a>
               ) : "—",

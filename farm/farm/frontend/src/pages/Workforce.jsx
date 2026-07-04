@@ -155,8 +155,9 @@ export default function Workforce() {
               name: "category",
               label: t("workforce.category"),
               type: "select",
+              readonly: (row) => row?.category === "MANAGER" && !hasRole("SUPER_ADMIN"),
               options: [
-                { value: "MANAGER", label: t("workforce.manager") },
+                ...(hasRole("SUPER_ADMIN") ? [{ value: "MANAGER", label: t("workforce.manager") }] : []),
                 { value: "EMPLOYEE", label: t("skills.employeeLabour") },
                 { value: "LABOUR", label: t("workforce.labour") },
               ],

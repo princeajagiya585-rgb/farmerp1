@@ -113,10 +113,10 @@ export default function Breakdowns() {
           key: "photo",
           header: t("header.photo"),
           render: (r) =>
-            r.photo ? (
-              <a href={r.photo} target="_blank" rel="noreferrer">
+            r.photo_url ? (
+              <a href={r.photo_url} target="_blank" rel="noreferrer">
                 <img
-                  src={r.photo}
+                  src={r.photo_url}
                   alt={t("breakdowns.equipment")}
                   className="h-12 w-12 rounded object-cover ring-1 ring-gray-200"
                 />

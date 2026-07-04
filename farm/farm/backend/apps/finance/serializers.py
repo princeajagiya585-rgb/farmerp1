@@ -1,6 +1,8 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.core.utils import build_absolute_photo_url
+
 from .models import (
     Budget,
     CostCenter,
@@ -32,10 +34,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.URLField(allow_null=True))
     def get_bill_file_url(self, obj):
-        if obj.bill_file:
-            request = self.context.get("request")
-            return request.build_absolute_uri(obj.bill_file.url) if request else obj.bill_file.url
-        return None
+        return build_absolute_photo_url(obj.bill_file, self.context.get("request"))
 
 
 class PurchaseItemSerializer(serializers.ModelSerializer):
@@ -69,10 +68,7 @@ class PurchaseSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.URLField(allow_null=True))
     def get_bill_file_url(self, obj):
-        if obj.bill_file:
-            request = self.context.get("request")
-            return request.build_absolute_uri(obj.bill_file.url) if request else obj.bill_file.url
-        return None
+        return build_absolute_photo_url(obj.bill_file, self.context.get("request"))
 
 
 class LedgerEntrySerializer(serializers.ModelSerializer):
@@ -103,10 +99,7 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.URLField(allow_null=True))
     def get_bill_file_url(self, obj):
-        if obj.bill_file:
-            request = self.context.get("request")
-            return request.build_absolute_uri(obj.bill_file.url) if request else obj.bill_file.url
-        return None
+        return build_absolute_photo_url(obj.bill_file, self.context.get("request"))
 
 
 class RevenueEntrySerializer(serializers.ModelSerializer):
@@ -128,10 +121,7 @@ class CostCenterSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.URLField(allow_null=True))
     def get_bill_file_url(self, obj):
-        if obj.bill_file:
-            request = self.context.get("request")
-            return request.build_absolute_uri(obj.bill_file.url) if request else obj.bill_file.url
-        return None
+        return build_absolute_photo_url(obj.bill_file, self.context.get("request"))
 
 
 class BudgetSerializer(serializers.ModelSerializer):
@@ -170,7 +160,4 @@ class SaleSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.URLField(allow_null=True))
     def get_bill_file_url(self, obj):
-        if obj.bill_file:
-            request = self.context.get("request")
-            return request.build_absolute_uri(obj.bill_file.url) if request else obj.bill_file.url
-        return None
+        return build_absolute_photo_url(obj.bill_file, self.context.get("request"))

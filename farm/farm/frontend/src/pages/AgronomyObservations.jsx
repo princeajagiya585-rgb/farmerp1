@@ -43,6 +43,22 @@ export default function AgronomyObservations() {
         { key: "crop_name", header: t("header.crop") },
         { key: "observation_type", header: t("header.type"), render: (r) => <Badge color={typeColor[r.observation_type] || "gray"}>{t(typeLabelMap[r.observation_type] || r.observation_type)}</Badge> },
         { key: "severity", header: t("header.severity"), render: (r) => <Badge color={sevColor[r.severity] || "gray"}>{t(sevLabelMap[r.severity] || r.severity)}</Badge> },
+        {
+          key: "photo",
+          header: t("header.photo"),
+          render: (r) =>
+            r.photo_url ? (
+              <a href={r.photo_url} target="_blank" rel="noreferrer">
+                <img
+                  src={r.photo_url}
+                  alt={t("agronomyObs.photo")}
+                  className="h-12 w-12 rounded object-cover ring-1 ring-gray-200"
+                />
+              </a>
+            ) : (
+              <span className="text-gray-400">—</span>
+            ),
+        },
         { key: "observed_on", header: t("header.observed"), render: (r) => r.observed_on || "—" },
       ]}
       fields={[

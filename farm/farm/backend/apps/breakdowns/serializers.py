@@ -1,4 +1,7 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+
+from apps.core.utils import build_absolute_photo_url
 
 from .models import BreakdownReport
 
@@ -15,6 +18,7 @@ class BreakdownReportSerializer(serializers.ModelSerializer):
         source="get_severity_display", read_only=True
     )
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    photo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = BreakdownReport
@@ -25,3 +29,7 @@ class BreakdownReportSerializer(serializers.ModelSerializer):
             "resolved_at",
             "status",
         )
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_photo_url(self, obj):
+        return build_absolute_photo_url(obj.photo, self.context.get('request'))

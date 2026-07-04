@@ -32,7 +32,7 @@ function formatElapsed(startTime) {
 export default function Users() {
   const { t } = useTranslation();
   const { hasRole, user: currentUser } = useAuth();
-  const canManage = hasRole("SUPER_ADMIN", "FARM_MANAGER");
+  const canManage = hasRole("SUPER_ADMIN");
   const canDelete = hasRole("SUPER_ADMIN"); // only super admin may delete
   const [activeSessions, setActiveSessions] = useState([]);
   const [stoppingId, setStoppingId] = useState(null);
@@ -54,8 +54,6 @@ export default function Users() {
   const [toasts, addToast, removeToast] = useToast();
   const [deleteConfirm, setDeleteConfirm] = useState(null); // user to delete
   const [suspendConfirm, setSuspendConfirm] = useState(null); // user to suspend
-  const [deletedUserIds, setDeletedUserIds] = useState(new Set()); // soft-deleted (hidden from table)
-  const [showDeleted, setShowDeleted] = useState(false); // show soft-deleted users
 
   // Load users, farms, employees & attendance
   const loadData = useCallback(async () => {
@@ -222,12 +220,11 @@ export default function Users() {
     const user = deleteConfirm;
     setDeleteConfirm(null);
     try {
-      // Soft-delete: suspend the account + hide from users table.
-      // All user data (attendance, tasks, etc.) remains in the DB
-      // and continues to display on other pages.
-      await usersRepo.action(user.id, "suspend");
-      setDeletedUserIds((prev) => new Set([...prev, user.id]));
-      addToast(`User "${user.username}" deleted. Account deactivated, data preserved.`, "success");
+      // Permanent delete: remove the user account from DB.
+      // The linked Employee record and all work history (attendance, tasks,
+      // payroll, etc.) are preserved — the Employee's `user` field becomes NULL.
+      await usersRepo.remove(user.id);
+      addToast(`User "${user.username}" permanently deleted. All work history preserved.`, "success");
       loadData();
     } catch (e) {
       const detail = e?.response?.data?.detail || "Failed to delete user.";
@@ -239,12 +236,6 @@ export default function Users() {
     try {
       await usersRepo.action(user.id, "activate");
       addToast(`User "${user.username}" activated successfully.`, "success");
-      // Remove from deleted set so they reappear in the table immediately
-      setDeletedUserIds((prev) => {
-        const next = new Set(prev);
-        next.delete(user.id);
-        return next;
-      });
       loadData();
     } catch {
       addToast("Failed to activate user.", "error");
@@ -329,9 +320,6 @@ export default function Users() {
 
   // Apply search + filters
   const filteredUsers = users.filter((u) => {
-    // Hide soft-deleted users unless showDeleted is checked
-    if (!showDeleted && deletedUserIds.has(u.id)) return false;
-
     // Search text filter
     const matchesSearch =
       u.username.toLowerCase().includes(search.toLowerCase()) ||
@@ -367,6 +355,9 @@ export default function Users() {
     const isCheckedOut = !!today?.check_out_time;
 
     const getRowStyle = () => {
+      if (!user.is_active) {
+        return "bg-gradient-to-r from-gray-100 to-gray-200 border-gray-300 opacity-50";
+      }
       if (user.role === "SUPER_ADMIN") {
         return "bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-300";
       } else if (user.role === "FARM_MANAGER") {
@@ -499,6 +490,9 @@ export default function Users() {
     const isCheckedOut = !!today?.check_out_time;
 
     const getRowStyle = () => {
+      if (!user.is_active) {
+        return "bg-gradient-to-r from-gray-100 to-gray-200 border-gray-300 opacity-50";
+      }
       if (user.role === "FARM_MANAGER") {
         return "bg-gradient-to-r from-blue-50 to-cyan-50 border-blue-300";
       } else {
@@ -759,16 +753,6 @@ export default function Users() {
                 <X size={15} /> {t("workforce.clear")}
               </button>
             )}
-            {/* Show deleted toggle */}
-            <label className="flex items-center gap-1.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showDeleted}
-                onChange={(e) => setShowDeleted(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-              />
-              <span className="text-xs text-gray-500">Show deleted</span>
-            </label>
             <span className="ml-auto text-xs text-gray-400">
               {t("users.userCount", { count: filteredUsers.length, plural: filteredUsers.length !== 1 ? "s" : "" })}
             </span>
@@ -868,23 +852,24 @@ export default function Users() {
       <Modal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete User" width="max-w-sm">
         {deleteConfirm && (
           <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              Are you sure you want to delete this user?
-            </p>
+            <div className="flex items-center gap-3 rounded-xl bg-red-50 p-4 text-sm text-red-800 ring-1 ring-red-200">
+              <AlertTriangle size={20} className="shrink-0 text-red-600" />
+              <p>Are you sure you want to permanently delete this user?</p>
+            </div>
             <div className="rounded-lg bg-gray-50 p-3 text-sm">
               <p><span className="font-medium text-gray-700">Username:</span> {deleteConfirm.username}</p>
               <p><span className="font-medium text-gray-700">Name:</span> {deleteConfirm.full_name || "—"}</p>
               <p><span className="font-medium text-gray-700">Role:</span> {roleLabels[deleteConfirm.role] || deleteConfirm.role}</p>
             </div>
-            <p className="text-xs text-red-600">
-              The user will be deactivated and hidden from the users table. Their data (attendance, tasks, etc.) will still be visible in other pages. You can reactivate them anytime by enabling "Show deleted" and using the toggle.
+            <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-3">
+              <strong>Note:</strong> The user account will be permanently removed, but their work history (attendance, tasks, payroll, etc.) will be preserved across all other pages.
             </p>
             <div className="flex justify-end gap-3">
               <Button type="button" variant="secondary" onClick={() => setDeleteConfirm(null)}>
                 Cancel
               </Button>
               <Button type="button" variant="danger" onClick={executeDelete}>
-                <Trash2 size={15} /> Delete
+                <Trash2 size={15} /> Delete Permanently
               </Button>
             </div>
           </div>
@@ -958,7 +943,7 @@ export default function Users() {
                   onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
                 >
-                  <option value="FARM_MANAGER">{t("users.farmManagerOption")}</option>
+                  {hasRole("SUPER_ADMIN") && <option value="FARM_MANAGER">{t("users.farmManagerOption")}</option>}
                   <option value="EMPLOYEE">{t("users.employeeOption")}</option>
                 </select>
               </div>

@@ -90,8 +90,8 @@ export default function Documents() {
               header: t("header.actions"),
               render: (r) => (
                 <div className="flex items-center gap-2">
-                  {r.file && (
-                    <a href={r.file} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand-600 hover:underline" title="Download">
+                  {r.file_url && (
+                    <a href={r.file_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand-600 hover:underline" title="Download">
                       <Download size={14} />
                     </a>
                   )}

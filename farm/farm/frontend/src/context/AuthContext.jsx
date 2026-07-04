@@ -13,52 +13,50 @@ export function AuthProvider({ children }) {
 
     (async () => {
       const stored = localStorage.getItem("user");
-      if (stored && tokenStore.access) {
-        // A corrupt cached user (partial write, manual edit) must not throw and
-        // leave the app stuck on the loading screen — fall back to logged-out.
+      
+      // ── Always restore cached user if available ──────────────────
+      // We restore the user from localStorage regardless of token state.
+      // This ensures that even if tokens are expired or missing,
+      // the user sees their dashboard with cached data immediately.
+      // Only explicit sign-out (logout()) removes the user data.
+      if (stored) {
         let parsed = null;
         try {
           parsed = JSON.parse(stored);
         } catch {
+          // Corrupt cached user — clear it silently.
           localStorage.removeItem("user");
           tokenStore.clear();
         }
 
         if (parsed) {
-          // Apply the cached language immediately (no flash)…
+          // Apply the cached language immediately (no flash)
           i18n.changeLanguage(parsed?.preferred_language || "en");
 
-          // ── Proactive token refresh ───────────────────────────────
-          // If the access token is already expired, refresh it BEFORE
-          // making any API calls. This prevents the initial 401 burst
-          // on page reload.
-          if (isTokenExpired(tokenStore.access) && tokenStore.refresh) {
-            try {
-              await refreshAccessToken();
-            } catch {
-              // Refresh failed (refresh token expired / blacklisted).
-              // Clear everything and force re-login.
-              tokenStore.clear();
-              localStorage.removeItem("user");
-              if (!cancelled) {
-                setUser(null);
-                setLoading(false);
-              }
-              return;
-            }
-          }
-
-          // Still have a valid token (original or refreshed) — set the
-          // cached user immediately so the UI renders without delay, then
-          // verify from the server in the background.
+          // Set cached user immediately so UI renders without delay
           if (!cancelled) {
             setUser(parsed);
           }
 
-          // …refresh from the server so any admin-side change (e.g. the
-          // language) is picked up on reload — not only after a full re-login.
-          // Use a 15-second timeout so a sleeping Railway backend doesn't
-          // block the loading screen indefinitely.
+          // ── Proactive token refresh (best-effort) ────────────────
+          // If the access token is expired, try to refresh it.
+          // This is best-effort — if it fails (network error, server down),
+          // we KEEP the cached user. The user stays logged in until they
+          // explicitly sign out. The response interceptor will handle
+          // 401 errors on subsequent API calls gracefully.
+          if (tokenStore.access && isTokenExpired(tokenStore.access) && tokenStore.refresh) {
+            try {
+              await refreshAccessToken();
+            } catch {
+              // Refresh failed — silently ignore.
+              // The stored tokens survive for the next retry.
+              // User stays logged in with cached data.
+            }
+          }
+
+          // ── Background server sync (best-effort) ─────────────────
+          // Refresh user data from the server so admin-side changes
+          // (e.g. language preference) are picked up on reload.
           try {
             const { data } = await api.get("/auth/users/me/", { timeout: 15000 });
             if (!cancelled) {
@@ -67,13 +65,8 @@ export function AuthProvider({ children }) {
               i18n.changeLanguage(data?.preferred_language || "en");
             }
           } catch {
-            // /auth/users/me/ failed even after a proactive refresh.
-            // The response interceptor already tried to handle 401 by
-            // refreshing, so if we're here, something is truly wrong
-            // (network error, server down, or refresh token also expired).
-            // Keep the cached user — they can still navigate the app
-            // and the interceptor will redirect to login on the next
-            // protected request if the token is truly invalid.
+            // Server sync failed — cached user data remains.
+            // No action needed; the user can still navigate the app.
           }
         }
       }

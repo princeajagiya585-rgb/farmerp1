@@ -61,6 +61,22 @@ export default function AssetRegister({ title, subtitle, listParams }) {
             </Badge>
           ),
         },
+        {
+          key: "photo",
+          header: t("header.photo"),
+          render: (r) =>
+            r.photo_url ? (
+              <a href={r.photo_url} target="_blank" rel="noreferrer">
+                <img
+                  src={r.photo_url}
+                  alt={r.name}
+                  className="h-12 w-12 rounded object-cover ring-1 ring-gray-200"
+                />
+              </a>
+            ) : (
+              <span className="text-gray-400">—</span>
+            ),
+        },
         { key: "purchase_cost", header: t("assets.purchaseCost"), render: (r) => money(r.purchase_cost) },
         { key: "current_value", header: t("assets.currentValue"), render: (r) => money(r.current_value) },
         { key: "assigned_to_name", header: t("header.operator"), render: (r) => r.assigned_to_name || "—" },
@@ -81,6 +97,7 @@ export default function AssetRegister({ title, subtitle, listParams }) {
           label: "Assigned Operator",
           optionsFrom: { path: "workforce/employees", label: (e) => e.name },
         },
+        { name: "photo", label: t("header.photo"), type: "file" },
         { name: "notes", label: t("assets.notes"), type: "textarea" },
       ]}
     />

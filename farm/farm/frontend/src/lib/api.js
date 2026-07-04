@@ -76,9 +76,9 @@ api.request = function (config) {
       try {
         await refreshAccessToken();
       } catch {
-        // Refresh failed (e.g. refresh token blacklisted/expired).
-        // Fall through — the response interceptor will handle the 401
-        // and redirect to login if needed.
+        // Refresh failed — silently ignored.
+        // The API call will proceed with the expired token; if the
+        // server returns a 401, the interceptor will try again.
       }
     }
 
@@ -134,13 +134,6 @@ export function refreshAccessToken() {
   return refreshPromise;
 }
 
-function redirectToLogin() {
-  tokenStore.clear();
-  if (window.location.pathname !== "/login") {
-    window.location.href = "/login";
-  }
-}
-
 // ── 429 Too Many Requests: Global cooldown ──────────────────────────
 // When the backend or Railway rate-limits us, retrying the SAME request
 // only makes the problem worse (more load → more 429s). Instead we apply
@@ -189,7 +182,8 @@ api.interceptors.response.use(
     const isAuthEndpoint = original?.url?.includes("/auth/login") || original?.url?.includes("/auth/refresh");
     if (error.response?.status === 401 && original && !original._retry && !isAuthEndpoint) {
       if (!tokenStore.refresh) {
-        redirectToLogin();
+        // No refresh token — just reject; don't force logout.
+        // Cached user data remains visible until explicit sign-out.
         return Promise.reject(error);
       }
       original._retry = true;
@@ -202,7 +196,9 @@ api.interceptors.response.use(
         // deadlock when all 3 in-flight slots are held by 401-responding requests.
         return originalRequest(original);
       } catch (e) {
-        redirectToLogin();
+        // Refresh failed — reject without clearing tokens or redirecting.
+        // The user stays "logged in" with cached data until they
+        // explicitly sign out. The next API call will try again.
         return Promise.reject(e);
       }
     }

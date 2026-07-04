@@ -47,10 +47,10 @@ const pwaManifest = {
     },
   ],
   icons: [
-    { src: "/icons/icon-192.svg", sizes: "192x192", type: "image/svg+xml", purpose: "any" },
-    { src: "/icons/icon-512.svg", sizes: "512x512", type: "image/svg+xml", purpose: "any" },
+    { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+    { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
     { src: "/icons/icon-maskable.svg", sizes: "512x512", type: "image/svg+xml", purpose: "maskable" },
-    { src: "/icons/icon-192.svg", sizes: "192x192", type: "image/svg+xml", purpose: "maskable" },
+    { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "maskable" },
   ],
   screenshots: [],
 };
@@ -61,8 +61,11 @@ export default defineConfig({
     VitePWA({
       registerType: "prompt",
       includeAssets: [
+        "icons/*.png",
         "icons/*.svg",
-        "logo.svg",
+        "logo.png",
+        "favicon.png",
+        "logo-mark-*.png",
       ],
       manifest: pwaManifest,
       workbox: {

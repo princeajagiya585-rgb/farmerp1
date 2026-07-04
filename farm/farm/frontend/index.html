@@ -2,7 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#15803d" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -14,10 +15,11 @@
     <meta name="msapplication-tap-highlight" content="no" />
     <meta name="description" content="Enterprise Farm ERP platform for agricultural and plantation management" />
     <!-- Apple Touch Icon -->
-    <link rel="apple-touch-icon" href="/icons/icon-192.svg" sizes="192x192" />
-    <link rel="apple-touch-icon" href="/icons/icon-512.svg" sizes="512x512" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png" sizes="180x180" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" sizes="192x192" />
+    <link rel="apple-touch-icon" href="/icons/icon-512.png" sizes="512x512" />
     <!-- Microsoft Tile -->
-    <meta name="msapplication-TileImage" content="/icons/icon-512.svg" />
+    <meta name="msapplication-TileImage" content="/icons/icon-512.png" />
     <!-- PWA Manifest (injected by vite-plugin-pwa) -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <!-- Preconnect for performance -->
@@ -42,10 +44,11 @@
         opacity: 0;
         pointer-events: none;
       }
-      .pwa-splash svg {
+      .pwa-splash img {
         width: 80px;
         height: 80px;
         margin-bottom: 16px;
+        border-radius: 20px;
         animation: splash-pulse 1.5s ease-in-out infinite;
       }
       .pwa-splash h1 {
@@ -94,19 +97,7 @@
   <body>
     <!-- PWA Splash Screen -->
     <div id="pwa-splash" class="pwa-splash">
-      <svg width="80" height="80" viewBox="0 0 48 48" aria-label="FarmERP Pro">
-        <defs>
-          <linearGradient id="splashGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#4ade80" />
-            <stop offset="100%" stop-color="#15803d" />
-          </linearGradient>
-        </defs>
-        <rect width="48" height="48" rx="13" fill="url(#splashGrad)" />
-        <g transform="translate(10,9) scale(1.15)" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" fill="#ffffff" />
-          <path d="M2 21c0-3 1.85-5.36 5.08-6" />
-        </g>
-      </svg>
+      <img src="/icons/icon-128.png" width="80" height="80" alt="FarmERP Pro" />
       <h1>FarmERP <span class="badge">Pro</span></h1>
       <p style="color: rgba(255,255,255,0.7); font-size: 13px; font-family: 'Inter', system-ui, sans-serif; margin-top: 4px;">Loading your farm dashboard...</p>
       <div class="dots">
