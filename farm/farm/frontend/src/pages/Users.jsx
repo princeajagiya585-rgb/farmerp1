@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useState } from "react";
-import { Clock, Lock, Play, LogIn, Square, CheckCircle, Plus, Pencil, Trash2, Search, Filter, X, AlertTriangle } from "lucide-react";
+import { Clock, Lock, Play, LogIn, Square, CheckCircle, Plus, Pencil, Trash2, Search, Filter, X, AlertTriangle, UserMinus } from "lucide-react";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { api, resource, toFormData } from "../lib/api";
 import { Badge, Button, Card, Input, Modal, MultiSelect, PhotoThumb, Select, ToastContainer, useToast } from "../components/ui";
@@ -53,8 +53,8 @@ export default function Users() {
   const [saving, setSaving] = useState(false);
   const [toasts, addToast, removeToast] = useToast();
   const [suspendConfirm, setSuspendConfirm] = useState(null); // user to suspend
-  const [suspendAllConfirm, setSuspendAllConfirm] = useState(false); // confirm suspend all non-admin users
-  const [suspendingAll, setSuspendingAll] = useState(false);
+  const [removeAllConfirm, setRemoveAllConfirm] = useState(false); // confirm remove all non-admin users
+  const [removingAll, setRemovingAll] = useState(false);
 
   // Load users, farms, employees & attendance
   const loadData = useCallback(async () => {
@@ -246,22 +246,22 @@ export default function Users() {
     }
   };
 
-  const executeSuspendAll = async () => {
-    setSuspendingAll(true);
+  const executeRemoveAll = async () => {
+    setRemovingAll(true);
     try {
-      // Suspend all users except SUPER_ADMIN
-      const nonAdminUsers = otherUsers.filter(u => u.is_active);
+      // Remove all users except SUPER_ADMIN
+      const nonAdminUsers = otherUsers;
       for (const user of nonAdminUsers) {
-        await usersRepo.action(user.id, "suspend");
+        await usersRepo.destroy(user.id);
       }
-      addToast(`Successfully suspended ${nonAdminUsers.length} non-admin users.`, "success");
+      addToast(`Successfully removed ${nonAdminUsers.length} non-admin users.`, "success");
       loadData();
     } catch (e) {
-      const detail = e?.response?.data?.detail || "Failed to suspend users.";
+      const detail = e?.response?.data?.detail || "Failed to remove users.";
       addToast(typeof detail === "string" ? detail : JSON.stringify(detail), "error");
     } finally {
-      setSuspendingAll(false);
-      setSuspendAllConfirm(false);
+      setRemovingAll(false);
+      setRemoveAllConfirm(false);
     }
   };
 
@@ -666,9 +666,9 @@ export default function Users() {
           </div>
           {canManage && (
             <div className="flex items-center gap-3">
-              <Button variant="danger" onClick={() => setSuspendAllConfirm(true)} disabled={otherUsers.filter(u => u.is_active).length === 0}>
-                <Lock size={16} />
-                Suspend All Non-Admin
+              <Button variant="danger" onClick={() => setRemoveAllConfirm(true)} disabled={otherUsers.length === 0}>
+                <UserMinus size={16} />
+                Remove Users Data
               </Button>
               <Button onClick={openCreate}>
                 <Plus size={16} />
@@ -827,27 +827,27 @@ export default function Users() {
         )}
       </Modal>
 
-      {/* ── Suspend All Non-Admin Confirmation Modal ───────────────────── */}
-      <Modal open={suspendAllConfirm} onClose={() => setSuspendAllConfirm(false)} title="Suspend All Non-Admin Users" width="max-w-md">
+      {/* ── Remove All Non-Admin Confirmation Modal ───────────────────── */}
+      <Modal open={removeAllConfirm} onClose={() => setRemoveAllConfirm(false)} title="Remove All Non-Admin Users" width="max-w-md">
         <div className="space-y-4">
           <div className="flex items-center gap-3 rounded-xl bg-amber-50 p-4 text-sm text-amber-800 ring-1 ring-amber-200">
             <AlertTriangle size={20} className="shrink-0 text-amber-600" />
-            <p>Are you sure you want to suspend ALL active non-admin users?</p>
+            <p>Are you sure you want to remove ALL non-admin users?</p>
           </div>
           <div className="rounded-lg bg-gray-50 p-3 text-sm">
-            <p><span className="font-medium text-gray-700">Number of users to suspend:</span> <strong>{otherUsers.filter(u => u.is_active).length}</strong></p>
-            <p><span className="font-medium text-gray-700">This will suspend:</span> All active FARM_MANAGER and EMPLOYEE users</p>
-            <p><span className="font-medium text-gray-700">This will NOT suspend:</span> SUPER_ADMIN users</p>
+            <p><span className="font-medium text-gray-700">Number of users to remove:</span> <strong>{otherUsers.length}</strong></p>
+            <p><span className="font-medium text-gray-700">This will remove:</span> All FARM_MANAGER and EMPLOYEE users</p>
+            <p><span className="font-medium text-gray-700">This will NOT remove:</span> SUPER_ADMIN users</p>
           </div>
           <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-3">
-            <strong>Note:</strong> Users will be deactivated and cannot log in, but all work history (attendance, tasks, payroll, etc.) will remain intact. You can reactivate them later if needed.
+            <strong>Note:</strong> User accounts will be permanently deleted, but all work history (attendance, tasks, payroll, etc.) will remain intact linked to their employee records.
           </p>
           <div className="flex justify-end gap-3">
-            <Button type="button" variant="secondary" onClick={() => setSuspendAllConfirm(false)} disabled={suspendingAll}>
+            <Button type="button" variant="secondary" onClick={() => setRemoveAllConfirm(false)} disabled={removingAll}>
               Cancel
             </Button>
-            <Button type="button" variant="danger" onClick={executeSuspendAll} disabled={suspendingAll}>
-              {suspendingAll ? "Suspending..." : <><Lock size={15} /> Suspend All Non-Admin</>}
+            <Button type="button" variant="danger" onClick={executeRemoveAll} disabled={removingAll}>
+              {removingAll ? "Removing..." : <><UserMinus size={15} /> Remove Users Data</>}
             </Button>
           </div>
         </div>
