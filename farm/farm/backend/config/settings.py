@@ -165,7 +165,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # ---------------------------------------------------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "apps.core.auth.ActiveJWTAuthentication",
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
@@ -180,43 +180,20 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 25,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 
-    # TEMPORARY: All throttle limits raised to extremely high levels for development.
-    # Revert before production.
-    "DEFAULT_THROTTLE_CLASSES": (
-        "rest_framework.throttling.AnonRateThrottle",
-        "rest_framework.throttling.UserRateThrottle",
-    ),
+    # Only OTP endpoints are rate limited
     "DEFAULT_THROTTLE_RATES": {
-        "anon": "10000000/min",
-        "user": "10000000/min",
-        "otp_send": "1000000/min",
-        "otp_verify": "1000000/min",
+        "otp_send": "5/minute",
+        "otp_verify": "5/minute",
+        "anon": "10000/day",
+        "user": "500/day",
     },
 }
 
 SIMPLE_JWT = {
-    # ACCESS_TOKEN_LIFETIME = 24 hours — short enough to be secure, long enough
-    # to avoid frequent refreshes during an active session.
-    # Supports both the new ACCESS_TOKEN_LIFETIME_HOURS (24h default) and the
-    # legacy ACCESS_TOKEN_LIFETIME_DAYS env var for backward compatibility.
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=int(
-        os.getenv("ACCESS_TOKEN_LIFETIME_HOURS") or os.getenv("ACCESS_TOKEN_LIFETIME_DAYS", "24")
-    )),
-    # REFRESH_TOKEN_LIFETIME = 30 days — users stay logged in for 30 days
-    # unless they explicitly log out (which blacklists the refresh token).
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.getenv("ACCESS_TOKEN_LIFETIME_MIN", "120"))),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.getenv("REFRESH_TOKEN_LIFETIME_DAYS", "30"))),
-    # Rotate the refresh token on each refresh so the old refresh token is
-    # replaced — this means a stolen refresh token is only usable for one
-    # refresh cycle instead of indefinitely.
-    "ROTATE_REFRESH_TOKENS": True,
-    # Do NOT blacklist the old refresh token after rotation. This avoids a
-    # race condition where two concurrent refresh attempts (because the access
-    # token expired while multiple requests were in-flight) would each see
-    # the other's refresh token as already blacklisted.
+    "ROTATE_REFRESH_TOKENS": False,
     "BLACKLIST_AFTER_ROTATION": False,
-    # Update the user's last_login timestamp on each successful token refresh
-    # so admins can see when a user was last active.
-    "UPDATE_LAST_LOGIN": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
@@ -282,35 +259,17 @@ STORAGES = {
 }
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-# Ensure the media directory exists
-MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+BACKEND_URL = os.getenv("BACKEND_URL", "https://farmerp-backend-production.up.railway.app")
 
 if env_bool("USE_S3", False):
     AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
     AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
     AWS_STORAGE_BUCKET_NAME = os.getenv("AWS_STORAGE_BUCKET_NAME")
-    AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME", "ap-south-1")
-    AWS_S3_CUSTOM_DOMAIN = os.getenv("AWS_S3_CUSTOM_DOMAIN", "")
-    # Optional S3-compatible endpoint (e.g. DigitalOcean Spaces, MinIO).
-    # Do NOT set this to a CloudFront/CDN domain — that would break API calls.
-    AWS_S3_ENDPOINT_URL = os.getenv("AWS_S3_ENDPOINT_URL", "")
-    # Security: don't generate query-string auth for public bucket
-    AWS_QUERYSTRING_AUTH = env_bool("AWS_QUERYSTRING_AUTH", False)
-    # Public read access for uploaded photos
-    AWS_DEFAULT_ACL = os.getenv("AWS_DEFAULT_ACL", "public-read")
-    # Object-level settings
-    AWS_S3_OBJECT_PARAMETERS = {
-        "CacheControl": "max-age=86400",
-    }
+    AWS_S3_REGION_NAME = os.getenv("AWS_S3_REGION_NAME")
     STORAGES = {
         "default": {"BACKEND": "storages.backends.s3.S3Storage"},
         "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
     }
-    # Override MEDIA_URL so build_absolute_photo_url can detect absolute URLs
-    if AWS_S3_CUSTOM_DOMAIN:
-        MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
-    else:
-        MEDIA_URL = f"https://{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com/"
 
 # ---------------------------------------------------------------------------
 # Email (Resend SMTP)

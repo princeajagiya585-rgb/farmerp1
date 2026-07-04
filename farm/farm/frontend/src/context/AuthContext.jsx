@@ -80,8 +80,20 @@ export function AuthProvider({ children }) {
       }
     })();
 
+    // ── Listen for terminal auth failures ────────────────────────
+    // When the API interceptor detects a blacklisted token, it clears the
+    // stored tokens + user data and dispatches this event so the context
+    // can reactively log the user out.
+    const onTokenBlacklisted = () => {
+      localStorage.removeItem("user");
+      tokenStore.clear();
+      if (!cancelled) setUser(null);
+    };
+    window.addEventListener("auth:token-blacklisted", onTokenBlacklisted);
+
     return () => {
       cancelled = true;
+      window.removeEventListener("auth:token-blacklisted", onTokenBlacklisted);
     };
   }, []);
 

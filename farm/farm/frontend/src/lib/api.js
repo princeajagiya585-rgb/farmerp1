@@ -111,25 +111,68 @@ export function isTokenExpired(token, bufferSeconds = 30) {
   return decoded.exp * 1000 <= Date.now() + bufferSeconds * 1000;
 }
 
+// ── Token refresh with retry limit ─────────────────────────────────
 // Single-flight token refresh: every request that hits a 401 at the same time
 // shares ONE refresh call. The promise is only cleared once it has fully
 // settled (in `finally`), so a later wave of 401s can never start a second
-// refresh with an already-rotated (blacklisted) refresh token — that race was
-// what produced spurious "Authentication credentials were not provided" errors
-// and surprise logouts once the access token expired.
+// refresh with an already-rotated refresh token.
+//
+// Behavior:
+//  - "Token is blacklisted" → immediate terminal failure: tokens + user
+//    cleared, a custom event is dispatched so AuthContext can react.
+//  - Any other error (network, server error, etc.) → retry ONCE with a 1s
+//    delay, then reject WITHOUT clearing user data (so cached UI stays).
+//  - Resets retry count on success.
 let refreshPromise = null;
+let refreshRetries = 0;
+const MAX_REFRESH_RETRIES = 1;
 
 export function refreshAccessToken() {
   if (!refreshPromise) {
-    refreshPromise = axios
-      .post(`${API_BASE}/auth/refresh/`, { refresh: tokenStore.refresh })
-      .then(({ data }) => {
-        tokenStore.set({ access: data.access, refresh: data.refresh });
-        return data.access;
-      })
-      .finally(() => {
-        refreshPromise = null;
-      });
+    const refreshToken = tokenStore.refresh;
+    refreshRetries = 0; // reset for a new refresh cycle
+
+    if (!refreshToken) {
+      return Promise.reject(new Error("No refresh token available"));
+    }
+
+    const doRefresh = () =>
+      axios
+        .post(`${API_BASE}/auth/refresh/`, { refresh: refreshToken })
+        .then(({ data }) => {
+          refreshRetries = 0;
+          tokenStore.set({ access: data.access, refresh: data.refresh });
+          return data.access;
+        })
+        .catch((err) => {
+          const detail = err?.response?.data?.detail || "";
+          const isBlacklisted = detail.toLowerCase().includes("blacklisted");
+
+          if (isBlacklisted) {
+            // Terminal failure: token was explicitly invalidated (logout/admin).
+            // Clear everything and notify AuthContext so it can react.
+            tokenStore.clear();
+            localStorage.removeItem("user");
+            window.dispatchEvent(new CustomEvent("auth:token-blacklisted"));
+            throw err;
+          }
+
+          if (refreshRetries < MAX_REFRESH_RETRIES) {
+            refreshRetries++;
+            // Retry once after a short delay
+            return new Promise((resolve, reject) => {
+              setTimeout(() => doRefresh().then(resolve).catch(reject), 1000);
+            });
+          }
+
+          // Non-terminal failure after retries — just reject.
+          // User stays logged in with cached data until explicit sign-out.
+          throw err;
+        });
+
+    refreshPromise = doRefresh().finally(() => {
+      refreshPromise = null;
+    });
   }
   return refreshPromise;
 }
@@ -179,29 +222,31 @@ api.interceptors.response.use(
       }
     }
 
-    const isAuthEndpoint = original?.url?.includes("/auth/login") || original?.url?.includes("/auth/refresh");
+    // ── 401 Unauthorized: Try token refresh ────────────────────────
+    // If the request is NOT an auth endpoint (login/refresh), intercept
+    // the 401, refresh the token (once, with retry limit), and retry.
+    // If the refresh itself fails (including "Token is blacklisted"),
+    // the refreshAccessToken() will have already cleared the tokens
+    // and the request is rejected without further retries.
+    const isAuthEndpoint =
+      original?.url?.includes("/auth/login") ||
+      original?.url?.includes("/auth/refresh");
+
     if (error.response?.status === 401 && original && !original._retry && !isAuthEndpoint) {
-      if (!tokenStore.refresh) {
-        // No refresh token — just reject; don't force logout.
-        // Cached user data remains visible until explicit sign-out.
-        return Promise.reject(error);
-      }
       original._retry = true;
       try {
         const access = await refreshAccessToken();
         original.headers = original.headers || {};
         original.headers.Authorization = `Bearer ${access}`;
         // Use originalRequest directly to bypass the concurrency queue.
-        // If we used `api(original)` here, it would be re-queued and could
-        // deadlock when all 3 in-flight slots are held by 401-responding requests.
         return originalRequest(original);
       } catch (e) {
-        // Refresh failed — reject without clearing tokens or redirecting.
-        // The user stays "logged in" with cached data until they
-        // explicitly sign out. The next API call will try again.
+        // Refresh failed — tokens were already cleared by
+        // refreshAccessToken() if it was a terminal failure.
         return Promise.reject(e);
       }
     }
+
     return Promise.reject(error);
   },
 );
