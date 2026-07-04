@@ -57,6 +57,10 @@ export function AuthProvider({ children }) {
           // ── Background server sync (best-effort) ─────────────────
           // Refresh user data from the server so admin-side changes
           // (e.g. language preference) are picked up on reload.
+          // If this fails (expired token, network issue, deactivated),
+          // NEVER clear the cached user — only explicit sign-out via
+          // logout() should do that. The API interceptor handles 401
+          // errors gracefully and the cached data keeps the UI usable.
           try {
             const { data } = await api.get("/auth/users/me/", { timeout: 15000 });
             if (!cancelled) {
@@ -65,17 +69,8 @@ export function AuthProvider({ children }) {
               i18n.changeLanguage(data?.preferred_language || "en");
             }
           } catch (err) {
-            // If the server returns 401 (token rejected / user deactivated),
-            // clear the cached session so the user is logged out. The custom
-            // ActiveJWTAuthentication on the backend rejects deactivated users
-            // immediately, so this catches them without waiting for token expiry.
-            if (err?.response?.status === 401) {
-              localStorage.removeItem("user");
-              tokenStore.clear();
-              if (!cancelled) {
-                setUser(null);
-              }
-            }
+            // Sync failed — silently ignore. Keep the cached user.
+            // Token refresh and 401 handling are managed by the API interceptor.
           }
         }
       }

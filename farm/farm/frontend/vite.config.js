@@ -121,6 +121,19 @@ export default defineConfig({
               cacheableResponse: { statuses: [0, 200] },
             },
           },
+          {
+            // Cache media files (uploaded photos) for offline access
+            urlPattern: /^https:\/\/farmerp-backend-production\.up\.railway\.app\/media\/.*/i,
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "media-cache",
+              expiration: {
+                maxEntries: 200,
+                maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
+              },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
         ],
       },
       selfDestroying: false,

@@ -237,8 +237,11 @@ export default function Users() {
       await usersRepo.action(user.id, "activate");
       addToast(`User "${user.username}" activated successfully.`, "success");
       loadData();
-    } catch {
-      addToast("Failed to activate user.", "error");
+    } catch (e) {
+      const status = e?.response?.status;
+      const detail = e?.response?.data?.detail || e?.message || "Failed to activate user.";
+      const msg = status ? `[${status}] ${detail}` : detail;
+      addToast(typeof msg === "string" ? msg : JSON.stringify(msg), "error");
     }
   };
 
@@ -266,8 +269,10 @@ export default function Users() {
       addToast(`User "${user.username}" suspended successfully.`, "success");
       loadData();
     } catch (e) {
-      const detail = e?.response?.data?.detail || "Failed to suspend user.";
-      addToast(typeof detail === "string" ? detail : JSON.stringify(detail), "error");
+      const status = e?.response?.status;
+      const detail = e?.response?.data?.detail || e?.message || "Failed to suspend user.";
+      const msg = status ? `[${status}] ${detail}` : detail;
+      addToast(typeof msg === "string" ? msg : JSON.stringify(msg), "error");
     }
   };
 
@@ -307,13 +312,11 @@ export default function Users() {
         }
       }
       setModalOpen(null);
-      loadData();
-    } catch (e) {
-      console.error("Save failed", e);
-      if (e.response?.data) {
-        alert(JSON.stringify(e.response.data));
-      }
-    } finally {
+      loadData();        } catch (e) {
+          console.error("Save failed", e);
+          const errMsg = e?.response?.data?.detail || e?.response?.data || e?.message || "Failed to save user.";
+          addToast(typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg), "error");
+        } finally {
       setSaving(false);
     }
   };

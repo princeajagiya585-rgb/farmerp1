@@ -428,28 +428,42 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
     def activate(self, request, pk=None):
         """Re-enable a previously restricted (deactivated) user."""
-        user = self.get_object()
-        user.is_active = True
-        user.save(update_fields=["is_active"])
-        from apps.workforce.models import Employee
-        emp = Employee.objects.filter(user=user).first()
-        if emp is not None and hasattr(emp, "is_active"):
-            emp.is_active = True
-            emp.save(update_fields=["is_active"])
-        return Response(UserSerializer(user, context={"request": request}).data)
+        try:
+            user = self.get_object()
+            user.is_active = True
+            user.save(update_fields=["is_active"])
+            from apps.workforce.models import Employee
+            emp = Employee.objects.filter(user=user).first()
+            if emp is not None:
+                emp.is_active = True
+                emp.save(update_fields=["is_active"])
+            return Response(UserSerializer(user, context={"request": request}).data)
+        except Exception as e:
+            logger.exception(f"Failed to activate user {pk}: {e}")
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     @action(detail=True, methods=["post"])
     def suspend(self, request, pk=None):
         """Suspend (deactivate) a user account. They will not be able to log in."""
-        user = self.get_object()
-        user.is_active = False
-        user.save(update_fields=["is_active"])
-        from apps.workforce.models import Employee
-        emp = Employee.objects.filter(user=user).first()
-        if emp is not None and hasattr(emp, "is_active"):
-            emp.is_active = False
-            emp.save(update_fields=["is_active"])
-        return Response(UserSerializer(user, context={"request": request}).data)
+        try:
+            user = self.get_object()
+            user.is_active = False
+            user.save(update_fields=["is_active"])
+            from apps.workforce.models import Employee
+            emp = Employee.objects.filter(user=user).first()
+            if emp is not None:
+                emp.is_active = False
+                emp.save(update_fields=["is_active"])
+            return Response(UserSerializer(user, context={"request": request}).data)
+        except Exception as e:
+            logger.exception(f"Failed to suspend user {pk}: {e}")
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     @action(detail=False, methods=["get", "patch"])
     def me(self, request):
