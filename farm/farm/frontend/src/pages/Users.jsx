@@ -52,8 +52,9 @@ export default function Users() {
   const [formData, setFormData] = useState({});
   const [saving, setSaving] = useState(false);
   const [toasts, addToast, removeToast] = useToast();
-  const [deleteConfirm, setDeleteConfirm] = useState(null); // user to delete
   const [suspendConfirm, setSuspendConfirm] = useState(null); // user to suspend
+  const [suspendAllConfirm, setSuspendAllConfirm] = useState(false); // confirm suspend all non-admin users
+  const [suspendingAll, setSuspendingAll] = useState(false);
 
   // Load users, farms, employees & attendance
   const loadData = useCallback(async () => {
@@ -199,38 +200,7 @@ export default function Users() {
     setModalOpen({ mode: "edit", id: user.id });
   };
 
-  // ── Delete user with confirmation modal ──────────────────────────────
-  const confirmDeleteUser = (user) => {
-    // Prevent deleting the logged-in Super Admin
-    if (user.id === currentUser?.id) {
-      addToast("You cannot delete your own account.", "error");
-      return;
-    }
-    // Prevent deleting the last remaining Super Admin
-    const superAdmins = users.filter((u) => u.role === "SUPER_ADMIN" && u.is_active);
-    if (user.role === "SUPER_ADMIN" && superAdmins.length <= 1) {
-      addToast("Cannot delete the last Super Administrator.", "error");
-      return;
-    }
-    setDeleteConfirm(user);
-  };
 
-  const executeDelete = async () => {
-    if (!deleteConfirm) return;
-    const user = deleteConfirm;
-    setDeleteConfirm(null);
-    try {
-      // Permanent delete: remove the user account from DB.
-      // The linked Employee record and all work history (attendance, tasks,
-      // payroll, etc.) are preserved — the Employee's `user` field becomes NULL.
-      await usersRepo.remove(user.id);
-      addToast(`User "${user.username}" permanently deleted. All work history preserved.`, "success");
-      loadData();
-    } catch (e) {
-      const detail = e?.response?.data?.detail || "Failed to delete user.";
-      addToast(typeof detail === "string" ? detail : JSON.stringify(detail), "error");
-    }
-  };
 
   const activateUser = async (user) => {
     try {
@@ -273,6 +243,25 @@ export default function Users() {
       const detail = e?.response?.data?.detail || e?.message || "Failed to suspend user.";
       const msg = status ? `[${status}] ${detail}` : detail;
       addToast(typeof msg === "string" ? msg : JSON.stringify(msg), "error");
+    }
+  };
+
+  const executeSuspendAll = async () => {
+    setSuspendingAll(true);
+    try {
+      // Suspend all users except SUPER_ADMIN
+      const nonAdminUsers = otherUsers.filter(u => u.is_active);
+      for (const user of nonAdminUsers) {
+        await usersRepo.action(user.id, "suspend");
+      }
+      addToast(`Successfully suspended ${nonAdminUsers.length} non-admin users.`, "success");
+      loadData();
+    } catch (e) {
+      const detail = e?.response?.data?.detail || "Failed to suspend users.";
+      addToast(typeof detail === "string" ? detail : JSON.stringify(detail), "error");
+    } finally {
+      setSuspendingAll(false);
+      setSuspendAllConfirm(false);
     }
   };
 
@@ -468,14 +457,6 @@ export default function Users() {
                         />
                       </span>
                     </button>
-                    {/* Delete */}
-                    <button
-                      onClick={() => confirmDeleteUser(user)}
-                      className="rounded p-1.5 text-red-500 hover:bg-red-50"
-                      title={t("common.delete")}
-                    >
-                      <Trash2 size={15} />
-                    </button>
                   </>
                 )}
               </>
@@ -607,14 +588,6 @@ export default function Users() {
                         />
                       </span>
                     </button>
-                    {/* Delete */}
-                    <button
-                      onClick={() => confirmDeleteUser(user)}
-                      className="rounded p-1.5 text-red-500 hover:bg-red-50"
-                      title={t("common.delete")}
-                    >
-                      <Trash2 size={15} />
-                    </button>
                   </>
                 )}
               </>
@@ -691,10 +664,17 @@ export default function Users() {
               </span>
             </p>
           </div>
-          {canManage && (              <Button onClick={openCreate}>
-              <Plus size={16} />
-              {t("common.new")}
-            </Button>
+          {canManage && (
+            <div className="flex items-center gap-3">
+              <Button variant="danger" onClick={() => setSuspendAllConfirm(true)} disabled={otherUsers.filter(u => u.is_active).length === 0}>
+                <Lock size={16} />
+                Suspend All Non-Admin
+              </Button>
+              <Button onClick={openCreate}>
+                <Plus size={16} />
+                {t("common.new")}
+              </Button>
+            </div>
           )}
         </div>
 
@@ -847,32 +827,30 @@ export default function Users() {
         )}
       </Modal>
 
-      {/* ── Delete Confirmation Modal ─────────────────────────────────── */}
-      <Modal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete User" width="max-w-sm">
-        {deleteConfirm && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3 rounded-xl bg-red-50 p-4 text-sm text-red-800 ring-1 ring-red-200">
-              <AlertTriangle size={20} className="shrink-0 text-red-600" />
-              <p>Are you sure you want to permanently delete this user?</p>
-            </div>
-            <div className="rounded-lg bg-gray-50 p-3 text-sm">
-              <p><span className="font-medium text-gray-700">Username:</span> {deleteConfirm.username}</p>
-              <p><span className="font-medium text-gray-700">Name:</span> {deleteConfirm.full_name || "—"}</p>
-              <p><span className="font-medium text-gray-700">Role:</span> {roleLabels[deleteConfirm.role] || deleteConfirm.role}</p>
-            </div>
-            <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-3">
-              <strong>Note:</strong> The user account will be permanently removed, but their work history (attendance, tasks, payroll, etc.) will be preserved across all other pages.
-            </p>
-            <div className="flex justify-end gap-3">
-              <Button type="button" variant="secondary" onClick={() => setDeleteConfirm(null)}>
-                Cancel
-              </Button>
-              <Button type="button" variant="danger" onClick={executeDelete}>
-                <Trash2 size={15} /> Delete Permanently
-              </Button>
-            </div>
+      {/* ── Suspend All Non-Admin Confirmation Modal ───────────────────── */}
+      <Modal open={suspendAllConfirm} onClose={() => setSuspendAllConfirm(false)} title="Suspend All Non-Admin Users" width="max-w-md">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 rounded-xl bg-amber-50 p-4 text-sm text-amber-800 ring-1 ring-amber-200">
+            <AlertTriangle size={20} className="shrink-0 text-amber-600" />
+            <p>Are you sure you want to suspend ALL active non-admin users?</p>
           </div>
-        )}
+          <div className="rounded-lg bg-gray-50 p-3 text-sm">
+            <p><span className="font-medium text-gray-700">Number of users to suspend:</span> <strong>{otherUsers.filter(u => u.is_active).length}</strong></p>
+            <p><span className="font-medium text-gray-700">This will suspend:</span> All active FARM_MANAGER and EMPLOYEE users</p>
+            <p><span className="font-medium text-gray-700">This will NOT suspend:</span> SUPER_ADMIN users</p>
+          </div>
+          <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-3">
+            <strong>Note:</strong> Users will be deactivated and cannot log in, but all work history (attendance, tasks, payroll, etc.) will remain intact. You can reactivate them later if needed.
+          </p>
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={() => setSuspendAllConfirm(false)} disabled={suspendingAll}>
+              Cancel
+            </Button>
+            <Button type="button" variant="danger" onClick={executeSuspendAll} disabled={suspendingAll}>
+              {suspendingAll ? "Suspending..." : <><Lock size={15} /> Suspend All Non-Admin</>}
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       {/* Toast notifications */}

@@ -426,7 +426,7 @@ class UserViewSet(viewsets.ModelViewSet):
         """
         instance.delete()
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], url_path="activate", url_name="activate")
     def activate(self, request, pk=None):
         """Re-enable a previously restricted (deactivated) user."""
         try:
@@ -446,7 +446,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], url_path="suspend", url_name="suspend")
     def suspend(self, request, pk=None):
         """Suspend (deactivate) a user account. They will not be able to log in."""
         try:
