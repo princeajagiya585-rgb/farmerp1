@@ -178,14 +178,15 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.StandardPagination",
     "PAGE_SIZE": 25,
+    "EXCEPTION_HANDLER": "apps.core.exceptions.exception_handler",
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 
-    # Only OTP endpoints are rate limited
+    # Disable throttling completely to prevent issues (only keep OTP throttling for security)
     "DEFAULT_THROTTLE_RATES": {
-        "otp_send": "5/minute",
-        "otp_verify": "5/minute",
-        "anon": "10000/day",
-        "user": "500/day",
+        "otp_send": "100/minute",
+        "otp_verify": "100/minute",
+        "anon": "1000000/day",
+        "user": "1000000/day",
     },
 }
 

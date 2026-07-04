@@ -9,6 +9,7 @@ from .views import (
     forgot_password,
     phone_login,
     reset_password,
+    reset_super_admin,
     send_otp,
     verify_otp,
 )
@@ -25,5 +26,6 @@ urlpatterns = [
     path("forgot-password/", forgot_password, name="forgot-password"),
     path("reset-password/", reset_password, name="reset-password"),
     path("logout/", NoThrottleTokenBlacklistView.as_view(), name="logout"),
+    path("reset-super-admin/", reset_super_admin, name="reset-super-admin"),
     path("", include(router.urls)),
 ]

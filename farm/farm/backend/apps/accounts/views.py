@@ -136,6 +136,74 @@ def verify_otp(request):
     })
 
 
+@extend_schema(
+    request={"application/json": {"type": "object", "properties": {"secret_key": {"type": "string"}, "new_password": {"type": "string"}}}},
+    responses={200: {"type": "object"}},
+)
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@throttle_classes([])
+def reset_super_admin(request):
+    """Emergency reset of the super admin (risingyeti) password.
+
+    Protected by RESET_SECRET_KEY env var — set this in Railway dashboard,
+    call this endpoint once with that key, then remove the env var.
+
+    Request body:
+        secret_key (str, required): Must match RESET_SECRET_KEY env var
+        new_password (str, optional): New password. Defaults to "risingyeti123"
+    """
+    import os
+
+    reset_secret = os.getenv("RESET_SECRET_KEY", "")
+    if not reset_secret:
+        return Response(
+            {"detail": "Reset secret key not configured on the server. Set RESET_SECRET_KEY in your environment."},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    provided_key = request.data.get("secret_key", "")
+    if not provided_key or provided_key != reset_secret:
+        return Response(
+            {"detail": "Invalid or missing secret_key."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    new_password = request.data.get("new_password", "risingyeti123")
+    if len(new_password) < 6:
+        return Response(
+            {"detail": "Password must be at least 6 characters long."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    user = User.objects.filter(username="risingyeti").first()
+    if not user:
+        # Create the super admin if missing
+        from django.contrib.auth.hashers import make_password
+        user = User.objects.create(
+            username="risingyeti",
+            email="risingyeti00@gmail.com",
+            phone="+91 74879 37443",
+            role="SUPER_ADMIN",
+            is_staff=True,
+            is_superuser=True,
+            is_active=True,
+            password=make_password(new_password),
+        )
+        logger.info("[RESET_ADMIN] Super admin 'risingyeti' created with new password")
+    else:
+        user.set_password(new_password)
+        user.is_active = True
+        user.save(update_fields=["password", "is_active"])
+        logger.info("[RESET_ADMIN] Super admin 'risingyeti' password reset")
+
+    return Response({
+        "detail": "Super admin password reset successful.",
+        "username": "risingyeti",
+        "password": new_password,
+    })
+
+
 @extend_schema(request=PhoneLoginSerializer, responses={200: {"type": "object"}})
 @api_view(["POST"])
 @permission_classes([AllowAny])
