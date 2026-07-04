@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
-const SW_VERSION = "v2.4"; // increment to force service-worker cache refresh
+const SW_VERSION = "v2.5"; // Increment to force service worker cache refresh
 
 const pwaManifest = {
   name: "FarmERP Pro — Smart Farm Management",
@@ -49,18 +49,19 @@ const pwaManifest = {
     },
   ],
   icons: [
+    { src: "/icons/icon-32.png", sizes: "32x32", type: "image/png", purpose: "any" },
+    { src: "/icons/icon-64.png", sizes: "64x64", type: "image/png", purpose: "any" },
     { src: "/icons/icon-72.png", sizes: "72x72", type: "image/png", purpose: "any" },
     { src: "/icons/icon-96.png", sizes: "96x96", type: "image/png", purpose: "any" },
     { src: "/icons/icon-128.png", sizes: "128x128", type: "image/png", purpose: "any" },
     { src: "/icons/icon-144.png", sizes: "144x144", type: "image/png", purpose: "any" },
     { src: "/icons/icon-152.png", sizes: "152x152", type: "image/png", purpose: "any" },
+    { src: "/icons/icon-180.png", sizes: "180x180", type: "image/png", purpose: "any" },
     { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
     { src: "/icons/icon-256.png", sizes: "256x256", type: "image/png", purpose: "any" },
     { src: "/icons/icon-384.png", sizes: "384x384", type: "image/png", purpose: "any" },
     { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-    { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "maskable" },
     { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
-    { src: "/icons/icon-maskable.svg", sizes: "512x512", type: "image/svg+xml", purpose: "maskable" },
   ],
   screenshots: [],
 };
@@ -70,21 +71,22 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+
       includeAssets: [
         "icons/*.png",
-        "icons/*.svg",
         "logo.png",
         "favicon.png",
         "favicon.ico",
-        "logo-mark-*.png",
+        "apple-touch-icon-152.png",
+        "apple-touch-icon-180.png",
       ],
       manifest: pwaManifest,
       workbox: {
         cacheId: `farmerp-${SW_VERSION}`,
-        globPatterns: ["**/*.{js,css,html,svg,png,ico,woff,woff2,ttf,eot}"],
-        // Cache the app shell and static assets on install (precache)
-        // Network-first for API calls
-        // Stale-while-revalidate for fonts and images
+        globPatterns: ["**/*.{js,css,html,png,ico,woff,woff2,ttf,eot}"],
+        skipWaiting: true,
+        clientsClaim: true,
+        // Runtime caching rules
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -122,7 +124,6 @@ export default defineConfig({
             },
           },
           {
-            // Cache media files (uploaded photos) for offline access
             urlPattern: /^https:\/\/farmerp-backend-production\.up\.railway\.app\/media\/.*/i,
             handler: "StaleWhileRevalidate",
             options: {
