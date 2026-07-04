@@ -346,6 +346,7 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ("me", "change_password", "update_fcm"):
             return [IsAuthenticated()]
+        # All other actions (including activate, suspend, create, update, etc.) require SUPER_ADMIN
         return [IsSuperAdmin()]
 
     def perform_create(self, serializer):
