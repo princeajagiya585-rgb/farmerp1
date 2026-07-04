@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
-const SW_VERSION = "v2.3"; // increment to force service-worker cache refresh
+const SW_VERSION = "v2.4"; // increment to force service-worker cache refresh
 
 const pwaManifest = {
   name: "FarmERP Pro — Smart Farm Management",
