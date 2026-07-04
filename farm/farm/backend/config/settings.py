@@ -44,7 +44,6 @@ THIRD_PARTY_APPS = [
     "channels",
     "rest_framework",
     "rest_framework_simplejwt",
-    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "django_filters",
     "drf_spectacular",
@@ -191,8 +190,8 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),  # 24 hours
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=365),  # 1 year
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=30),  # 30 days
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=3650),  # 10 years
     "ROTATE_REFRESH_TOKENS": False,
     "BLACKLIST_AFTER_ROTATION": False,
     "AUTH_HEADER_TYPES": ("Bearer",),
