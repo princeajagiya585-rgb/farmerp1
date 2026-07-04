@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Mail, Phone, Save, Lock, CheckCircle2, AlertCircle, ShieldCheck, Upload } from "lucide-react";
 import { api, toFormData } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
-import { Card, Button, Input, Select, PageHeader, Badge } from "../components/ui";
+import { Card, Button, Input, PhotoThumb, Select, PageHeader, Badge } from "../components/ui";
 import { roleLabels } from "../config/nav";
 
 const LANGUAGES = [
@@ -286,21 +286,7 @@ export default function Profile() {
                 <div className="flex-1 text-sm text-green-800">
                   Aadhaar on file{u.aadhaar_number ? ` · ${u.aadhaar_number}` : ""}
                 </div>
-                {u.aadhaar_photo_url && (
-                  <a
-                    href={u.aadhaar_photo_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="shrink-0"
-                    title="View Aadhaar photo"
-                  >
-                    <img
-                      src={u.aadhaar_photo_url}
-                      alt="Aadhaar"
-                      className="h-12 w-20 rounded border border-green-200 object-cover"
-                    />
-                  </a>
-                )}
+                {u.aadhaar_photo_url && <PhotoThumb url={u.aadhaar_photo_url} alt="Aadhaar" size={80} />}
               </div>
             ) : (
               <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-500">

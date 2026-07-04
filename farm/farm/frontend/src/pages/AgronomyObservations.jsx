@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import CrudResource from "../components/CrudResource";
-import { Badge } from "../components/ui";
+import { Badge, PhotoThumb } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 
 const typeColor = { PEST: "red", DISEASE: "red", NUTRIENT: "yellow", WEATHER: "blue", GROWTH: "green" };
@@ -46,18 +46,7 @@ export default function AgronomyObservations() {
         {
           key: "photo",
           header: t("header.photo"),
-          render: (r) =>
-            r.photo_url ? (
-              <a href={r.photo_url} target="_blank" rel="noreferrer">
-                <img
-                  src={r.photo_url}
-                  alt={t("agronomyObs.photo")}
-                  className="h-12 w-12 rounded object-cover ring-1 ring-gray-200"
-                />
-              </a>
-            ) : (
-              <span className="text-gray-400">—</span>
-            ),
+          render: (r) => <PhotoThumb url={r.photo_url} alt={t("agronomyObs.photo")} size={48} />,
         },
         { key: "observed_on", header: t("header.observed"), render: (r) => r.observed_on || "—" },
       ]}

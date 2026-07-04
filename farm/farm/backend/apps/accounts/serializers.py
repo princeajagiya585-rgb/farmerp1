@@ -162,6 +162,14 @@ class FarmTokenObtainPairSerializer(TokenObtainPairSerializer):
                 or User.objects.filter(phone=identifier).first()
             )
             if user is not None:
+                # Check is_active BEFORE calling super().validate() because
+                # authenticate() returns None for inactive users and the
+                # parent would raise a generic "No active account" error.
+                if not user.is_active:
+                    raise serializers.ValidationError(
+                        "Your account has been deactivated. "
+                        "Please contact the administrator."
+                    )
                 # Override with the actual username so authenticate() works
                 attrs[self.username_field] = user.username
 

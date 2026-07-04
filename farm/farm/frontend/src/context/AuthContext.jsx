@@ -64,9 +64,18 @@ export function AuthProvider({ children }) {
               localStorage.setItem("user", JSON.stringify(data));
               i18n.changeLanguage(data?.preferred_language || "en");
             }
-          } catch {
-            // Server sync failed — cached user data remains.
-            // No action needed; the user can still navigate the app.
+          } catch (err) {
+            // If the server returns 401 (token rejected / user deactivated),
+            // clear the cached session so the user is logged out. The custom
+            // ActiveJWTAuthentication on the backend rejects deactivated users
+            // immediately, so this catches them without waiting for token expiry.
+            if (err?.response?.status === 401) {
+              localStorage.removeItem("user");
+              tokenStore.clear();
+              if (!cancelled) {
+                setUser(null);
+              }
+            }
           }
         }
       }

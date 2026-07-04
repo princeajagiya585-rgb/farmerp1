@@ -36,6 +36,21 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
+def _role_to_employee_category(role):
+    """Map a User role to the matching Employee category.
+
+    Returns the Employee.Category value (string) or defaults to EMPLOYEE.
+    """
+    from apps.workforce.models import Employee
+
+    mapping = {
+        "SUPER_ADMIN": "SUPER_ADMIN",
+        "FARM_MANAGER": "MANAGER",
+        "EMPLOYEE": "EMPLOYEE",
+    }
+    return mapping.get(role, "EMPLOYEE")
+
+
 class LoginView(TokenObtainPairView):
     serializer_class = FarmTokenObtainPairSerializer
     throttle_classes = []
@@ -145,17 +160,20 @@ def phone_login(request):
             status=status.HTTP_404_NOT_FOUND,
         )
 
+    # Check is_active BEFORE authenticate() — authenticate() returns None
+    # for inactive users, which would mask the real reason with a generic
+    # "Invalid credentials" message.
+    if not user.is_active:
+        return Response(
+            {"detail": "Your account has been deactivated. Please contact the administrator."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     user = authenticate(username=user.username, password=password)
     if not user:
         return Response(
             {"detail": "Invalid credentials."},
             status=status.HTTP_401_UNAUTHORIZED,
-        )
-
-    if not user.is_active:
-        return Response(
-            {"detail": "This account is deactivated."},
-            status=status.HTTP_403_FORBIDDEN,
         )
 
     refresh = RefreshToken.for_user(user)
@@ -346,7 +364,7 @@ class UserViewSet(viewsets.ModelViewSet):
                     code = f"{base_code}-{counter}"
                     counter += 1
                 try:
-                    category = Employee.Category.MANAGER if user.role == 'FARM_MANAGER' else Employee.Category.EMPLOYEE
+                    category = _role_to_employee_category(user.role)
                     Employee.objects.create(
                         user=user,
                         employee_code=code,
@@ -371,7 +389,7 @@ class UserViewSet(viewsets.ModelViewSet):
             employee.first_name = user.first_name or user.username
             employee.last_name = user.last_name or ""
             employee.phone = user.phone or ""
-            employee.category = Employee.Category.MANAGER if user.role == 'FARM_MANAGER' else Employee.Category.EMPLOYEE
+            employee.category = _role_to_employee_category(user.role)
             if farm:
                 employee.farm = farm
             employee.save(update_fields=["first_name", "last_name", "phone", "farm", "category"])
@@ -383,7 +401,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 code = f"{base_code}-{counter}"
                 counter += 1
             try:
-                category = Employee.Category.MANAGER if user.role == 'FARM_MANAGER' else Employee.Category.EMPLOYEE
+                category = _role_to_employee_category(user.role)
                 Employee.objects.create(
                     user=user,
                     employee_code=code,

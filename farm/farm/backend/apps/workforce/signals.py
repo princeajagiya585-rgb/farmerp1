@@ -131,8 +131,8 @@ def user_created_for_employee(sender, instance, created, **kwargs):
                 employee_code=employee_code,
                 first_name=instance.first_name or instance.username or "Unknown",
                 last_name=instance.last_name or "",
-                category=Employee.Category.LABOUR,
-                employment_type=Employee.EmploymentType.DAILY_WAGE,
+                category=Employee.Category.EMPLOYEE,
+                employment_type=Employee.EmploymentType.PERMANENT,
                 farm=farm,
                 phone=instance.phone or "",
                 date_of_joining=timezone.now().date()

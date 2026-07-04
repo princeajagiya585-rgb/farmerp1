@@ -122,9 +122,11 @@ export default function Workforce() {
             { key: "name", header: t("header.name") },
             { key: "assigned_farms", header: t("users.assignedFarm"), render: (r) => r.assigned_farms?.length ? r.assigned_farms.join(", ") : "—" },
             { key: "category", header: t("header.category"), render: (r) => {
+                if (r.category === "SUPER_ADMIN") return <Badge color="purple">{t("role.superAdmin")}</Badge>;
                 if (r.category === "MANAGER") return <Badge color="purple">{t("workforce.manager")}</Badge>;
                 if (r.category === "EMPLOYEE") return <Badge color="blue">{t("skills.employeeLabour")}</Badge>;
-                return <Badge color="gray">{t("skills.labour")}</Badge>;
+                if (r.category === "LABOUR") return <Badge color="gray">{t("skills.labour")}</Badge>;
+                return <Badge color="gray">{r.category || "—"}</Badge>;
             } },
             { key: "employment_type", header: t("header.type") },
             { key: "designation", header: t("header.designation"), render: (r) => r.designation || "—" },
@@ -155,11 +157,21 @@ export default function Workforce() {
               name: "category",
               label: t("workforce.category"),
               type: "select",
-              readonly: (row) => row?.category === "MANAGER" && !hasRole("SUPER_ADMIN"),
+              // If the employee has a linked user, category is auto-calculated
+              // from the user's role (handled by the backend serializer), so
+              // the field becomes read-only. Standalone employees (no linked
+              // user) can have their category set manually by the admin.
+              readonly: (row) => !!row?.user,
               options: [
-                ...(hasRole("SUPER_ADMIN") ? [{ value: "MANAGER", label: t("workforce.manager") }] : []),
-                { value: "EMPLOYEE", label: t("skills.employeeLabour") },
-                { value: "LABOUR", label: t("workforce.labour") },
+                ...(hasRole("SUPER_ADMIN") ? [
+                  { value: "SUPER_ADMIN", label: t("role.superAdmin") },
+                  { value: "MANAGER", label: t("workforce.manager") },
+                  { value: "EMPLOYEE", label: t("skills.employeeLabour") },
+                  { value: "LABOUR", label: t("workforce.labour") },
+                ] : [
+                  { value: "EMPLOYEE", label: t("skills.employeeLabour") },
+                  { value: "LABOUR", label: t("workforce.labour") },
+                ]),
               ],
             },
             {

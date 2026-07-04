@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Clock, Lock, Play, LogIn, Square, CheckCircle, Plus, Pencil, Trash2, Search, Filter, X, AlertTriangle } from "lucide-react";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { api, resource, toFormData } from "../lib/api";
-import { Badge, Button, Card, Input, Modal, MultiSelect, Select, ToastContainer, useToast } from "../components/ui";
+import { Badge, Button, Card, Input, Modal, MultiSelect, PhotoThumb, Select, ToastContainer, useToast } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import i18n from "../i18n";
 import { roleLabels } from "../config/nav";
@@ -514,11 +514,7 @@ export default function Users() {
         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
           {user.aadhaar_submitted ? (
             <div className="flex items-center gap-2">
-              {user.aadhaar_photo_url && (
-                <a href={user.aadhaar_photo_url} target="_blank" rel="noreferrer" title={t("users.viewAadhaarPhoto")}>
-                  <img src={user.aadhaar_photo_url} alt="Aadhaar" className="h-8 w-12 rounded border border-gray-300 object-cover" />
-                </a>
-              )}
+              {user.aadhaar_photo_url && <PhotoThumb url={user.aadhaar_photo_url} alt="Aadhaar" size={32} />}
               <span className="font-mono text-xs text-gray-700">{user.aadhaar_number || "—"}</span>
             </div>
           ) : (

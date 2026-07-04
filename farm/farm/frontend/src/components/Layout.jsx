@@ -270,12 +270,15 @@ export default function Layout() {
               <PageTransitionLoader>
                 <Outlet />
               </PageTransitionLoader>
-              <InstallAppButton />
+
             </div>
           </div>
         </main>
       </div>
 
+
+      {/* Floating Install App button (fixed position) */}
+      <InstallAppButton />
 
       {/* Logout confirmation modal */}
       {showLogoutConfirm && (

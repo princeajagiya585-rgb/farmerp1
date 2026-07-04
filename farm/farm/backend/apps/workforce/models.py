@@ -10,6 +10,7 @@ class Employee(TimeStampedModel):
         EMPLOYEE = "EMPLOYEE", "Employee"
         LABOUR = "LABOUR", "Labour"
         MANAGER = "MANAGER", "Manager"
+        SUPER_ADMIN = "SUPER_ADMIN", "Super Administrator"
 
     class EmploymentType(models.TextChoices):
         PERMANENT = "PERMANENT", "Permanent"

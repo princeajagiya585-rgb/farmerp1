@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Check, Wrench } from "lucide-react";
 import { resource } from "../lib/api";
-import { Badge } from "../components/ui";
+import { Badge, PhotoThumb } from "../components/ui";
 import CrudResource from "../components/CrudResource";
 import { useAuth } from "../context/AuthContext";
 
@@ -112,18 +112,7 @@ export default function Breakdowns() {
         {
           key: "photo",
           header: t("header.photo"),
-          render: (r) =>
-            r.photo_url ? (
-              <a href={r.photo_url} target="_blank" rel="noreferrer">
-                <img
-                  src={r.photo_url}
-                  alt={t("breakdowns.equipment")}
-                  className="h-12 w-12 rounded object-cover ring-1 ring-gray-200"
-                />
-              </a>
-            ) : (
-              <span className="text-gray-400">—</span>
-            ),
+          render: (r) => <PhotoThumb url={r.photo_url} alt={t("breakdowns.equipment")} size={48} />,
         },
         { key: "reported_by_name", header: t("header.reportedBy") },
         { key: "created_at", header: t("header.when"), render: (r) => fmt(r.created_at) },

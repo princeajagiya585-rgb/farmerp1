@@ -94,8 +94,32 @@ class EmployeeSerializer(serializers.ModelSerializer):
         last_name = parts[1] if len(parts) > 1 else ""
         return first_name, last_name
 
+    def _auto_assign_category(self, validated_data, instance=None):
+        """Auto-assign category from the linked User's role if a user is set.
+
+        Mapping:
+          User role SUPER_ADMIN   → Employee category SUPER_ADMIN
+          User role FARM_MANAGER  → Employee category MANAGER
+          User role EMPLOYEE      → Employee category EMPLOYEE
+
+        If there is no linked user, the category from the request is kept
+        as-is (manually selected by the admin).
+        """
+        user = validated_data.get("user", getattr(instance, "user", None) if instance else None)
+        if user:
+            role_to_category = {
+                "SUPER_ADMIN": "SUPER_ADMIN",
+                "FARM_MANAGER": "MANAGER",
+                "EMPLOYEE": "EMPLOYEE",
+            }
+            category = role_to_category.get(user.role)
+            if category:
+                validated_data["category"] = category
+        return validated_data
+
     def create(self, validated_data):
         name = validated_data.pop("name", None)
+        self._auto_assign_category(validated_data)
         if name:
             first_name, last_name = self.split_name(name)
             validated_data["first_name"] = first_name
@@ -104,6 +128,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         name = validated_data.pop("name", None)
+        self._auto_assign_category(validated_data, instance=instance)
         if name:
             first_name, last_name = self.split_name(name)
             validated_data["first_name"] = first_name

@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import CrudResource from "./CrudResource";
-import { Badge } from "./ui";
+import { Badge, PhotoThumb } from "./ui";
 import { useAuth } from "../context/AuthContext";
 
 export const ASSET_TYPES = [
@@ -64,18 +64,7 @@ export default function AssetRegister({ title, subtitle, listParams }) {
         {
           key: "photo",
           header: t("header.photo"),
-          render: (r) =>
-            r.photo_url ? (
-              <a href={r.photo_url} target="_blank" rel="noreferrer">
-                <img
-                  src={r.photo_url}
-                  alt={r.name}
-                  className="h-12 w-12 rounded object-cover ring-1 ring-gray-200"
-                />
-              </a>
-            ) : (
-              <span className="text-gray-400">—</span>
-            ),
+          render: (r) => <PhotoThumb url={r.photo_url} alt={r.name} size={48} />,
         },
         { key: "purchase_cost", header: t("assets.purchaseCost"), render: (r) => money(r.purchase_cost) },
         { key: "current_value", header: t("assets.currentValue"), render: (r) => money(r.current_value) },
