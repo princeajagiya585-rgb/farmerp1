@@ -260,6 +260,7 @@ export const resource = (path) => ({
   update: (id, data) =>
     api.patch(`/${path}/${id}/`, data, getConfig(data)).then((r) => r.data),
   remove: (id) => api.delete(`/${path}/${id}/`),
+  destroy: (id) => api.delete(`/${path}/${id}/`),
   action: (id, verb, data) =>
     api.post(`/${path}/${id}/${verb}/`, data, getConfig(data)).then((r) => r.data),
   collectionAction: (verb, params) =>
