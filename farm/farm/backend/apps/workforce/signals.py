@@ -68,8 +68,10 @@ def user_created_for_employee(sender, instance, created, **kwargs):
     """
     # Skip when only is_active is being changed (suspend/activate actions)
     update_fields = kwargs.get("update_fields")
-    if update_fields is not None and set(update_fields) == {"is_active"}:
-        return
+    if update_fields is not None:
+        # Handle all iterable types (list, tuple, frozenset, set)
+        if set(update_fields) == {"is_active"}:
+            return
 
     # Map user role to employee category
     role_to_category = {

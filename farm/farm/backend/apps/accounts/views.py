@@ -431,12 +431,12 @@ class UserViewSet(viewsets.ModelViewSet):
         try:
             user = self.get_object()
             user.is_active = True
-            user.save(update_fields=["is_active"])
+            user.save()
             from apps.workforce.models import Employee
             emp = Employee.objects.filter(user=user).first()
             if emp is not None:
                 emp.is_active = True
-                emp.save(update_fields=["is_active"])
+                emp.save()
             return Response(UserSerializer(user, context={"request": request}).data)
         except Exception as e:
             logger.exception(f"Failed to activate user {pk}: {e}")
@@ -451,12 +451,12 @@ class UserViewSet(viewsets.ModelViewSet):
         try:
             user = self.get_object()
             user.is_active = False
-            user.save(update_fields=["is_active"])
+            user.save()
             from apps.workforce.models import Employee
             emp = Employee.objects.filter(user=user).first()
             if emp is not None:
                 emp.is_active = False
-                emp.save(update_fields=["is_active"])
+                emp.save()
             return Response(UserSerializer(user, context={"request": request}).data)
         except Exception as e:
             logger.exception(f"Failed to suspend user {pk}: {e}")
