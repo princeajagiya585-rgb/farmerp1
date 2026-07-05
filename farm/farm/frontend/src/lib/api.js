@@ -1,10 +1,8 @@
 import axios from "axios";
 
 // ── API Base URL ────────────────────────────────────────────────────────
-//  Production: use Railway URL directly to avoid Vercel proxy rate limits.
-//  Development: use VITE_API_URL (if set) or Vite proxy → localhost:8000.
-// ── API Base URL ────────────────────────────────────────────────────────
-//  Production: set VITE_API_URL in Vercel dashboard to your Railway URL.
+//  Production: leave blank → same-origin requests go through Vercel proxy.
+//               To call Railway directly, set VITE_API_URL in Vercel Dashboard.
 //  Development: leave blank → Vite proxy forwards /api to localhost:8000.
 const API_ORIGIN = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 const API_BASE = `${API_ORIGIN}/api/v1`;
