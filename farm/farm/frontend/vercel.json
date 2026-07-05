@@ -4,8 +4,8 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://farmerp-backend-production.up.railway.app/api/$1" },
-    { "source": "/media/(.*)", "destination": "https://farmerp-backend-production.up.railway.app/media/$1" },
+    { "source": "/api/(.*)", "destination": "https://FARMBACKEND_URL_REPLACE_ME.railway.app/api/$1" },
+    { "source": "/media/(.*)", "destination": "https://FARMBACKEND_URL_REPLACE_ME.railway.app/media/$1" },
     { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ]
 }

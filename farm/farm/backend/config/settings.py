@@ -22,8 +22,8 @@ def env_list(key, default=""):
 
 SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-dev-key-change-me")
 DEBUG = env_bool("DEBUG", True)
-ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver,farmerp-backend-production.up.railway.app") or ["*"]
-BACKEND_URL = os.getenv("BACKEND_URL", "https://farmerp-backend-production.up.railway.app")
+ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver") or ["*"]
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 # ---------------------------------------------------------------------------
 # Applications
@@ -86,7 +86,7 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "config.urls"
 
-APPEND_SLASH = False
+APPEND_SLASH = True  # Prevent 404s on requests without trailing slashes
 
 TEMPLATES = [
     {
@@ -222,13 +222,13 @@ LOCATIONIQ_API_KEY = os.getenv("LOCATIONIQ_API_KEY", "")
 # ---------------------------------------------------------------------------
 CORS_ALLOWED_ORIGINS = env_list(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173,http://localhost:5174,http://localhost:3000,https://farmerp1.vercel.app,https://farmerp-backend-production.up.railway.app"
+    "http://localhost:5173,http://localhost:5174,http://localhost:3000,https://farmerp1.vercel.app"
 )
 CORS_ALLOW_CREDENTIALS = True
 # Required by Django for cross-origin POST (e.g. the admin) behind HTTPS.
 CSRF_TRUSTED_ORIGINS = env_list(
     "CSRF_TRUSTED_ORIGINS",
-    "https://farmerp1.vercel.app,https://farmerp-backend-production.up.railway.app"
+    "https://farmerp1.vercel.app"
 )
 # Behind Railway/Vercel's HTTPS proxy, trust the forwarded scheme header.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
@@ -262,7 +262,7 @@ STORAGES = {
 }
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
-BACKEND_URL = os.getenv("BACKEND_URL", "https://farmerp-backend-production.up.railway.app")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 if env_bool("USE_S3", False):
     AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")

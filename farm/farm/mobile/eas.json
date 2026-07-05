@@ -16,7 +16,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://farmerp-backend-production.up.railway.app/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://YOUR_RAILWAY_URL.up.railway.app/api/v1"
       }
     },
     "production-aab": {
@@ -24,7 +24,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://farmerp-backend-production.up.railway.app/api/v1"
+        "EXPO_PUBLIC_API_URL": "https://YOUR_RAILWAY_URL.up.railway.app/api/v1"
       }
     }
   },

@@ -1,8 +1,10 @@
 // API base URL for the FarmERP Pro backend (Django REST).
 //
+// API base URL for the FarmERP Pro backend (Django REST).
+//
 // The app reads from EXPO_PUBLIC_API_URL at build time. If not set, it falls back
 // to the default dev value below. For production builds, set:
-//   EXPO_PUBLIC_API_URL=https://farmerp-backend-production.up.railway.app/api/v1
+//   EXPO_PUBLIC_API_URL=https://YOUR_RAILWAY_URL.up.railway.app/api/v1
 //
 // Pick the right host depending on where you run the app:
 //   - Android emulator:  http://10.0.2.2:8000/api/v1  (10.0.2.2 = host machine loopback)

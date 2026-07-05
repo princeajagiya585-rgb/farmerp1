@@ -124,7 +124,7 @@ export default defineConfig({
             },
           },
           {
-            urlPattern: /^https:\/\/farmerp-backend-production\.up\.railway\.app\/media\/.*/i,
+            urlPattern: /\/media\/.*/i,
             handler: "StaleWhileRevalidate",
             options: {
               cacheName: "media-cache",

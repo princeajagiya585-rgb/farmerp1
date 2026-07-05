@@ -13,16 +13,11 @@ const RECONNECT_MAX_MS = 15000;
 // ── WebSocket Base URL ──────────────────────────────────────────────────
 //  Production:  VITE_WS_URL must be set in Vercel dashboard to Railway WS URL.
 //               Vercel does NOT proxy WebSocket connections, so a direct URL is
-//               required: wss://farmerp-backend-production.up.railway.app
+//               required (e.g. wss://your-backend.up.railway.app).
 //  Development: falls back to ws://localhost:8000 (the Daphne dev server).
 function resolveWsBase() {
-  // Production always uses Railway WebSocket (ignores VITE_WS_URL to prevent
-  // stale Render URL from being set as a Vercel env var).
-  if (import.meta.env.PROD) {
-    return "wss://farmerp-backend-production.up.railway.app";
-  }
-  // Development: VITE_WS_URL overrides localhost; otherwise fall back to :8000.
   if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+  // Development: use localhost
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
   return `${proto}://${window.location.hostname}:8000`;
 }
