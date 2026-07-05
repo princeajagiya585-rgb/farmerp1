@@ -46,7 +46,13 @@ export default function Login() {
       await login(username, password);
       navigate("/");
     } catch (err) {
-      setError(err.response?.data?.detail || "Invalid credentials.");
+      if (!err.response) {
+        setError("Cannot connect to server. Please check your internet connection and try again.");
+      } else if (err.response?.status === 401) {
+        setError(err.response?.data?.detail || "Invalid username or password.");
+      } else {
+        setError(err.response?.data?.detail || "Login failed. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -61,7 +67,13 @@ export default function Login() {
       await login(superAdminUsername, superAdminPassword);
       navigate("/");
     } catch (err) {
-      setError(err.response?.data?.detail || "Invalid credentials.");
+      if (!err.response) {
+        setError("Cannot connect to server. Please check your internet connection and try again.");
+      } else if (err.response?.status === 401) {
+        setError(err.response?.data?.detail || "Invalid username or password.");
+      } else {
+        setError(err.response?.data?.detail || "Login failed. Please try again.");
+      }
     } finally {
       setLoading(false);
     }

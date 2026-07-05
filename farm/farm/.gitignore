@@ -27,3 +27,9 @@ mobile/.expo/
 .vercel/
 *.log
 .DS_Store
+
+# ── Windows reserved device names (created accidentally by OneDrive/scripts) ─
+nul
+NUL
+nul.*
+NUL.*

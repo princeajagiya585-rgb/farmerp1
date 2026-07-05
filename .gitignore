@@ -29,3 +29,9 @@
 .DS_Store
 Thumbs.db
 farmerp_app/
+
+# ── Windows reserved device names (created accidentally by scripts/OneDrive) ─
+nul
+NUL
+nul.*
+NUL.*
