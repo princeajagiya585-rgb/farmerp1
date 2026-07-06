@@ -164,11 +164,21 @@ export function refreshAccessToken() {
         })
         .catch((err) => {
           const detail = err?.response?.data?.detail || "";
+          const code = err?.response?.data?.code || "";
           const isBlacklisted = detail.toLowerCase().includes("blacklisted");
+          const isInvalidOrExpired =
+            code === "token_not_valid" ||
+            detail.toLowerCase().includes("invalid") ||
+            detail.toLowerCase().includes("expired");
 
-          if (isBlacklisted) {
-            // Terminal failure: token was explicitly invalidated (logout/admin).
+          if (isBlacklisted || isInvalidOrExpired) {
+            // Terminal failure: token was blacklisted (logout/admin), is expired
+            // (30+ days of inactivity), or is otherwise invalid.
             // Clear everything and notify AuthContext so it can react.
+            console.warn(
+              "[AUTH] Token refresh failed —",
+              isBlacklisted ? "token blacklisted" : "token expired or invalid",
+            );
             tokenStore.clear();
             localStorage.removeItem("user");
             window.dispatchEvent(new CustomEvent("auth:token-blacklisted"));

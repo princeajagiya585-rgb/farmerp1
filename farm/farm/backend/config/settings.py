@@ -20,9 +20,15 @@ def env_list(key, default=""):
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-SECRET_KEY = os.getenv("SECRET_KEY", "django-insecure-dev-key-change-me")
-DEBUG = env_bool("DEBUG", True)
-ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1, testserver") or ["*"]
+SECRET_KEY = os.getenv("SECRET_KEY")
+
+if not SECRET_KEY:
+    raise Exception("SECRET_KEY environment variable is not set")
+DEBUG = env_bool("DEBUG", False)
+ALLOWED_HOSTS = env_list(
+    "ALLOWED_HOSTS",
+    "localhost,127.0.0.1"
+)
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 # ---------------------------------------------------------------------------
@@ -192,12 +198,34 @@ REST_FRAMEWORK = {
     },
 }
 
+from datetime import timedelta
+
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    # Users पूरे दिन काम कर सकें
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=13),
+
+    # 30 दिन तक Refresh Token valid
     "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
+
+    # हर refresh पर नया refresh token जारी होगा
     "ROTATE_REFRESH_TOKENS": True,
+
+    # पुराने refresh token blacklist हो जाएंगे
     "BLACKLIST_AFTER_ROTATION": True,
+
+    "UPDATE_LAST_LOGIN": True,
+
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,
+
     "AUTH_HEADER_TYPES": ("Bearer",),
+    "AUTH_HEADER_NAME": "HTTP_AUTHORIZATION",
+
+    "USER_ID_FIELD": "id",
+    "USER_ID_CLAIM": "user_id",
+
+    # बेहतर clock tolerance
+    "LEEWAY": 30,
 }
 
 SPECTACULAR_SETTINGS = {

@@ -33,12 +33,37 @@ export function AuthProvider({ children }) {
           // Apply the cached language immediately (no flash)
           i18n.changeLanguage(parsed?.preferred_language || "en");
 
+          // ── Check if refresh token has expired ────────────────────────────────
+          // If the access token is expired AND the refresh token is also
+          // expired (30+ days of inactivity) or missing, there is no way
+          // to recover the session. Clear tokens and cached user so the
+          // user is redirected to login instead of seeing 401 errors
+          // on every API call.
+          const bothExpired =
+            tokenStore.access &&
+            isTokenExpired(tokenStore.access) &&
+            (!tokenStore.refresh || isTokenExpired(tokenStore.refresh));
+
+          if (bothExpired) {
+            console.warn(
+              "[AUTH] Both access and refresh tokens have expired ",
+              "— clearing session.",
+            );
+            localStorage.removeItem("user");
+            tokenStore.clear();
+            if (!cancelled) {
+              setUser(null);
+              setLoading(false);
+            }
+            return; // Exit early, no need to proceed further
+          }
+
           // Set cached user immediately so UI renders without delay
           if (!cancelled) {
             setUser(parsed);
           }
 
-          // ── Proactive token refresh (best-effort) ────────────────
+          // ── Proactive token refresh (best-effort) ─────────────
           // If the access token is expired, try to refresh it.
           // This is best-effort — if it fails (network error, server down),
           // we KEEP the cached user. The user stays logged in until they
@@ -54,7 +79,7 @@ export function AuthProvider({ children }) {
             }
           }
 
-          // ── Background server sync (best-effort) ─────────────────
+          // ── Background server sync (best-effort) ────────────────
           // Refresh user data from the server so admin-side changes
           // (e.g. language preference) are picked up on reload.
           // If this fails (expired token, network issue, deactivated),
