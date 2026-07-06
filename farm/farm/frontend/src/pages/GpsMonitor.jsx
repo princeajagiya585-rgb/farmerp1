@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { Download, List, Navigation, ChevronLeft, ChevronRight, Camera } from "lucide-react";
-import { resource } from "../lib/api";
+import { resource, normalizePhotoUrl } from "../lib/api";
 import { openMapUrl, hasValidCoords } from "../lib/maps";
 import { Badge, Button, Card, PageHeader, Table } from "../components/ui";
 import { exportExcel } from "../lib/export";
@@ -63,17 +63,17 @@ function renderPhotos(r) {
       {phases.length > 0 ? phases.map((p, i) => (
         <PhotoWithFallback
           key={i}
-          src={p.photo_url}
+          src={normalizePhotoUrl(p.photo_url)}
           alt={p.phase_display || p.phase}
           title={p.phase_display || p.phase}
           phase={p.phase}
-          onClick={() => window.open(p.photo_url, "_blank")}
+          onClick={() => window.open(normalizePhotoUrl(p.photo_url), "_blank")}
         />
       )) : hasMainPhoto ? (
         <PhotoWithFallback
-          src={r.photo_url}
+          src={normalizePhotoUrl(r.photo_url)}
           alt="Activity"
-          onClick={() => window.open(r.photo_url, "_blank")}
+          onClick={() => window.open(normalizePhotoUrl(r.photo_url), "_blank")}
         />
       ) : null}
     </div>

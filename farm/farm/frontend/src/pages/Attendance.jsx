@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download, MapPin, Check, X, LogIn, LogOut, Clock, Navigation, Camera, Loader2, Pencil, Trash2 } from "lucide-react";
 import { openMapUrl, hasValidCoords } from "../lib/maps";
-import { api, resource, toFormData } from "../lib/api";
+import { api, resource, toFormData, normalizePhotoUrl } from "../lib/api";
 import { Badge, Button, Card, PageHeader, PhotoThumb, Table, Select, ToastContainer, useToast } from "../components/ui";
 import { exportExcel } from "../lib/export";
 import { useAuth } from "../context/AuthContext";
@@ -547,7 +547,7 @@ export default function Attendance() {
                   )}
                   {r.check_in_photo_url && (
                     <a
-                      href={r.check_in_photo_url}
+                      href={normalizePhotoUrl(r.check_in_photo_url)}
                       target="_blank"
                       rel="noreferrer"
                       className="rounded p-1.5 text-green-500 hover:bg-green-50"
@@ -558,7 +558,7 @@ export default function Attendance() {
                   )}
                   {r.check_out_photo_url && (
                     <a
-                      href={r.check_out_photo_url}
+                      href={normalizePhotoUrl(r.check_out_photo_url)}
                       target="_blank"
                       rel="noreferrer"
                       className="rounded p-1.5 text-blue-500 hover:bg-blue-50"

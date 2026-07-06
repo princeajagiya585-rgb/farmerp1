@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Check, Wrench } from "lucide-react";
-import { resource } from "../lib/api";
+import { resource, normalizePhotoUrl } from "../lib/api";
 import { Badge, PhotoThumb } from "../components/ui";
 import CrudResource from "../components/CrudResource";
 import { useAuth } from "../context/AuthContext";
@@ -112,7 +112,7 @@ export default function Breakdowns() {
         {
           key: "photo",
           header: t("header.photo"),
-          render: (r) => <PhotoThumb url={r.photo_url} alt={t("breakdowns.equipment")} size={48} />,
+          render: (r) => <PhotoThumb url={normalizePhotoUrl(r.photo_url)} alt={t("breakdowns.equipment")} size={48} />,
         },
         { key: "reported_by_name", header: t("header.reportedBy") },
         { key: "created_at", header: t("header.when"), render: (r) => fmt(r.created_at) },

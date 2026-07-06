@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { normalizePhotoUrl } from "../lib/api";
 import CrudResource from "../components/CrudResource";
 import { Badge, PhotoThumb } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
@@ -46,7 +47,7 @@ export default function AgronomyObservations() {
         {
           key: "photo",
           header: t("header.photo"),
-          render: (r) => <PhotoThumb url={r.photo_url} alt={t("agronomyObs.photo")} size={48} />,
+          render: (r) => <PhotoThumb url={normalizePhotoUrl(r.photo_url)} alt={t("agronomyObs.photo")} size={48} />,
         },
         { key: "observed_on", header: t("header.observed"), render: (r) => r.observed_on || "—" },
       ]}

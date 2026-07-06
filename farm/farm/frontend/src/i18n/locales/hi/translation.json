@@ -1612,6 +1612,7 @@
   "users.restrict": "प्रतिबंधित करें",
   "users.activate": "उपयोगकर्ता सक्रिय करें",
   "users.deactivate": "निष्क्रिय करें",
+  "users.delete": "उपयोगकर्ता हटाएं",
   "common.trackedTimeLabel": "आज ट्रैक किया गया कुल समय:",
   "payroll.create": "बनाएं",
   "payroll.cancel": "रद्द करें",

@@ -163,7 +163,7 @@ export default function Workforce() {
               // user) can have their category set manually by the admin.
               readonly: (row) => !!row?.user,
               options: [
-                ...(hasRole("SUPER_ADMIN") ? [
+                ...(hasRole("SUPER_ADMIN", "FARM_MANAGER") ? [
                   { value: "SUPER_ADMIN", label: t("role.superAdmin") },
                   { value: "MANAGER", label: t("workforce.manager") },
                   { value: "EMPLOYEE", label: t("skills.employeeLabour") },

@@ -9,6 +9,25 @@ const API_BASE = `${API_ORIGIN}/api/v1`;
 
 export const api = axios.create({ baseURL: API_BASE });
 
+// ── Photo/Media URL Normalizer ────────────────────────────────────────
+// Converts relative URLs (/media/...) to absolute URLs that work in both
+// development and production. In production, relative URLs are proxied
+// through Vercel to Railway, so we just need to ensure the URL starts
+// with /media/ for the proxy to work.
+export function normalizePhotoUrl(url) {
+  if (!url) return null;
+  // Already absolute URL (http/https) - return as-is
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return url;
+  }
+  // Relative URL - ensure it starts with /media/ for Vercel proxy
+  if (url.startsWith("/media/")) {
+    return url;
+  }
+  // Handle other relative paths (e.g., /uploads/...)
+  return url;
+}
+
 export const tokenStore = {
   get access() {
     return localStorage.getItem("access");

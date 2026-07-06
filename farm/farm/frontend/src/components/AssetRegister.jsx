@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { normalizePhotoUrl } from "../lib/api";
 import CrudResource from "./CrudResource";
 import { Badge, PhotoThumb } from "./ui";
 import { useAuth } from "../context/AuthContext";
@@ -64,7 +65,7 @@ export default function AssetRegister({ title, subtitle, listParams }) {
         {
           key: "photo",
           header: t("header.photo"),
-          render: (r) => <PhotoThumb url={r.photo_url} alt={r.name} size={48} />,
+          render: (r) => <PhotoThumb url={normalizePhotoUrl(r.photo_url)} alt={r.name} size={48} />,
         },
         { key: "purchase_cost", header: t("assets.purchaseCost"), render: (r) => money(r.purchase_cost) },
         { key: "current_value", header: t("assets.currentValue"), render: (r) => money(r.current_value) },

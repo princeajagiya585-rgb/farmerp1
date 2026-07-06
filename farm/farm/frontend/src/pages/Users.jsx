@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useState } from "react";
 import { Clock, Lock, Play, LogIn, Square, CheckCircle, Plus, Pencil, Trash2, Search, Filter, X, AlertTriangle, UserMinus } from "lucide-react";
 import LoadingSpinner from "../components/LoadingSpinner";
-import { api, resource, toFormData } from "../lib/api";
+import { api, resource, toFormData, normalizePhotoUrl } from "../lib/api";
 import { Badge, Button, Card, Input, Modal, MultiSelect, PhotoThumb, Select, ToastContainer, useToast } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import i18n from "../i18n";
@@ -55,6 +55,8 @@ export default function Users() {
   const [suspendConfirm, setSuspendConfirm] = useState(null); // user to suspend
   const [removeAllConfirm, setRemoveAllConfirm] = useState(false); // confirm remove all non-admin users
   const [removingAll, setRemovingAll] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // user to delete
+  const [deleting, setDeleting] = useState(false);
 
   // Load users, farms, employees & attendance
   const loadData = useCallback(async () => {
@@ -265,6 +267,38 @@ export default function Users() {
     }
   };
 
+  const confirmDeleteUser = (user) => {
+    // Prevent deleting the logged-in user
+    if (user.id === currentUser?.id) {
+      addToast("You cannot delete your own account.", "error");
+      return;
+    }
+    // Prevent deleting the last remaining SUPER_ADMIN
+    const superAdmins = users.filter((u) => u.role === "SUPER_ADMIN" && u.is_active);
+    if (user.role === "SUPER_ADMIN" && superAdmins.length <= 1) {
+      addToast("Cannot delete the last active Super Administrator.", "error");
+      return;
+    }
+    setDeleteConfirm(user);
+  };
+
+  const executeDelete = async () => {
+    if (!deleteConfirm) return;
+    const user = deleteConfirm;
+    setDeleteConfirm(null);
+    setDeleting(true);
+    try {
+      await usersRepo.destroy(user.id);
+      addToast(`User "${user.username}" has been deleted successfully.`, "success");
+      loadData();
+    } catch (e) {
+      const detail = e?.response?.data?.detail || "Failed to delete user.";
+      addToast(typeof detail === "string" ? detail : JSON.stringify(detail), "error");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const saveUser = async (e) => {
     e.preventDefault();
     // Validate password confirmation
@@ -457,6 +491,14 @@ export default function Users() {
                         />
                       </span>
                     </button>
+                    {/* Delete User */}
+                    <button
+                      onClick={() => confirmDeleteUser(user)}
+                      className="rounded p-1.5 text-red-600 hover:bg-red-50"
+                      title={t("users.delete")}
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   </>
                 )}
               </>
@@ -498,7 +540,7 @@ export default function Users() {
         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
           {user.aadhaar_submitted ? (
             <div className="flex items-center gap-2">
-              {user.aadhaar_photo_url && <PhotoThumb url={user.aadhaar_photo_url} alt="Aadhaar" size={32} />}
+              {normalizePhotoUrl(user.aadhaar_photo_url) && <PhotoThumb url={normalizePhotoUrl(user.aadhaar_photo_url)} alt="Aadhaar" size={32} />}
               <span className="font-mono text-xs text-gray-700">{user.aadhaar_number || "—"}</span>
             </div>
           ) : (
@@ -587,6 +629,14 @@ export default function Users() {
                           }`}
                         />
                       </span>
+                    </button>
+                    {/* Delete User */}
+                    <button
+                      onClick={() => confirmDeleteUser(user)}
+                      className="rounded p-1.5 text-red-600 hover:bg-red-50"
+                      title={t("users.delete")}
+                    >
+                      <Trash2 size={15} />
                     </button>
                   </>
                 )}
@@ -851,6 +901,34 @@ export default function Users() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* ── Delete Single User Confirmation Modal ──────────────────────── */}
+      <Modal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete User" width="max-w-sm">
+        {deleteConfirm && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 rounded-xl bg-red-50 p-4 text-sm text-red-800 ring-1 ring-red-200">
+              <AlertTriangle size={20} className="shrink-0 text-red-600" />
+              <p>Are you sure you want to delete this user? This action cannot be undone.</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 p-3 text-sm">
+              <p><span className="font-medium text-gray-700">Username:</span> {deleteConfirm.username}</p>
+              <p><span className="font-medium text-gray-700">Name:</span> {deleteConfirm.full_name || "—"}</p>
+              <p><span className="font-medium text-gray-700">Role:</span> {roleLabels[deleteConfirm.role] || deleteConfirm.role}</p>
+            </div>
+            <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-3">
+              <strong>Note:</strong> The user account will be permanently deleted, but all work history (attendance, tasks, payroll, etc.) will remain intact linked to their employee record.
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button type="button" variant="secondary" onClick={() => setDeleteConfirm(null)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button type="button" variant="danger" onClick={executeDelete} disabled={deleting}>
+                {deleting ? "Deleting..." : <><Trash2 size={15} /> Delete User</>}
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Toast notifications */}
