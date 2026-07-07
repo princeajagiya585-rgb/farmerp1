@@ -1,0 +1,2 @@
+fatal: path 'farm/farm/backend/apps/accounts/views.py' exists, but not 'backend/apps/accounts/views.py'
+hint: Did you mean 'HEAD:farm/farm/backend/apps/accounts/views.py' aka 'HEAD:./backend/apps/accounts/views.py'?
