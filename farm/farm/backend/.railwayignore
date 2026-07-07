@@ -2,11 +2,8 @@ venv/
 venv2/
 __pycache__/
 *.pyc
-*.pyo
-.env
 db.sqlite3
 media/
+.git/
 staticfiles/
-*.log
-.DS_Store
-.gitignore
+.idea/
