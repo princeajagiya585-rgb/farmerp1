@@ -46,7 +46,7 @@ class FarmViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = [Role.EMPLOYEE]
     filterset_fields = ["is_active"]
-    search_fields = ["name", "code", "location"]
+    search_fields = ["name", "code", "location", "soil_type", "climate_zone", "irrigation_type", "notes"]
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -218,7 +218,7 @@ class FieldViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = [Role.EMPLOYEE]
     filterset_fields = ["farm", "is_active"]
-    search_fields = ["name", "code", "soil_type"]
+    search_fields = ["name", "code", "soil_type", "block_name", "irrigation_source", "notes"]
 
     def get_serializer_class(self):
         if self.action == "crop_allocation" or self.action == "retrieve":

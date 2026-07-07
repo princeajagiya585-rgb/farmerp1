@@ -19,7 +19,7 @@ class AssetViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = [Role.EMPLOYEE]
     filterset_fields = ["farm", "asset_type", "status", "assigned_to"]
-    search_fields = ["name", "code", "manufacturer", "model_number", "serial_number"]
+    search_fields = ["name", "code", "manufacturer", "model_number", "serial_number", "notes"]
 
     def get_queryset(self):
         qs = super().get_queryset()

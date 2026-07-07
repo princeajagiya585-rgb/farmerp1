@@ -151,6 +151,7 @@ class PurchaseItemViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = []
     filterset_fields = ["purchase"]
+    search_fields = ["name", "purchase__invoice_no"]
 
 
 class LedgerEntryViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
@@ -233,7 +234,7 @@ class CostCenterViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = []
     filterset_fields = ["farm"]
-    search_fields = ["name", "code"]
+    search_fields = ["name", "code", "description"]
 
 
 class BudgetViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
@@ -243,6 +244,7 @@ class BudgetViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = []
     filterset_fields = ["farm", "cost_center", "category", "fiscal_year", "month"]
+    search_fields = ["notes", "cost_center__name"]
 
 
 class SaleViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):

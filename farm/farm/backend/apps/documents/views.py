@@ -47,3 +47,4 @@ class DocumentVersionViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = [Role.EMPLOYEE]
     filterset_fields = ["document"]
+    search_fields = ["notes", "document__title"]

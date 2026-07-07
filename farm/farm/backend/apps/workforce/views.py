@@ -67,7 +67,7 @@ class EmployeeViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMode
     allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = [Role.EMPLOYEE]
     filterset_fields = ["farm", "category", "employment_type", "is_active", "department"]
-    search_fields = ["first_name", "last_name", "employee_code", "phone"]
+    search_fields = ["first_name", "last_name", "employee_code", "phone", "designation"]
 
     @action(detail=True, methods=["get"])
     def financial_summary(self, request, pk=None):
@@ -580,7 +580,7 @@ class DepartmentViewSet(BaseModelViewSet):
     serializer_class = DepartmentSerializer
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = [Role.EMPLOYEE]
-    search_fields = ["name", "code"]
+    search_fields = ["name", "code", "description"]
 
 
 class SkillViewSet(BaseModelViewSet):

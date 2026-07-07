@@ -22,7 +22,7 @@ class ItemViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = [Role.EMPLOYEE]
     filterset_fields = ["farm", "category"]
-    search_fields = ["name", "sku", "supplier"]
+    search_fields = ["name", "sku", "supplier", "description"]
 
     @action(detail=False, methods=["get"])
     def low_stock(self, request):
@@ -56,6 +56,7 @@ class StockMovementViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = [Role.EMPLOYEE]
     filterset_fields = ["item", "farm", "movement_type"]
+    search_fields = ["reference", "reason", "notes", "item__name", "item__sku"]
 
     @action(detail=False, methods=["get"])
     def consumption(self, request):

@@ -30,7 +30,7 @@ class CropViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = [Role.EMPLOYEE]
     filterset_fields = ["farm", "field", "status", "season"]
-    search_fields = ["name", "variety"]
+    search_fields = ["name", "variety", "season", "growth_stage", "notes"]
 
     @action(detail=False, methods=["get"])
     def analytics(self, request):

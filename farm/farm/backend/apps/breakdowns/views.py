@@ -31,7 +31,7 @@ class BreakdownReportViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, B
     allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = []
     filterset_fields = ["farm", "severity", "status"]
-    search_fields = ["machine_name", "details"]
+    search_fields = ["machine_name", "details", "resolution_notes"]
 
     @action(detail=True, methods=["post"])
     def acknowledge(self, request, pk=None):

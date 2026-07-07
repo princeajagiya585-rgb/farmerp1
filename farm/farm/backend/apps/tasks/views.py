@@ -320,3 +320,4 @@ class TaskUpdateViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = []
     filterset_fields = ["task"]
+    search_fields = ["note", "task__title"]

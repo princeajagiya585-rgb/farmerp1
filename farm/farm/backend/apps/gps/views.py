@@ -51,6 +51,7 @@ class GeofenceViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = [Role.EMPLOYEE]
     filterset_fields = ["farm"]
+    search_fields = ["name"]
 
     def perform_create(self, serializer):
         farm = serializer.validated_data.get("farm")
@@ -79,6 +80,7 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
     allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = []
     filterset_fields = ["user", "farm", "activity", "task"]
+    search_fields = ["user__first_name", "user__last_name", "user__username"]
     # This view filters date_from/date_to on recorded_at itself (below).
     date_range_field = None
 

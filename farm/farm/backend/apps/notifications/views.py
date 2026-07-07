@@ -12,6 +12,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
     serializer_class = NotificationSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ["is_read", "notification_type"]
+    search_fields = ["title", "body"]
 
     def get_queryset(self):
         return Notification.objects.filter(recipient=self.request.user)
