@@ -35,6 +35,7 @@ export default function AgronomyInputs() {
       footerColumns={["quantity", "cost"]}
       columns={[
         { key: "product_name", header: t("header.product") },
+        { key: "farm_name", header: t("header.farm") },
         { key: "crop_name", header: t("header.crop") },
         { key: "input_type", header: t("header.type"), render: (r) => <Badge color="blue">{t(typeLabelMap[r.input_type] || r.input_type)}</Badge> },
         { key: "quantity", header: t("header.qty"), render: (r) => `${r.quantity} ${r.unit || ""}`.trim() },

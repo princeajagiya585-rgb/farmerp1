@@ -17,6 +17,7 @@ export default function Inventory() {
       footerColumns={["current_stock", "stock_value"]}
       columns={[
         { key: "name", header: t("header.item") },
+        { key: "farm_name", header: t("header.farm") },
         { key: "sku", header: t("header.sku") },
         { key: "category", header: t("header.category"), render: (r) => <Badge color="blue">{r.category}</Badge> },
         { key: "current_stock", header: t("header.stock") },

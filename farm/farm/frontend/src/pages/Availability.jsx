@@ -25,6 +25,7 @@ export default function Availability() {
       canWrite={canWrite}
       columns={[
         { key: "employee_name", header: t("header.employee") },
+        { key: "farm_name", header: t("header.farm") },
         { key: "status", header: t("header.status"), render: (r) => <Badge color={color[r.status] || "gray"}>{r.status_display || r.status}</Badge> },
         { key: "start_date", header: t("header.started") },
         { key: "end_date", header: t("header.ended"), render: (r) => r.end_date || "—" },

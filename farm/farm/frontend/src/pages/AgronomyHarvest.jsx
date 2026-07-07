@@ -18,6 +18,7 @@ export default function AgronomyHarvest() {
       footerColumns={["revenue"]}
       columns={[
         { key: "crop_name", header: t("header.crop") },
+        { key: "farm_name", header: t("header.farm") },
         { key: "date", header: t("header.date") },
         { key: "quantity", header: t("header.quantity"), render: (r) => `${r.quantity} ${r.unit || ""}`.trim() },
         { key: "quality_grade", header: t("header.grade"), render: (r) => r.quality_grade || "—" },

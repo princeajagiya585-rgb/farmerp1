@@ -17,6 +17,7 @@ export default function Performance() {
       canWrite={canWrite}
       columns={[
         { key: "employee_name", header: t("header.employee") },
+        { key: "farm_name", header: t("header.farm") },
         { key: "review_date", header: t("header.date") },
         { key: "period", header: t("header.period"), render: (r) => r.period || "—" },
         { key: "rating", header: t("header.rating"), render: (r) => <span className="text-amber-500" title={`${r.rating}/5`}>{stars(r.rating)}</span> },

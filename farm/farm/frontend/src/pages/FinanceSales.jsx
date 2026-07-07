@@ -23,6 +23,7 @@ export default function FinanceSales() {
       footerColumns={["amount"]}
       columns={[
         { key: "date", header: t("header.date") },
+        { key: "farm_name", header: t("header.farm") },
         { key: "buyer", header: t("header.buyer"), render: (r) => r.buyer || "—" },
         { key: "crop_name", header: t("header.crop"), render: (r) => r.crop_name || "—" },
         { key: "quantity", header: t("header.qty"), render: (r) => `${r.quantity} ${r.unit || ""}`.trim() },

@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
-const SW_VERSION = "v2.7"; // Increment to force service worker cache refresh
+const SW_VERSION = "v2.8"; // Increment to force service worker cache refresh
 
 const pwaManifest = {
   name: "FarmERP Pro — Smart Farm Management",
@@ -70,7 +70,9 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "autoUpdate",
+      // "prompt" enables manual update control via useRegisterSW() hook.
+      // The SW waits for user confirmation before activating — no silent reloads.
+      registerType: "prompt",
 
       includeAssets: [
         "icons/*.png",
@@ -84,8 +86,10 @@ export default defineConfig({
       workbox: {
         cacheId: `farmerp-${SW_VERSION}`,
         globPatterns: ["**/*.{js,css,html,png,ico,woff,woff2,ttf,eot}"],
-        skipWaiting: true,
-        clientsClaim: true,
+        // skipWaiting/clientsClaim controlled by useRegisterSW prompt flow
+        // (not auto) to allow user to choose when to activate the new version.
+        skipWaiting: false,
+        clientsClaim: false,
         // Runtime caching rules
         runtimeCaching: [
           {

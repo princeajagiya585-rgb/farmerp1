@@ -30,6 +30,7 @@ export default function FinancePayments() {
       footerColumns={["amount"]}
       columns={[
         { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
+        { key: "farm_name", header: t("header.farm") },
         { key: "date", header: t("header.date") },
         { key: "amount", header: t("header.amount"), render: (r) => <b>{money(r.amount)}</b> },
         { key: "mode", header: t("header.mode"), render: (r) => <Badge color={modeColor[r.mode] || "gray"}>{r.mode}</Badge> },

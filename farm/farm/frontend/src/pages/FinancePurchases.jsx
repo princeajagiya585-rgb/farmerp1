@@ -21,6 +21,7 @@ export default function FinancePurchases() {
       footerColumns={["total_amount"]}
       columns={[
         { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
+        { key: "farm_name", header: t("header.farm") },
         { key: "invoice_no", header: t("header.invoice"), render: (r) => r.invoice_no || "—" },
         { key: "quantity", header: t("header.qty"), render: (r) => (r.quantity ? `${r.quantity} ${r.unit || ""}`.trim() : "—") },
         { key: "unit_price", header: t("header.rate"), render: (r) => money(r.unit_price) },

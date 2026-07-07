@@ -15,6 +15,7 @@ export default function AgronomyPlantation() {
       canWrite={canWrite}
       columns={[
         { key: "crop_name", header: t("header.crop") },
+        { key: "farm_name", header: t("header.farm") },
         { key: "date", header: t("header.date") },
         { key: "spacing", header: t("header.spacing"), render: (r) => r.spacing || "—" },
         { key: "plant_count", header: t("header.plants") },

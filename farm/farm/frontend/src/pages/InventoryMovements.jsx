@@ -24,6 +24,7 @@ export default function InventoryMovements() {
       columns={[
         { key: "date", header: t("header.date") },
         { key: "item_name", header: t("header.item") },
+        { key: "farm_name", header: t("header.farm") },
         { key: "movement_type", header: t("header.type"), render: (r) => <Badge color={color[r.movement_type] || "gray"}>{r.movement_type}</Badge> },
         { key: "quantity", header: t("header.qty") },
         { key: "reason", header: t("header.reason"), render: (r) => r.reason || "—" },

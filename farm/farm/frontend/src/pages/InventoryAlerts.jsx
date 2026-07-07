@@ -39,6 +39,7 @@ export default function InventoryAlerts() {
             </span>
           ),
         },
+        { key: "farm_name", header: t("header.farm") },
         {
           key: "category",
           header: t("header.category"),

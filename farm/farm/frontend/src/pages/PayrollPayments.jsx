@@ -69,6 +69,7 @@ export default function PayrollPayments() {
       footerColumns={["amount"]}
       columns={[
         { key: "employee_name", header: t("header.employee") },
+        { key: "farm_name", header: t("header.farm") },
         { key: "amount", header: t("header.amount"), render: (r) => <b>{money(r.amount)}</b> },
         { key: "date", header: t("header.date") },
         {

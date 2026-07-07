@@ -21,6 +21,7 @@ export default function FinanceBudgets() {
       path="finance/budgets"
       canWrite={canWrite}
       columns={[
+        { key: "farm_name", header: t("header.farm") },
         { key: "fiscal_year", header: t("header.year") },
         { key: "month", header: t("header.month"), render: (r) => (r.month ? MONTHS[r.month - 1]?.label : "Whole year") },
         { key: "cost_center_name", header: t("header.costCenter"), render: (r) => r.cost_center_name || "—" },

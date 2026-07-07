@@ -52,20 +52,6 @@ class DashboardView(APIView):
         ).count()
         manager_count = emp_qs.filter(category="MANAGER").count()
 
-        # Farm-wise employee breakdown with present/total counts
-        farm_employee_breakdown = []
-        for farm in farms_qs:
-            farm_total = emp_qs.filter(farm=farm).count()
-            farm_present = att_qs.filter(
-                farm=farm, date=today, status=Attendance.Status.PRESENT
-            ).count()
-            farm_employee_breakdown.append({
-                "farm_id": str(farm.id),
-                "farm_name": farm.name,
-                "total_count": farm_total,
-                "present_today": farm_present,
-            })
-
         crop_qs = Crop.objects.filter(farm_id__in=farm_ids)
         active_crops = crop_qs.filter(
             status__in=[Crop.Status.PLANNED, Crop.Status.PLANTED, Crop.Status.GROWING]
@@ -238,6 +224,20 @@ class DashboardView(APIView):
 
         total_users = User.objects.filter(is_active=True).count()
 
+        # ── Recalculate farm_employee_breakdown using USERS per farm ──────────
+        # The HR box on the dashboard shows which users are assigned to each farm.
+        farm_user_breakdown = []
+        for farm in farms_qs:
+            farm_users = User.objects.filter(farms=farm)
+            farm_total = farm_users.count()
+            farm_active = farm_users.filter(is_active=True).count()
+            farm_user_breakdown.append({
+                "farm_id": str(farm.id),
+                "farm_name": farm.name,
+                "total_count": farm_total,
+                "active_count": farm_active,
+            })
+
         alerts = []
         if low_stock_items:
             alerts.append(f"{len(low_stock_items)} item(s) are low on stock")
@@ -259,7 +259,7 @@ class DashboardView(APIView):
                     "absent_today": absent_today,
                     "manager_count": manager_count,
                     "pending_approvals": pending_approvals,
-                    "farm_breakdown": farm_employee_breakdown,
+                    "farm_breakdown": farm_user_breakdown,
                 },
                 "crop_kpis": {
                     "active_crops": active_crops,

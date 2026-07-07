@@ -47,6 +47,7 @@ export default function Finance() {
           footerColumns={["amount"]}
           columns={[
             { key: "description", header: t("header.description") },
+            { key: "farm_name", header: t("header.farm") },
             { key: "category", header: t("header.category"), render: (r) => <Badge color="blue">{r.category}</Badge> },
             { key: "amount", header: t("header.amount"), render: (r) => `₹${Number(r.amount || 0).toLocaleString("en-IN")}` },
             { key: "date", header: t("header.date") },
@@ -90,6 +91,7 @@ export default function Finance() {
           footerColumns={["amount"]}
           columns={[
             { key: "source", header: t("header.source") },
+            { key: "farm_name", header: t("header.farm") },
             { key: "amount", header: t("header.amount"), render: (r) => `₹${Number(r.amount || 0).toLocaleString("en-IN")}` },
             { key: "date", header: t("header.date") },
             { key: "description", header: t("header.description") },

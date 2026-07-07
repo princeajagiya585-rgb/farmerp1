@@ -50,6 +50,7 @@ export default function EmploymentHistory() {
       ) : null}
       columns={[
         { key: "employee_name", header: t("header.employee") },
+        { key: "farm_name", header: t("header.farm") },
         { key: "event_type", header: t("header.event"), render: (r) => <Badge color={color[r.event_type] || "gray"}>{r.event_type_display || r.event_type}</Badge> },
         { key: "designation", header: t("header.designation"), render: (r) => r.designation || "—" },
         { key: "department_name", header: t("header.department"), render: (r) => r.department_name || "—" },

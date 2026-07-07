@@ -143,7 +143,11 @@ export default function Tasks() {
           header: t("header.schedule"),
           render: (r) => t(scheduleLabelMap[r.schedule_type] || r.schedule_type),
         },
-        { key: "assigned_to_name", header: t("header.assignee"), render: (r) => r.assigned_to_name || r.assigned_employee_name || "—" },
+        { key: "assigned_to_name", header: t("header.user"), render: (r) => {
+            if (r.active_session?.user_name) return r.active_session.user_name;
+            if (r.active_session?.username) return r.active_session.username;
+            return r.assigned_to_name || r.assigned_employee_name || "—";
+          } },
         {
           key: "due_date",
           header: t("header.dueDate"),

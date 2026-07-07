@@ -15,6 +15,7 @@ export default function AgronomyGrowth() {
       canWrite={canWrite}
       columns={[
         { key: "crop_name", header: t("header.crop") },
+        { key: "farm_name", header: t("header.farm") },
         { key: "date", header: t("header.date") },
         { key: "stage", header: t("header.stage"), render: (r) => r.stage || "—" },
         { key: "height_cm", header: t("header.height") },

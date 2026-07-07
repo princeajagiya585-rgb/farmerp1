@@ -6,7 +6,7 @@ import App from "./App";
 import { applyStoredTheme } from "./components/ThemeToggle";
 import { initPWA } from "./lib/pwa";
 import { useRegisterSW } from "virtual:pwa-register/react";
-import UpdatePopup from "./components/UpdatePopup";
+
 import "./i18n";
 import "./index.css";
 
@@ -33,10 +33,7 @@ function PwaUpdateRoot() {
 
   return (
     <>
-      <UpdatePopup
-        needRefresh={needRefresh}
-        updateServiceWorker={updateServiceWorker}
-      />
+     
       <App />
     </>
   );

@@ -27,6 +27,7 @@ export default function AssetMaintenance() {
       footerColumns={["cost"]}
       columns={[
         { key: "asset_name", header: t("header.asset") },
+        { key: "farm_name", header: t("header.farm") },
         {
           key: "maintenance_type",
           header: t("header.type"),

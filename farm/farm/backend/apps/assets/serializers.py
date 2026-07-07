@@ -27,6 +27,7 @@ class AssetSerializer(serializers.ModelSerializer):
 
 class AssetMaintenanceSerializer(serializers.ModelSerializer):
     asset_name = serializers.CharField(source="asset.name", read_only=True)
+    farm_name = serializers.CharField(source="asset.farm.name", read_only=True)
     maintenance_type_display = serializers.CharField(
         source="get_maintenance_type_display", read_only=True
     )

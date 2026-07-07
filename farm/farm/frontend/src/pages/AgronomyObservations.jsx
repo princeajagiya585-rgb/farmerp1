@@ -41,6 +41,7 @@ export default function AgronomyObservations() {
       canWrite={canWrite}
       columns={[
         { key: "title", header: t("header.title") },
+        { key: "farm_name", header: t("header.farm") },
         { key: "crop_name", header: t("header.crop") },
         { key: "observation_type", header: t("header.type"), render: (r) => <Badge color={typeColor[r.observation_type] || "gray"}>{t(typeLabelMap[r.observation_type] || r.observation_type)}</Badge> },
         { key: "severity", header: t("header.severity"), render: (r) => <Badge color={sevColor[r.severity] || "gray"}>{t(sevLabelMap[r.severity] || r.severity)}</Badge> },

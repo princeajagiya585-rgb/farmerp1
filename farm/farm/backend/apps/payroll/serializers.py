@@ -63,6 +63,7 @@ class PayslipSerializer(serializers.ModelSerializer):
 @extend_schema_serializer(component_name="PayrollPayment")
 class PaymentSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source="employee.name", read_only=True)
+    farm_name = serializers.CharField(source="employee.farm.name", read_only=True)
 
     class Meta:
         model = Payment

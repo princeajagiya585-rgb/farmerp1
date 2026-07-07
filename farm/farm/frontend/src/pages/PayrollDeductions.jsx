@@ -68,6 +68,7 @@ export default function PayrollDeductions() {
       footerColumns={["amount"]}
       columns={[
         { key: "employee_name", header: t("header.employee") },
+        { key: "farm_name", header: t("header.farm") },
         {
           key: "deduction_type",
           header: t("header.type"),
