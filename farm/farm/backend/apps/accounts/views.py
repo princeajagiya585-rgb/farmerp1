@@ -425,6 +425,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """Exclude soft-deleted users from the default list."""
+        logger.info("[GET_QUERYSET] action=%s", self.action)
         qs = User.objects.prefetch_related("farms").all()
         if self.action == "list_deleted":
             return qs.filter(deleted_at__isnull=False).order_by("-deleted_at")
@@ -521,7 +522,13 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="deleted", url_name="deleted")
     def list_deleted(self, request):
         """Return all soft-deleted users (only visible to SUPER_ADMIN)."""
-        deleted = self.get_queryset()
+        logger.info("[LIST_DELETED] action reached by user=%s", request.user)
+        try:
+            deleted = self.get_queryset()
+            logger.info("[LIST_DELETED] queryset count=%s", deleted.count())
+        except Exception as e:
+            logger.error("[LIST_DELETED] get_queryset failed: %s", e)
+            return Response({"detail": f"Query error: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         page = self.paginate_queryset(deleted)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
