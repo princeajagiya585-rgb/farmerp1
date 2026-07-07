@@ -38,6 +38,7 @@ export default function Inventory() {
           render: (r) =>
             r.is_low_stock ? <Badge color="red">Low Stock</Badge> : <Badge color="green">OK</Badge>,
         },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "name", label: "Item Name", required: true },

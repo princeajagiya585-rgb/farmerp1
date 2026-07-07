@@ -52,6 +52,7 @@ export default function Finance() {
             { key: "amount", header: t("header.amount"), render: (r) => `₹${Number(r.amount || 0).toLocaleString("en-IN")}` },
             { key: "date", header: t("header.date") },
             { key: "status", header: t("header.status"), render: (r) => <Badge color={stColor[r.status]}>{r.status}</Badge> },
+            { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
           ]}
           rowActions={(row, reload) =>
             canWrite && row.status === "PENDING" ? (
@@ -95,6 +96,7 @@ export default function Finance() {
             { key: "amount", header: t("header.amount"), render: (r) => `₹${Number(r.amount || 0).toLocaleString("en-IN")}` },
             { key: "date", header: t("header.date") },
             { key: "description", header: t("header.description") },
+            { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
           ]}
           fields={[{ name: "source",
               label: t("finance.source"),

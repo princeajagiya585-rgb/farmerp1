@@ -106,6 +106,7 @@ export default function CropAllocation() {
         },
         { key: "growth_stage", header: t("header.stage") },
         { key: "status", header: t("header.status"), render: (r) => <Badge color={statusColor[r.status]}>{r.status}</Badge> },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "name", label: "Crop Name", required: true },

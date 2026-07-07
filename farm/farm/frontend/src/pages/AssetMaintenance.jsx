@@ -42,6 +42,7 @@ export default function AssetMaintenance() {
         { key: "cost", header: t("header.cost"), render: (r) => money(r.cost) },
         { key: "performed_by", header: t("header.performedBy"), render: (r) => r.performed_by || "—" },
         { key: "next_due_date", header: t("header.nextDue"), render: (r) => r.next_due_date || "—" },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "asset", label: "Asset", optionsFrom: { path: "assets/items", label: (a) => a.name }, required: true },

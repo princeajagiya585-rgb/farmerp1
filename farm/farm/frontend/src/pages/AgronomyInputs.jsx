@@ -41,6 +41,7 @@ export default function AgronomyInputs() {
         { key: "quantity", header: t("header.qty"), render: (r) => `${r.quantity} ${r.unit || ""}`.trim() },
         { key: "applied_on", header: t("header.applied"), render: (r) => r.applied_on || "—" },
         { key: "cost", header: t("header.cost"), render: (r) => money(r.cost) },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "crop", label: t("header.crop"), optionsFrom: { path: "agronomy/crops", label: (c) => `${c.name} ${c.variety || ""}`.trim() }, required: true },

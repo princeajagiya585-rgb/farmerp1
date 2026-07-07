@@ -77,6 +77,7 @@ export default function PayrollDeductions() {
         { key: "amount", header: t("header.amount"), render: (r) => money(r.amount) },
         { key: "date", header: t("header.date") },
         { key: "notes", header: t("header.notes"), render: (r) => r.notes || "—" },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "employee", label: "Employee", optionsFrom: { path: "workforce/employees", label: (e) => e.name }, required: true },

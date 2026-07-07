@@ -59,6 +59,7 @@ import GpsMonitor from "./pages/GpsMonitor";
 import Breakdowns from "./pages/Breakdowns";
 import Reports from "./pages/Reports";
 import Users from "./pages/Users";
+import DeletedUsers from "./pages/DeletedUsers";
 import AuditLogs from "./pages/AuditLogs";
 import Notifications from "./pages/Notifications";
 import NotificationSettings from "./pages/NotificationSettings";
@@ -142,6 +143,7 @@ export default function App() {
         <Route path="/breakdowns" element={R(["FARM_MANAGER", "EMPLOYEE"], <Breakdowns />)} />
         <Route path="/reports" element={R(["FARM_MANAGER"], <Reports />)} />
         <Route path="/users" element={R(["SUPER_ADMIN"], <Users />)} />
+        <Route path="/users/deleted" element={R(["SUPER_ADMIN"], <DeletedUsers />)} />
         <Route path="/audit" element={R(["SUPER_ADMIN"], <AuditLogs />)} />
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/notification-settings" element={<NotificationSettings />} />

@@ -23,6 +23,7 @@ export default function Performance() {
         { key: "rating", header: t("header.rating"), render: (r) => <span className="text-amber-500" title={`${r.rating}/5`}>{stars(r.rating)}</span> },
         { key: "reviewer_name", header: t("header.reviewer"), render: (r) => r.reviewer_name || "—" },
         { key: "remarks", header: t("header.remarks"), render: (r) => r.remarks || "—" },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "employee", label: t("performance.employee"), optionsFrom: { path: "workforce/employees", label: (e) => e.name }, required: true },

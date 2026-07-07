@@ -63,6 +63,7 @@ export default function CropMonitoring() {
             { key: "height_cm",    header: t("cropMon.heightCm") },
             { key: "health_index", header: t("cropMon.healthIndex"), render: (r) => `${r.health_index}/100` },
             { key: "notes",        header: t("cropMon.notes"), render: (r) => r.notes || "—" },
+            { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
           ]}
           fields={[
             { name: "crop",         label: t("cropMon.crop"),         optionsFrom: { path: "agronomy/crops", label: (c) => `${c.name} ${c.variety || ""}`.trim() }, required: true },

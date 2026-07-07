@@ -20,6 +20,7 @@ export default function AgronomyGrowth() {
         { key: "stage", header: t("header.stage"), render: (r) => r.stage || "—" },
         { key: "height_cm", header: t("header.height") },
         { key: "health_index", header: t("header.health"), render: (r) => `${r.health_index}/100` },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "crop", label: t("agronomyGrowth.fieldCrop"), optionsFrom: { path: "agronomy/crops", label: (c) => `${c.name} ${c.variety || ""}`.trim() }, required: true },

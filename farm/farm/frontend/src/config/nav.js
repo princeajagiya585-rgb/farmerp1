@@ -136,6 +136,7 @@ export const navGroups = [
     icon: UserCog,
     children: [
       { to: "/users", label: "Users", roles: ["SUPER_ADMIN"] },
+      { to: "/users/deleted", label: "Deleted Users", roles: ["SUPER_ADMIN"] },
       { to: "/notification-settings", label: "Notification Settings", roles: ["SUPER_ADMIN", "FARM_MANAGER", "EMPLOYEE"] },
     ],
   },

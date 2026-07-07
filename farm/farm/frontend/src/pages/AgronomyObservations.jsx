@@ -51,6 +51,7 @@ export default function AgronomyObservations() {
           render: (r) => <PhotoThumb url={normalizePhotoUrl(r.photo_url)} alt={t("agronomyObs.photo")} size={48} />,
         },
         { key: "observed_on", header: t("header.observed"), render: (r) => r.observed_on || "—" },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "crop", label: t("header.crop"), optionsFrom: { path: "agronomy/crops", label: (c) => `${c.name} ${c.variety || ""}`.trim() }, required: true },

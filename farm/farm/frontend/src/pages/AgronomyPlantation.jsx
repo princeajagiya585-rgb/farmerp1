@@ -19,6 +19,7 @@ export default function AgronomyPlantation() {
         { key: "date", header: t("header.date") },
         { key: "spacing", header: t("header.spacing"), render: (r) => r.spacing || "—" },
         { key: "plant_count", header: t("header.plants") },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "crop", label: t("agronomyPlantation.fieldCrop"), optionsFrom: { path: "agronomy/crops", label: (c) => `${c.name} ${c.variety || ""}`.trim() }, required: true },

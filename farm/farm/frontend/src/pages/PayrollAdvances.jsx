@@ -76,6 +76,7 @@ export default function PayrollAdvances() {
             <Badge color={r.status === "CLEARED" ? "green" : "yellow"}>{r.status}</Badge>
           ),
         },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "employee", label: t("header.employee"), optionsFrom: { path: "workforce/employees", label: (e) => e.name }, required: true },

@@ -20,6 +20,7 @@ export default function LabourAllocation() {
 
         { key: "date", header: t("header.date") },
         { key: "work_description", header: t("header.work"), render: (r) => r.work_description || "—" },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "employee", label: t("labourAllocation.employee"), optionsFrom: { path: "workforce/employees", label: (e) => e.name }, required: true },

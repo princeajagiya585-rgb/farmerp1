@@ -42,6 +42,7 @@ export default function Agronomy() {
         { key: "area", header: t("agronomy.areaAc") },
         { key: "growth_stage", header: t("agronomy.stage") },
         { key: "status", header: t("agronomy.status"), render: (r) => <Badge color={statusColor[r.status]}>{t(statusLabelMap[r.status] || r.status)}</Badge> },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "name", label: t("agronomy.cropName"), required: true },

@@ -30,6 +30,7 @@ export default function Availability() {
         { key: "start_date", header: t("header.started") },
         { key: "end_date", header: t("header.ended"), render: (r) => r.end_date || "—" },
         { key: "reason", header: t("header.reason"), render: (r) => r.reason || "—" },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "employee", label: t("availability.employee"), optionsFrom: { path: "workforce/employees", label: (e) => e.name }, required: true },

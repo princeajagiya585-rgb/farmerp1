@@ -33,7 +33,7 @@ function PwaUpdateRoot() {
 
   return (
     <>
-     
+
       <App />
     </>
   );

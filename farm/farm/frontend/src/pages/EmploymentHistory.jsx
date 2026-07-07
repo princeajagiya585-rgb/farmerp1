@@ -56,6 +56,7 @@ export default function EmploymentHistory() {
         { key: "department_name", header: t("header.department"), render: (r) => r.department_name || "—" },
         { key: "effective_date", header: t("header.effective") },
         { key: "notes", header: t("header.notes"), render: (r) => r.notes || "—" },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "employee", label: t("employmentHistory.employee"), optionsFrom: { path: "workforce/employees", label: (e) => e.name }, required: true },

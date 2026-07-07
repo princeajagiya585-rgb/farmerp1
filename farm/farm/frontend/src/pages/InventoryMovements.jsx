@@ -29,6 +29,7 @@ export default function InventoryMovements() {
         { key: "quantity", header: t("header.qty") },
         { key: "reason", header: t("header.reason"), render: (r) => r.reason || "—" },
         { key: "reference", header: t("header.reference"), render: (r) => r.reference || "—" },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "item", label: "Item", optionsFrom: { path: "inventory/items", label: (i) => `${i.name} (${i.sku})` }, required: true },

@@ -78,6 +78,7 @@ export default function PayrollPayments() {
           render: (r) => <Badge color={modeColor[r.mode] || "gray"}>{r.mode}</Badge>,
         },
         { key: "reference", header: t("header.reference"), render: (r) => r.reference || "—" },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "employee", label: "Employee", optionsFrom: { path: "workforce/employees", label: (e) => e.name }, required: true },

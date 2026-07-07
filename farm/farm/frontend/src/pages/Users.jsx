@@ -285,15 +285,35 @@ export default function Users() {
   const executeDelete = async () => {
     if (!deleteConfirm) return;
     const user = deleteConfirm;
-    setDeleteConfirm(null);
     setDeleting(true);
     try {
       await usersRepo.destroy(user.id);
+      setDeleteConfirm(null);
       addToast(`User "${user.username}" has been deleted successfully.`, "success");
       loadData();
     } catch (e) {
-      const detail = e?.response?.data?.detail || "Failed to delete user.";
-      addToast(typeof detail === "string" ? detail : JSON.stringify(detail), "error");
+      setDeleteConfirm(null);
+      // Extract the most specific error message possible
+      let detail = "Failed to delete user.";
+      if (e?.response?.data) {
+        const data = e.response.data;
+        // DRF returns { detail: "..." } for permission/not-found errors
+        if (typeof data === "string") detail = data;
+        else if (data.detail) detail = data.detail;
+        // Some errors return { non_field_errors: ["..."] }
+        else if (Array.isArray(data.non_field_errors)) detail = data.non_field_errors[0];
+        // Serializer errors may have field-level errors
+        else if (typeof data === "object") {
+          const firstKey = Object.keys(data)[0];
+          const val = data[firstKey];
+          if (Array.isArray(val)) detail = `${firstKey}: ${val[0]}`;
+          else if (typeof val === "string") detail = val;
+        }
+      } else if (e?.message) {
+        detail = e.message;
+      }
+      console.error("[DELETE_USER_ERROR]", detail, e);
+      addToast(detail, "error");
     } finally {
       setDeleting(false);
     }
@@ -370,9 +390,13 @@ export default function Users() {
     return true;
   });
 
+  // Sort: active users first, inactive users last
+  const sortByActive = (list) =>
+    [...list].sort((a, b) => (a.is_active === b.is_active ? 0 : a.is_active ? -1 : 1));
+
   // Show ALL super admins (active + inactive) in the Administrators table
-  const adminUsers = filteredUsers.filter(u => u.role === "SUPER_ADMIN");
-  const otherUsers = filteredUsers.filter(u => u.role !== "SUPER_ADMIN");
+  const adminUsers = sortByActive(filteredUsers.filter(u => u.role === "SUPER_ADMIN"));
+  const otherUsers = sortByActive(filteredUsers.filter(u => u.role !== "SUPER_ADMIN"));
 
   const renderUserRow = (user) => {
     const emp = userEmpMap[user.id];

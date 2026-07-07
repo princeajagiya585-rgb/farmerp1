@@ -24,6 +24,7 @@ export default function AgronomyHarvest() {
         { key: "quality_grade", header: t("header.grade"), render: (r) => r.quality_grade || "—" },
         { key: "yield_per_acre", header: t("header.yieldPerAcre") },
         { key: "revenue", header: t("header.revenue"), render: (r) => money(r.revenue) },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "crop", label: t("agronomyHarvest.fieldCrop"), optionsFrom: { path: "agronomy/crops", label: (c) => `${c.name} ${c.variety || ""}`.trim() }, required: true },

@@ -50,6 +50,7 @@ export default function InventoryAlerts() {
         { key: "reorder_level", header: t("header.reorderAt") },
         { key: "unit_cost",     header: "Unit Cost",           render: (r) => `₹${r.unit_cost}` },
         { key: "supplier",      header: t("header.supplier"),  render: (r) => r.supplier || "—" },
+        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "name",          label: t("header.item"),      required: true },
