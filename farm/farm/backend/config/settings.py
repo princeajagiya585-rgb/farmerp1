@@ -272,6 +272,13 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True
 
 # ---------------------------------------------------------------------------
+# Supabase Storage (replaces local MEDIA_ROOT / S3)
+# ---------------------------------------------------------------------------
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "uploads")
+
+# ---------------------------------------------------------------------------
 # I18N
 # ---------------------------------------------------------------------------
 LANGUAGE_CODE = "en-us"
@@ -310,6 +317,12 @@ if env_bool("USE_S3", False):
         "default": {"BACKEND": "storages.backends.s3.S3Storage"},
         "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
     }
+elif SUPABASE_URL and SUPABASE_SERVICE_KEY:
+    # Supabase Storage overrides the default file storage when credentials
+    # are present.  All ImageField / FileField uploads go to the Supabase
+    # Storage bucket instead of the local filesystem.
+    STORAGES["default"] = {"BACKEND": "apps.core.storage.SupabaseFileStorage"}
+    # MEDIA_URL and MEDIA_ROOT are kept as fallback for backward compatibility.
 
 # ---------------------------------------------------------------------------
 # Email (Gmail SMTP)

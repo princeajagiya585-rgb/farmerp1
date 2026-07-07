@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { RotateCcw, Search, UserX } from "lucide-react";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { resource } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 import { Badge, Button, Card, Modal, ToastContainer, useToast } from "../components/ui";
 import { roleLabels } from "../config/nav";
 
@@ -10,6 +11,7 @@ const usersRepo = resource("auth/users");
 
 export default function DeletedUsers() {
   const { t } = useTranslation();
+  const { user, loading: authLoading } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -18,16 +20,19 @@ export default function DeletedUsers() {
   const [toasts, addToast, removeToast] = useToast();
 
   const loadDeletedUsers = useCallback(async () => {
+    // ⛔ Do NOT fire API calls until auth initialization completes.
+    // This prevents the request from racing ahead of token setup.
+    if (authLoading || !user) return;
     setLoading(true);
     try {
       const data = await usersRepo.collectionAction("deleted", { page_size: 200 });
       setUsers(Array.isArray(data) ? data : data.results || []);
-    } catch {
-      // ignore
+    } catch (err) {
+      console.warn("[DeletedUsers] Failed to load deleted users:", err?.response?.status, err?.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [authLoading, user]);
 
   useEffect(() => {
     loadDeletedUsers();

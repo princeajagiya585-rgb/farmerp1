@@ -422,6 +422,7 @@ export function PhotoThumb({ url, alt = "Photo", noPhotoLabel = "—", size = 40
       <img
         src={url}
         alt={alt}
+        loading="lazy"
         className="object-cover rounded-md cursor-pointer ring-1 ring-gray-200"
         style={{ width: size, height: size }}
         onClick={() => {

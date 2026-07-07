@@ -10,10 +10,15 @@ const API_BASE = `${API_ORIGIN}/api/v1`;
 export const api = axios.create({ baseURL: API_BASE });
 
 // ── Photo/Media URL Normalizer ────────────────────────────────────────
-// Converts relative URLs (/media/...) to absolute URLs that work in both
-// development and production. In production, relative URLs are proxied
-// through Vercel to Railway, so we just need to ensure the URL starts
-// with /media/ for the proxy to work.
+// Converts various URL formats to absolute URLs for rendering <img> tags.
+//
+// In production with Supabase Storage, URLs are already absolute Supabase
+// CDN URLs (https://<project>.supabase.co/storage/v1/object/public/...).
+// In development, relative URLs are proxied through Vite to Django.
+// In production with local storage, relative URLs are proxied through Vercel.
+//
+// This function simply passes through absolute URLs, handles relative URLs
+// for the proxy, and returns null for empty/invalid inputs.
 export function normalizePhotoUrl(url) {
   if (!url) return null;
   // Already absolute URL (http/https) - return as-is
@@ -26,6 +31,12 @@ export function normalizePhotoUrl(url) {
   }
   // Handle other relative paths (e.g., /uploads/...)
   return url;
+}
+
+// ── Image URL with fallback ─────────────────────────────────────────────
+// Returns a safe image URL or null for fallback rendering.
+export function safeImageUrl(url) {
+  return normalizePhotoUrl(url);
 }
 
 export const tokenStore = {
@@ -98,6 +109,10 @@ api.request = function (config) {
 // a rejected promise would short-circuit the chain and no HTTP request
 // would be dispatched).
 api.interceptors.request.use(async (config) => {
+  // ── Log every outgoing request URL ──────────────────────────────
+  const base = config.baseURL || api.defaults.baseURL || "";
+  console.log("[API] REQUEST:", config.method?.toUpperCase(), `${base}${config.url}`, config.params || "");
+
   try {
     // ── Proactive token refresh ───────────────────────────────────
     const currentAccess = tokenStore.access;

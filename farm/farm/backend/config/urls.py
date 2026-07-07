@@ -56,15 +56,16 @@ urlpatterns = [
     path("api/v1/health/", health_check, name="api-health-check"),  # Also at API path
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
-]
+]    # Serve media files in both dev and production
+# When Supabase Storage is configured, uploaded files are served via the
+# Supabase CDN — no need for Django to serve media locally.  We only add
+# the media route as a fallback when Supabase is not set up.
+_use_supabase = bool(getattr(settings, "SUPABASE_URL", "") and getattr(settings, "SUPABASE_SERVICE_KEY", ""))
 
-# Serve media files in both dev and production
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-else:
-    # In production (DEBUG=False), Django doesn't serve media automatically.
-    # WhiteNoise serves static files but not media uploads, so add an explicit
-    # route so uploaded photos (attendance, field-activity, etc.) are accessible.
-    urlpatterns += [
-        path("media/<path:path>", static_serve, {"document_root": settings.MEDIA_ROOT}),
-    ]
+if not _use_supabase:
+    if settings.DEBUG:
+        urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    else:
+        urlpatterns += [
+            path("media/<path:path>", static_serve, {"document_root": settings.MEDIA_ROOT}),
+        ]

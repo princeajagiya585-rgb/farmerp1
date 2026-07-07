@@ -11,16 +11,17 @@ def build_absolute_photo_url(photo, request=None):
     """
     Convert a photo/ImageField value to an absolute URL.
 
-    When using S3 storage, ``photo.url`` already returns a fully qualified
-    URL (e.g. ``https://bucket.s3.amazonaws.com/media/photo.jpg``), so we
-    must NOT wrap it with ``request.build_absolute_uri`` again — that would
-    produce double-scheme URLs like ``https://host/https://bucket/...``.
+    When using Supabase (or S3) storage, ``photo.url`` already returns a
+    fully qualified CDN URL (e.g.
+    ``https://<project>.supabase.co/storage/v1/object/public/uploads/... ``),
+    so we must NOT wrap it with ``request.build_absolute_uri`` again — that
+    would produce double-scheme URLs.
 
     Resolution order:
-    1. ``None`` / empty   → return ``None``
-    2. Already absolute   → return as-is (S3)
-    3. Has ``request``    → ``request.build_absolute_uri(url)``
-    4. Fallback           → ``settings.BACKEND_URL + url``
+    1. ``None`` / empty    → return ``None``
+    2. Already absolute    → return as-is (Supabase / S3 / CDN)
+    3. Has ``request``     → ``request.build_absolute_uri(url)``
+    4. Fallback            → ``settings.BACKEND_URL + url``
     """
     if not photo:
         return None
@@ -32,7 +33,7 @@ def build_absolute_photo_url(photo, request=None):
     if not url:
         return None
 
-    # Already an absolute URL (S3, CDN, etc.) — return as-is.
+    # Already an absolute URL (Supabase CDN, S3, etc.) — return as-is.
     if url.startswith(("http://", "https://")):
         return url
 
