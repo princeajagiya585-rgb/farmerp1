@@ -10,7 +10,7 @@ export default function Fields() {
   return (
     <CrudResource
       title={t("fields.titlePg")}
-      subtitle={t("fields.subtitlePg")}"
+      subtitle={t("fields.subtitlePg")}
       path="farms/fields"
       canWrite={canWrite}
       columns={[

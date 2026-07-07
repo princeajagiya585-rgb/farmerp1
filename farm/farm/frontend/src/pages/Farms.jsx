@@ -26,7 +26,7 @@ export default function Farms() {
   return (
     <CrudResource
       title={t("farms.title")}
-      subtitle={t("farms.subtitle")}"
+      subtitle={t("farms.subtitle")}
       path="farms"
       canWrite={canWrite}
       columns={[

@@ -29,6 +29,7 @@ def health_check(request):
     from django.http import JsonResponse
     return JsonResponse({"status": "healthy"})
 
+
 api_v1 = [
     path("auth/", include("apps.accounts.urls")),
     path("farms/", include("apps.farms.urls")),

@@ -84,11 +84,22 @@ api.request = function (config) {
         await new Promise((resolve) => setTimeout(resolve, wait));
       }
     }
+    return originalRequest(config);
+  };
+  return enqueueRequest(doRequest);
+};
 
-    // ── Proactive token refresh ─────────────────────────────────────
-    // Instead of waiting for a 401 response, refresh the access token
-    // *before* sending the request if it has expired. This eliminates
-    // the initial 401 burst on page load / after login.
+// ── Request Interceptor: Attach Authorization header & proactive refresh ──
+// This runs INSIDE originalRequest, AFTER Axios has merged config with
+// defaults. The entire body is wrapped in try/catch so that even if
+// `refreshAccessToken`, `isTokenExpired`, or `tokenStore.access` throws
+// an unexpected error, we STILL return `config` and let the request
+// proceed (Axios interceptor chain MUST receive the config object back;
+// a rejected promise would short-circuit the chain and no HTTP request
+// would be dispatched).
+api.interceptors.request.use(async (config) => {
+  try {
+    // ── Proactive token refresh ───────────────────────────────────
     const currentAccess = tokenStore.access;
     if (currentAccess && isTokenExpired(currentAccess) && tokenStore.refresh) {
       try {
@@ -96,16 +107,55 @@ api.request = function (config) {
       } catch {
         // Refresh failed — silently ignored.
         // The API call will proceed with the expired token; if the
-        // server returns a 401, the interceptor will try again.
+        // server returns a 401, the response interceptor will retry.
       }
     }
+  } catch (e) {
+    // Any unexpected error in the refresh logic must NOT prevent the
+    // request from being sent. Log it and continue.
+    console.warn("[API] Request interceptor error (non-fatal):", e);
+  }
 
+  // ── Attach Authorization header ────────────────────────────────
+  // This runs regardless of whether the try block above succeeded or
+  // failed. The `|| {}` guard handles the case where Axios helper methods
+  // (get/post/patch/delete) build the config without a `headers` property
+  // (mergeConfig inside originalRequest hasn't run yet, so config.headers
+  // is undefined at this point in the interceptor chain).
+  try {
     const token = tokenStore.access;
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-    return originalRequest(config);
-  };
-  return enqueueRequest(doRequest);
-};
+    if (token) {
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  } catch (e) {
+    console.warn("[API] Failed to attach Authorization header:", e);
+  }
+
+  // ALWAYS return config — the Axios interceptor chain requires it.
+  // If we throw or return undefined, the HTTP request is never dispatched.
+  return config;
+});
+  
+// ── Response Interceptor: Log missing Authorization header ────────────
+// When the backend returns 401, log a warning if no Authorization header
+// was present — this helps identify auth configuration issues.
+api.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    if (error.response?.status === 401 && error.config) {
+      const hasAuth = !!error.config.headers?.Authorization;
+      if (!hasAuth) {
+        console.warn(
+          "[AUTH] Request to", error.config.url,
+          "returned 401 — no Authorization header was attached.",
+        );
+      }
+    }
+    // Pass through to the main response interceptor below
+    return Promise.reject(error);
+  },
+);
 
 /**
  * Decode a JWT payload (base64url -> JSON) without a library.

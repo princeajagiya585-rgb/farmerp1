@@ -103,7 +103,7 @@ function canAccess(roles, userRole) {
 
 export default function Dashboard() {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -163,6 +163,11 @@ export default function Dashboard() {
   };
 
  useEffect(() => {
+  // ⛔ Do NOT fire any API call until auth is fully initialized.
+  // Otherwise the backend receives the request without an Authorization
+  // header and returns 401, triggering an unnecessary refresh cycle.
+  if (authLoading || !user) return;
+
   loadDashboard();
 
   if (!pollingRef.current) {
@@ -184,7 +189,7 @@ export default function Dashboard() {
       retryRef.current = null;
     }
   };
-}, []);
+}, [authLoading, user]);
 
   if (error && !kpi) {
     return (
