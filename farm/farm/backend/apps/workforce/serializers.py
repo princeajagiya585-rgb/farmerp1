@@ -41,7 +41,14 @@ class SkillSerializer(serializers.ModelSerializer):
         return [{"id": e.id, "name": e.name} for e in obj.employees.all()]
 
 
+from rest_framework import serializers
+from .models import Employee
+
 class EmployeeSerializer(serializers.ModelSerializer):
+    role = serializers.CharField(source="user.role", read_only=True)
+
+    
+        
     name = serializers.CharField(required=False)
     farm_name = serializers.CharField(source="farm.name", read_only=True)
     assigned_farms = serializers.SerializerMethodField()
@@ -58,11 +65,15 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Employee
-        fields = ["id", "name", "employee_code", "first_name", "last_name", "phone",
-                  "employment_type", "designation", "farm", "farm_name", "assigned_farms", "department",
-                  "department_name", "skills", "skill_names", "skill_ids", "address",
-                  "photo", "photo_url", "is_active", "category", "user", "created_at", "updated_at",
-                  "daily_wage", "monthly_salary", "date_of_joining"]
+        fields = [
+    "id", "name", "employee_code", "first_name", "last_name", "phone",
+    "role",                     # <-- ADD THIS
+    "employment_type", "designation", "farm", "farm_name", "assigned_farms",
+    "department", "department_name", "skills", "skill_names", "skill_ids",
+    "address", "photo", "photo_url", "is_active", "category", "user",
+    "created_at", "updated_at", "daily_wage", "monthly_salary",
+    "date_of_joining"
+]
         extra_kwargs = {
             'first_name': {'required': False},
             'last_name': {'required': False},

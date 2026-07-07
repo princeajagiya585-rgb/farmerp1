@@ -97,20 +97,20 @@ export default function Login() {
 
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
-    if (!resetOtp.trim()) return;
-    setLoading(true);
+    if (resetOtp.length < 6) return;
     setError("");
-    try {
-      setForgotPasswordStep(3);
-    } finally {
-      setLoading(false);
-    }
+    // OTP will be verified by backend during final password reset
+    setForgotPasswordStep(3);
   };
 
   const handleResetPassword = async (e) => {
     e.preventDefault();
     if (resetNewPassword !== resetConfirmPassword) {
       setError("Passwords do not match.");
+      return;
+    }
+    if (resetNewPassword.length < 6) {
+      setError("Password must be at least 6 characters.");
       return;
     }
     setLoading(true);
@@ -130,7 +130,7 @@ export default function Login() {
       setResetConfirmPassword("");
       setError("");
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to reset password.");
+      setError(err.response?.data?.detail || "Failed to reset password. Please check your OTP and try again.");
     } finally {
       setLoading(false);
     }

@@ -444,8 +444,9 @@ class UserViewSet(viewsets.ModelViewSet):
                         farm=farm,
                         phone=user.phone or "",
                     )
-                except Exception:
-                    pass
+                    logger.info("[USER_CREATE] Employee auto-created for user '%s' with category '%s'", user.username, category)
+                except Exception as e:
+                    logger.error("[USER_CREATE] Failed to auto-create Employee for user '%s': %s", user.username, e)
 
     def perform_update(self, serializer):
         """Update the user, then sync name, farm & category to the linked Employee record."""
@@ -453,15 +454,17 @@ class UserViewSet(viewsets.ModelViewSet):
         from apps.workforce.models import Employee
         farms = list(user.farms.all())
         farm = farms[0] if farms else None
+        category = _role_to_employee_category(user.role)
         employee = Employee.objects.filter(user=user).first()
         if employee:
             employee.first_name = user.first_name or user.username
             employee.last_name = user.last_name or ""
             employee.phone = user.phone or ""
-            employee.category = _role_to_employee_category(user.role)
+            employee.category = category
             if farm:
                 employee.farm = farm
             employee.save(update_fields=["first_name", "last_name", "phone", "farm", "category"])
+            logger.info("[USER_UPDATE] Employee category synced to '%s' for user '%s'", category, user.username)
         elif farm:
             base_code = f"EMP-{user.username}"
             code = base_code
@@ -470,7 +473,6 @@ class UserViewSet(viewsets.ModelViewSet):
                 code = f"{base_code}-{counter}"
                 counter += 1
             try:
-                category = _role_to_employee_category(user.role)
                 Employee.objects.create(
                     user=user,
                     employee_code=code,
@@ -481,8 +483,9 @@ class UserViewSet(viewsets.ModelViewSet):
                     farm=farm,
                     phone=user.phone or "",
                 )
-            except Exception:
-                pass
+                logger.info("[USER_UPDATE] Employee auto-created for user '%s' with category '%s'", user.username, category)
+            except Exception as e:
+                logger.error("[USER_UPDATE] Failed to auto-create Employee for user '%s': %s", user.username, e)
 
     def perform_destroy(self, instance):
         """Permanently delete the user account.
