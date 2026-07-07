@@ -15,6 +15,7 @@ class UserSerializer(serializers.ModelSerializer):
     farm_ids = serializers.SerializerMethodField()
     aadhaar_photo_url = serializers.SerializerMethodField()
     aadhaar_submitted = serializers.SerializerMethodField()
+    deleted_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -23,8 +24,9 @@ class UserSerializer(serializers.ModelSerializer):
             "role", "preferred_language", "avatar", "is_active",
             "farms", "farm_names", "farm_ids", "fcm_token", "date_joined",
             "aadhaar_number", "aadhaar_photo", "aadhaar_photo_url", "aadhaar_submitted",
+            "deleted_at", "deleted_by", "deleted_by_name",
         ]
-        read_only_fields = ["id", "date_joined", "role"]
+        read_only_fields = ["id", "date_joined", "role", "deleted_at", "deleted_by", "deleted_by_name"]
         extra_kwargs = {
             "aadhaar_photo": {"required": False},
             "aadhaar_number": {"required": False},
@@ -46,6 +48,12 @@ class UserSerializer(serializers.ModelSerializer):
     @extend_schema_field(serializers.BooleanField())
     def get_aadhaar_submitted(self, instance):
         return bool(instance.aadhaar_number or instance.aadhaar_photo)
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_deleted_by_name(self, instance):
+        if instance.deleted_by:
+            return instance.deleted_by.get_full_name() or instance.deleted_by.username
+        return None
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

@@ -17,6 +17,7 @@ class CropSerializer(serializers.ModelSerializer):
     farm_name = serializers.CharField(source="farm.name", read_only=True)
     field_name = serializers.CharField(source="field.name", read_only=True)
     block_name = serializers.CharField(source="field.block_name", read_only=True)
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = Crop
@@ -26,6 +27,7 @@ class CropSerializer(serializers.ModelSerializer):
 class PlantationRecordSerializer(serializers.ModelSerializer):
     crop_name = serializers.CharField(source="crop.name", read_only=True)
     farm_name = serializers.CharField(source="farm.name", read_only=True)
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = PlantationRecord
@@ -36,6 +38,7 @@ class ObservationSerializer(serializers.ModelSerializer):
     crop_name = serializers.CharField(source="crop.name", read_only=True)
     farm_name = serializers.CharField(source="farm.name", read_only=True)
     photo_url = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = Observation
@@ -53,6 +56,7 @@ class InputApplicationSerializer(serializers.ModelSerializer):
     inventory_item_name = serializers.CharField(
         source="inventory_item.name", read_only=True
     )
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = InputApplication
@@ -62,6 +66,7 @@ class InputApplicationSerializer(serializers.ModelSerializer):
 class GrowthRecordSerializer(serializers.ModelSerializer):
     crop_name = serializers.CharField(source="crop.name", read_only=True)
     farm_name = serializers.CharField(source="farm.name", read_only=True)
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = GrowthRecord
@@ -71,6 +76,7 @@ class GrowthRecordSerializer(serializers.ModelSerializer):
 class HarvestRecordSerializer(serializers.ModelSerializer):
     crop_name = serializers.CharField(source="crop.name", read_only=True)
     farm_name = serializers.CharField(source="farm.name", read_only=True)
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = HarvestRecord

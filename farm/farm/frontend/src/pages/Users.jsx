@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Clock, Lock, Play, LogIn, Square, CheckCircle, Plus, Pencil, Trash2, Search, Filter, X, AlertTriangle, UserMinus } from "lucide-react";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { api, resource, toFormData, normalizePhotoUrl } from "../lib/api";
@@ -31,6 +32,7 @@ function formatElapsed(startTime) {
 
 export default function Users() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { hasRole, user: currentUser } = useAuth();
   const canManage = hasRole("SUPER_ADMIN");
   const canDelete = hasRole("SUPER_ADMIN"); // only super admin may delete
@@ -289,8 +291,9 @@ export default function Users() {
     try {
       await usersRepo.destroy(user.id);
       setDeleteConfirm(null);
-      addToast(`User "${user.username}" has been deleted successfully.`, "success");
       loadData();
+      // Navigate to Deleted Users page so admin can see the moved user
+      navigate("/users/deleted");
     } catch (e) {
       setDeleteConfirm(null);
       // Extract the most specific error message possible
@@ -933,15 +936,15 @@ export default function Users() {
           <div className="space-y-4">
             <div className="flex items-center gap-3 rounded-xl bg-red-50 p-4 text-sm text-red-800 ring-1 ring-red-200">
               <AlertTriangle size={20} className="shrink-0 text-red-600" />
-              <p>Are you sure you want to delete this user? This action cannot be undone.</p>
+              <p>Are you sure you want to delete this user? They will be moved to Deleted Users and can be restored later.</p>
             </div>
             <div className="rounded-lg bg-gray-50 p-3 text-sm">
               <p><span className="font-medium text-gray-700">Username:</span> {deleteConfirm.username}</p>
               <p><span className="font-medium text-gray-700">Name:</span> {deleteConfirm.full_name || "—"}</p>
               <p><span className="font-medium text-gray-700">Role:</span> {roleLabels[deleteConfirm.role] || deleteConfirm.role}</p>
             </div>
-            <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-3">
-              <strong>Note:</strong> The user account will be permanently deleted, but all work history (attendance, tasks, payroll, etc.) will remain intact linked to their employee record.
+            <p className="text-xs text-blue-700 bg-blue-50 rounded-lg p-3">
+              <strong>Note:</strong> The user will be moved to <strong>Deleted Users</strong> page. You can restore them anytime from there.
             </p>
             <div className="flex justify-end gap-3">
               <Button type="button" variant="secondary" onClick={() => setDeleteConfirm(null)} disabled={deleting}>

@@ -14,6 +14,7 @@ class AssetSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     assigned_to_name = serializers.CharField(source="assigned_to.name", read_only=True)
     photo_url = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = Asset
@@ -31,6 +32,7 @@ class AssetMaintenanceSerializer(serializers.ModelSerializer):
     maintenance_type_display = serializers.CharField(
         source="get_maintenance_type_display", read_only=True
     )
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = AssetMaintenance

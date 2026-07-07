@@ -21,6 +21,14 @@ def api_root(request):
         "schema": "/api/schema/",
     })
 
+
+def health_check(request):
+    """Lightweight health endpoint used by Railway healthcheck + load balancers.
+    Returns 200 immediately with no DB query so infrastructure can verify the
+    server process is alive without adding load."""
+    from django.http import JsonResponse
+    return JsonResponse({"status": "healthy"})
+
 api_v1 = [
     path("auth/", include("apps.accounts.urls")),
     path("farms/", include("apps.farms.urls")),
@@ -41,8 +49,10 @@ api_v1 = [
 
 urlpatterns = [
     path("", api_root, name="api-root"),  # Root URL - API info
+    path("health/", health_check, name="health-check"),  # Railway healthcheck
     path("admin/", admin.site.urls),
     path("api/v1/", include(api_v1)),
+    path("api/v1/health/", health_check, name="api-health-check"),  # Also at API path
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
 ]

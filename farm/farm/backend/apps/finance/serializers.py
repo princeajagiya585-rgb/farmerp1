@@ -26,6 +26,7 @@ class ExpenseSerializer(serializers.ModelSerializer):
         source="approved_by.get_full_name", read_only=True
     )
     bill_file_url = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = Expense
@@ -104,6 +105,7 @@ class PaymentSerializer(serializers.ModelSerializer):
 
 class RevenueEntrySerializer(serializers.ModelSerializer):
     farm_name = serializers.CharField(source="farm.name", read_only=True)
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = RevenueEntry
@@ -113,6 +115,7 @@ class RevenueEntrySerializer(serializers.ModelSerializer):
 class CostCenterSerializer(serializers.ModelSerializer):
     farm_name = serializers.CharField(source="farm.name", read_only=True)
     bill_file_url = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = CostCenter
@@ -131,6 +134,7 @@ class BudgetSerializer(serializers.ModelSerializer):
     )
     spent = serializers.SerializerMethodField()
     remaining = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = Budget
@@ -152,6 +156,7 @@ class SaleSerializer(serializers.ModelSerializer):
         source="employee.name", read_only=True, default=None
     )
     bill_file_url = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = Sale

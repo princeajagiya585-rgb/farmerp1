@@ -160,6 +160,7 @@ class WorkforceAllocationSerializer(serializers.ModelSerializer):
     farm_name = serializers.CharField(source="farm.name", read_only=True)
     field_name = serializers.CharField(source="field.name", read_only=True)
     shift_name = serializers.CharField(source="shift.name", read_only=True)
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = WorkforceAllocation
@@ -172,6 +173,7 @@ class AttendanceSerializer(serializers.ModelSerializer):
     approved_by_name = serializers.CharField(
         source="approved_by.get_full_name", read_only=True
     )
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
     location_name = serializers.SerializerMethodField()
     check_in_photo_url = serializers.SerializerMethodField()
     check_out_photo_url = serializers.SerializerMethodField()
@@ -212,6 +214,7 @@ class EmploymentHistorySerializer(serializers.ModelSerializer):
     event_type_display = serializers.CharField(
         source="get_event_type_display", read_only=True
     )
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = EmploymentHistory
@@ -224,6 +227,7 @@ class PerformanceReviewSerializer(serializers.ModelSerializer):
     reviewer_name = serializers.CharField(
         source="reviewer.get_full_name", read_only=True
     )
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = PerformanceReview
@@ -234,6 +238,7 @@ class AvailabilitySerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source="employee.name", read_only=True)
     farm_name = serializers.CharField(source="employee.farm.name", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = Availability

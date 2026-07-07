@@ -34,7 +34,6 @@ def _create_manager_employee(user):
         user=user,
         first_name=user.first_name or "",
         last_name=user.last_name or "",
-        name=user.get_full_name() or user.username or "",
         phone=user.phone or "",
         category=Employee.Category.MANAGER,
         employment_type=Employee.EmploymentType.PERMANENT,

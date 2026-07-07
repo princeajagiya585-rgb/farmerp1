@@ -224,19 +224,23 @@ class DashboardView(APIView):
 
         total_users = User.objects.filter(is_active=True).count()
 
-        # ── Recalculate farm_employee_breakdown using USERS per farm ──────────
-        # The HR box on the dashboard shows which users are assigned to each farm.
-        farm_user_breakdown = []
-        for farm in farms_qs:
-            farm_users = User.objects.filter(farms=farm)
-            farm_total = farm_users.count()
-            farm_active = farm_users.filter(is_active=True).count()
-            farm_user_breakdown.append({
+        # ── Farm breakdown for the HR box on the dashboard ─────────────────
+        # Counts Employee records per farm (every Employee always has a farm
+        # FK set, which is more reliable than the User.farms M2M).  Farms with
+        # zero employees still appear so Super Admins see every farm.
+        farms_with_emp_counts = farms_qs.annotate(
+            total_count=Count("employees"),
+            active_count=Count("employees", filter=Q(employees__is_active=True)),
+        )
+        farm_user_breakdown = [
+            {
                 "farm_id": str(farm.id),
                 "farm_name": farm.name,
-                "total_count": farm_total,
-                "active_count": farm_active,
-            })
+                "total_count": farm.total_count,
+                "active_count": farm.active_count,
+            }
+            for farm in farms_with_emp_counts
+        ]
 
         alerts = []
         if low_stock_items:

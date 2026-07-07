@@ -35,6 +35,7 @@ class TaskWorkSessionSerializer(serializers.ModelSerializer):
 
 class TaskUpdateSerializer(serializers.ModelSerializer):
     task_title = serializers.CharField(source="task.title", read_only=True)
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:
         model = TaskUpdate
@@ -53,6 +54,7 @@ class TaskSerializer(serializers.ModelSerializer):
     verified_by_name = serializers.CharField(
         source="verified_by.get_full_name", read_only=True
     )
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
     update_count = serializers.IntegerField(
         source="updates.count", read_only=True
     )

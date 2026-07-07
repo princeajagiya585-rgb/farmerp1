@@ -139,12 +139,19 @@ if DATABASE_URL:
             "PASSWORD": _urlparse.unquote(_u.password or ""),
             "HOST": _u.hostname or "",
             "PORT": str(_u.port or 5432),
-            # Reduce connection age to prevent pool exhaustion (was 600 = 10 min)
-            "CONN_MAX_AGE": 60,
+            # ── Connection pool ─────────────────────────────────────────
+            # Keep connections alive longer to avoid reconnection overhead.
+            # 300s = 5 min is a good balance for Railway + Supabase.
+            "CONN_MAX_AGE": 300,
             "OPTIONS": {
                 "sslmode": os.getenv("DB_SSLMODE", "require"),
-                # Connection pool settings for Supabase
-                "connect_timeout": 10,
+                # Connection timeout for Supabase (free tier can be slow to wake)
+                "connect_timeout": 30,
+                # Keepalive to prevent Supabase from killing idle connections
+                "keepalives": 1,
+                "keepalives_idle": 60,
+                "keepalives_interval": 15,
+                "keepalives_count": 5,
             },
         }
     }
@@ -189,12 +196,14 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "apps.core.exceptions.exception_handler",
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 
-    # Disable throttling completely to prevent issues (only keep OTP throttling for security)
+    # ── Throttling ────────────────────────────────────────────────────────
+    # Only public (AllowAny) endpoints are throttled — the OTP send/verify
+    # endpoints are the only public entry points and need rate limiting to
+    # prevent brute-force and enumeration attacks.  All other endpoints are
+    # protected by JWT auth and are NOT throttled.
     "DEFAULT_THROTTLE_RATES": {
-        "otp_send": "100/minute",
-        "otp_verify": "100/minute",
-        "anon": "1000000/day",
-        "user": "1000000/day",
+        "otp_send": "5/minute",      # 5 OTP requests per phone/email per minute
+        "otp_verify": "10/minute",   # 10 verify attempts per phone/email per minute
     },
 }
 
@@ -202,7 +211,7 @@ from datetime import timedelta
 
 SIMPLE_JWT = {
     # Users पूरे दिन काम कर सकें
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=13),
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=24),
 
     # 30 दिन तक Refresh Token valid
     "REFRESH_TOKEN_LIFETIME": timedelta(days=30),

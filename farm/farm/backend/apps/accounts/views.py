@@ -19,6 +19,7 @@ from rest_framework_simplejwt.views import TokenBlacklistView, TokenObtainPairVi
 from apps.core.permissions import IsSuperAdmin
 
 from .otp import OTP
+from .throttling import OtpSendThrottle, OtpVerifyThrottle
 from .serializers import (
     ChangePasswordSerializer,
     FarmTokenObtainPairSerializer,
@@ -71,7 +72,7 @@ class NoThrottleTokenBlacklistView(TokenBlacklistView):
 @extend_schema(request=OtpSendSerializer, responses={200: {"type": "object", "properties": {"message": {"type": "string"}, "expires_in": {"type": "integer"}}}})
 @api_view(["POST"])
 @permission_classes([AllowAny])
-@throttle_classes([])
+@throttle_classes([OtpSendThrottle])
 def send_otp(request):
     """Send OTP to a phone number OR email. For demo, returns the OTP in response."""
     serializer = OtpSendSerializer(data=request.data)
@@ -93,7 +94,7 @@ def send_otp(request):
 @extend_schema(request=OtpVerifySerializer, responses={200: {"type": "object"}})
 @api_view(["POST"])
 @permission_classes([AllowAny])
-@throttle_classes([])
+@throttle_classes([OtpVerifyThrottle])
 def verify_otp(request):
     """Verify an OTP and return JWT tokens on success."""
     serializer = OtpVerifySerializer(data=request.data)
@@ -414,8 +415,15 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ("me", "change_password", "update_fcm"):
             return [IsAuthenticated()]
-        # All other actions (including activate, suspend, create, update, etc.) require SUPER_ADMIN
+        # All other actions (including activate, suspend, create, update, list_deleted, restore, etc.) require SUPER_ADMIN
         return [IsSuperAdmin()]
+
+    def get_queryset(self):
+        """Exclude soft-deleted users from the default list."""
+        qs = User.objects.prefetch_related("farms").all()
+        if self.action == "list_deleted":
+            return qs.filter(deleted_at__isnull=False).order_by("-deleted_at")
+        return qs.filter(deleted_at__isnull=True)
 
     def perform_create(self, serializer):
         """Create the user, then auto-create an Employee record linked to it."""
@@ -488,14 +496,49 @@ class UserViewSet(viewsets.ModelViewSet):
                 logger.error("[USER_UPDATE] Failed to auto-create Employee for user '%s': %s", user.username, e)
 
     def perform_destroy(self, instance):
-        """Permanently delete the user account.
+        """Soft-delete the user account instead of removing it from the DB.
+
+        Sets `deleted_at` and marks the user as inactive so they disappear
+        from the main Users table but remain in the database. A Super Admin
+        can view and restore soft-deleted users from the Deleted Users page.
 
         The linked Employee record and all related data (attendance, tasks,
         payroll, etc.) are preserved — the Employee's `user` field becomes
         NULL via SET_NULL on the FK, so their work history stays intact
         across all other pages.
         """
-        instance.delete()
+        from django.utils import timezone
+        instance.deleted_at = timezone.now()
+        instance.deleted_by = self.request.user if self.request.user.is_authenticated else None
+        instance.is_active = False
+        instance.save(update_fields=["deleted_at", "deleted_by", "is_active"])
+
+    @action(detail=False, methods=["get"], url_path="deleted", url_name="deleted")
+    def list_deleted(self, request):
+        """Return all soft-deleted users (only visible to SUPER_ADMIN)."""
+        deleted = self.get_queryset()
+        page = self.paginate_queryset(deleted)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(deleted, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="restore", url_name="restore")
+    def restore(self, request, pk=None):
+        """Restore a soft-deleted user — clears deleted_at and reactivates."""
+        try:
+            user = User.objects.get(pk=pk, deleted_at__isnull=False)
+            user.deleted_at = None
+            user.deleted_by = None
+            user.is_active = True
+            user.save(update_fields=["deleted_at", "deleted_by", "is_active"])
+            return Response(UserSerializer(user, context={"request": request}).data)
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "Deleted user not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
     @action(detail=True, methods=["post"], url_path="activate", url_name="activate")
     def activate(self, request, pk=None):

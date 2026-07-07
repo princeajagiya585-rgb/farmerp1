@@ -20,7 +20,17 @@ User = get_user_model()
 class Command(BaseCommand):
     help = "Seed demo data for FarmERP Pro"
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--noinput", "--no-input",
+            action="store_true",
+            help="Skip confirmation prompts (for automated deploys)",
+        )
+
     def handle(self, *args, **options):
+        # Skip confirmation when --noinput is passed (automated deploys)
+        if not options.get("noinput"):
+            self.stdout.write("Running seed_demo... (use --noinput to skip confirmation)")
         # --- Users -------------------------------------------------------
         users = {
             "admin": Role.SUPER_ADMIN,
