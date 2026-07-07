@@ -122,11 +122,20 @@ export default function Workforce() {
             { key: "name", header: t("header.name") },
             { key: "assigned_farms", header: t("users.assignedFarm"), render: (r) => r.assigned_farms?.length ? r.assigned_farms.join(", ") : "—" },
             { key: "category", header: t("header.category"), render: (r) => {
-                if (r.category === "SUPER_ADMIN") return <Badge color="purple">{t("role.superAdmin")}</Badge>;
-                if (r.category === "MANAGER") return <Badge color="purple">{t("workforce.manager")}</Badge>;
-                if (r.category === "EMPLOYEE") return <Badge color="blue">{t("skills.employeeLabour")}</Badge>;
-                if (r.category === "LABOUR") return <Badge color="gray">{t("skills.labour")}</Badge>;
-                return <Badge color="gray">{r.category || "—"}</Badge>;
+                const categoryLabels = {
+                  SUPER_ADMIN: { color: "purple", label: t("role.superAdmin") },
+                  MANAGER: { color: "purple", label: t("workforce.manager") },
+                  SUPERVISOR: { color: "blue", label: t("workforce.supervisor") },
+                  EMPLOYEE: { color: "blue", label: t("skills.employeeLabour") },
+                  LABOUR: { color: "gray", label: t("skills.labour") },
+                  DRIVER: { color: "gray", label: t("workforce.driver") },
+                  SECURITY: { color: "gray", label: t("workforce.security") },
+                  OFFICE_STAFF: { color: "gray", label: t("workforce.officeStaff") },
+                  ACCOUNTANT: { color: "gray", label: t("workforce.accountant") },
+                  TECHNICIAN: { color: "gray", label: t("workforce.technician") },
+                };
+                const cat = categoryLabels[r.category];
+                return cat ? <Badge color={cat.color}>{cat.label}</Badge> : <Badge color="gray">{r.category || "—"}</Badge>;
             } },
             { key: "employment_type", header: t("header.type") },
             { key: "designation", header: t("header.designation"), render: (r) => r.designation || "—" },
@@ -166,11 +175,20 @@ export default function Workforce() {
                 ...(hasRole("SUPER_ADMIN", "FARM_MANAGER") ? [
                   { value: "SUPER_ADMIN", label: t("role.superAdmin") },
                   { value: "MANAGER", label: t("workforce.manager") },
+                  { value: "SUPERVISOR", label: t("workforce.supervisor") },
                   { value: "EMPLOYEE", label: t("skills.employeeLabour") },
                   { value: "LABOUR", label: t("workforce.labour") },
+                  { value: "DRIVER", label: t("workforce.driver") },
+                  { value: "SECURITY", label: t("workforce.security") },
+                  { value: "OFFICE_STAFF", label: t("workforce.officeStaff") },
+                  { value: "ACCOUNTANT", label: t("workforce.accountant") },
+                  { value: "TECHNICIAN", label: t("workforce.technician") },
                 ] : [
                   { value: "EMPLOYEE", label: t("skills.employeeLabour") },
                   { value: "LABOUR", label: t("workforce.labour") },
+                  { value: "DRIVER", label: t("workforce.driver") },
+                  { value: "SECURITY", label: t("workforce.security") },
+                  { value: "TECHNICIAN", label: t("workforce.technician") },
                 ]),
               ],
             },

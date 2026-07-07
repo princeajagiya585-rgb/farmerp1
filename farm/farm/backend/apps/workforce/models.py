@@ -10,6 +10,12 @@ class Employee(TimeStampedModel):
         EMPLOYEE = "EMPLOYEE", "Employee"
         LABOUR = "LABOUR", "Labour"
         MANAGER = "MANAGER", "Manager"
+        SUPERVISOR = "SUPERVISOR", "Supervisor"
+        DRIVER = "DRIVER", "Driver"
+        SECURITY = "SECURITY", "Security"
+        OFFICE_STAFF = "OFFICE_STAFF", "Office Staff"
+        ACCOUNTANT = "ACCOUNTANT", "Accountant"
+        TECHNICIAN = "TECHNICIAN", "Technician"
         SUPER_ADMIN = "SUPER_ADMIN", "Super Administrator"
 
     class EmploymentType(models.TextChoices):
