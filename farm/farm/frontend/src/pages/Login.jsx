@@ -32,6 +32,7 @@ export default function Login() {
   const [resetOtp, setResetOtp] = useState("");
   const [resetNewPassword, setResetNewPassword] = useState("");
   const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+  const [resetOtpHint, setResetOtpHint] = useState(""); // OTP shown on-screen when email isn't configured
 
   useEffect(() => {
     if (user) navigate("/");
@@ -86,7 +87,10 @@ export default function Login() {
     setLoading(true);
     setError("");
     try {
-      await api.post("/auth/forgot-password/", { email: resetEmail });
+      const res = await api.post("/auth/forgot-password/", { email: resetEmail });
+      // When email delivery isn't configured, the backend returns the OTP so we
+      // can show it on screen; otherwise it was emailed and no otp is returned.
+      setResetOtpHint(res?.data?.email_sent === false && res?.data?.otp ? res.data.otp : "");
       setForgotPasswordStep(2);
     } catch (err) {
       setError(err.response?.data?.detail || "Failed to send OTP.");
@@ -224,7 +228,23 @@ export default function Login() {
               {forgotPasswordStep === 2 && (
                 <form onSubmit={handleVerifyOtp} className="space-y-4">
                   {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-                  <p className="text-sm text-gray-500">OTP sent to: <span className="font-medium">{resetEmail}</span></p>
+                  {resetOtpHint ? (
+                    <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800 ring-1 ring-amber-200">
+                      <p className="mb-1">Email delivery isn't set up, so here is your OTP:</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-xl font-bold tracking-widest text-amber-900">{resetOtpHint}</span>
+                        <button
+                          type="button"
+                          onClick={() => setResetOtp(resetOtpHint)}
+                          className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+                        >
+                          Use code
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">OTP sent to: <span className="font-medium">{resetEmail}</span></p>
+                  )}
                   <Input
                     label="OTP Code"
                     type="text"

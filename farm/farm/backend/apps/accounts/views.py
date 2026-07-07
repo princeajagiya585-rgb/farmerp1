@@ -352,19 +352,27 @@ If you did not request this, please ignore this email.
         return Response({
             "detail": "OTP sent to your email.",
             "expires_in": 600,
+            "email_sent": True,
         })
 
     # Email failed — return a proper error response with the real error detail.
     # The OTP is still generated so the user can use it from the server logs
     # if needed, but we don't return it to the client for security.
     logger.warning(
-        "[PASSWORD_RESET] Email delivery failed for %s. OTP %s is in DB.",
-        email, otp.code,
+        "[PASSWORD_RESET] Email delivery failed for %s (%s). Falling back to on-screen OTP.",
+        email, error_detail,
     )
-    return Response(
-        {"detail": error_detail or "Failed to send OTP email. Please check your email configuration."},
-        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-    )
+    # Graceful fallback: email isn't configured/reachable, so instead of a hard
+    # 500 that blocks the admin from ever resetting their password, return the
+    # OTP directly so the reset screen can show it. This mirrors the existing
+    # demo `send_otp` endpoint. Configure EMAIL_HOST_USER/EMAIL_HOST_PASSWORD
+    # (or an email API) to deliver the OTP by email instead of on screen.
+    return Response({
+        "detail": "Email delivery isn't configured, so your OTP is shown below.",
+        "otp": otp.code,
+        "email_sent": False,
+        "expires_in": 600,
+    })
 
 
 @extend_schema(request=ResetPasswordSerializer, responses={200: {"type": "object", "properties": {"detail": {"type": "string"}}}})
