@@ -1,8 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { Check, X } from "lucide-react";
 import CrudResource from "../components/CrudResource";
-import { Badge } from "../components/ui";
-import { resource } from "../lib/api";
+import { Badge, PhotoThumb } from "../components/ui";
+import { resource, normalizePhotoUrl } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
 const repo = resource("gps/activities");
@@ -65,6 +65,7 @@ export default function GpsActivities() {
         { key: "location_verified", header: t("header.geofence"), render: (r) => verifiedBadge(r.location_verified, t) },
         { key: "recorded_at", header: t("header.when"), render: (r) => (r.recorded_at ? new Date(r.recorded_at).toLocaleString() : "—") },
         { key: "status", header: t("header.status"), render: (r) => <Badge color={statusColor[r.status] || "gray"}>{r.status}</Badge> },
+        { key: "photo", header: t("header.photo"), render: (r) => <PhotoThumb url={normalizePhotoUrl(r.photo_url)} alt={t("header.activities")} size={48} /> },
       ]}
       fields={[
         { name: "farm", label: t("gpsActivities.fieldFarm"), optionsFrom: { path: "farms", label: (f) => f.name }, required: true },

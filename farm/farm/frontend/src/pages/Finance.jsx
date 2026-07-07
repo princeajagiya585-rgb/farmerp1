@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
-import { Check, X } from "lucide-react";
+import { Check, X, FileText, ExternalLink } from "lucide-react";
 import CrudResource from "../components/CrudResource";
 import { Badge } from "../components/ui";
 import { resource } from "../lib/api";
@@ -52,6 +52,25 @@ export default function Finance() {
             { key: "amount", header: t("header.amount"), render: (r) => `₹${Number(r.amount || 0).toLocaleString("en-IN")}` },
             { key: "date", header: t("header.date") },
             { key: "status", header: t("header.status"), render: (r) => <Badge color={stColor[r.status]}>{r.status}</Badge> },
+            {
+              key: "bill_file_url",
+              header: t("header.bill"),
+              render: (r) =>
+                r.bill_file_url ? (
+                  <a
+                    href={r.bill_file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-sm text-brand-600 hover:text-brand-800"
+                  >
+                    <FileText size={14} />
+                    <span>View</span>
+                    <ExternalLink size={12} />
+                  </a>
+                ) : (
+                  "—"
+                ),
+            },
             { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
           ]}
           rowActions={(row, reload) =>
