@@ -504,6 +504,21 @@ export default function Attendance() {
             { key: "check_in_time", header: t("attendance.in"), render: (r) => fmt(r.check_in_time) },
             { key: "check_out_time", header: t("attendance.out"), render: (r) => fmt(r.check_out_time) },
             {
+              key: "check_in_photo_url",
+              header: t("header.photo"),
+              render: (r) => {
+                const cin = normalizePhotoUrl(r.check_in_photo_url);
+                const cout = normalizePhotoUrl(r.check_out_photo_url);
+                if (!cin && !cout) return "—";
+                return (
+                  <div className="flex items-center gap-1">
+                    {cin && <PhotoThumb url={cin} alt={t("attendance.checkIn")} size={40} />}
+                    {cout && <PhotoThumb url={cout} alt={t("attendance.checkOut")} size={40} />}
+                  </div>
+                );
+              },
+            },
+            {
               key: "check_in_coords",
               header: t("attendance.gpsIn"),
               render: (r) =>
