@@ -403,6 +403,11 @@ def reset_password(request):
 # ─── Existing UserViewSet ──────────────────────────────────────────────
 
 class UserViewSet(viewsets.ModelViewSet):
+    # Restrict the detail route to numeric IDs only. Without this,
+    # the default lookup regex ([^/.]+) matches ANY string including
+    # action URL segments like "deleted", causing GET /users/deleted/
+    # to hit retrieve(pk="deleted") instead of list_deleted().
+    lookup_value_regex = r"\d+"
     queryset = User.objects.prefetch_related("farms").all()
     filterset_fields = ["role", "is_active", "farms"]
     search_fields = ["username", "email", "first_name", "last_name", "phone"]
