@@ -16,8 +16,10 @@ const RECONNECT_MAX_MS = 15000;
 //               required (e.g. wss://your-backend.up.railway.app).
 //  Development: falls back to ws://localhost:8000 (the Daphne dev server).
 function resolveWsBase() {
+  // In production, use the live working backend directly (Vercel can't proxy
+  // WebSockets). In dev, honour VITE_WS_URL or fall back to localhost Daphne.
+  if (!import.meta.env.DEV) return "wss://farmerp-api-production-1c9b.up.railway.app";
   if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
-  // Development: use localhost
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
   return `${proto}://${window.location.hostname}:8000`;
 }

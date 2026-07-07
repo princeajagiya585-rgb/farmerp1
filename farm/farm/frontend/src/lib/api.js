@@ -4,7 +4,13 @@ import axios from "axios";
 //  Production: leave blank → same-origin requests go through Vercel proxy.
 //               To call Railway directly, set VITE_API_URL in Vercel Dashboard.
 //  Development: leave blank → Vite proxy forwards /api to localhost:8000.
-const API_ORIGIN = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+// In production, always use the live backend that runs the current fixed code
+// and is connected to the production Supabase DB. (The original Railway backend
+// deploy is broken; this points the site at the working backend regardless of
+// any stale VITE_API_URL in the Vercel env.) In dev, keep the Vite proxy.
+const API_ORIGIN = import.meta.env.DEV
+  ? (import.meta.env.VITE_API_URL || "").replace(/\/$/, "")
+  : "https://farmerp-api-production-1c9b.up.railway.app";
 const API_BASE = `${API_ORIGIN}/api/v1`;
 
 export const api = axios.create({ baseURL: API_BASE });
