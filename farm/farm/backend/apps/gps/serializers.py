@@ -63,6 +63,12 @@ class LocationPingSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_location_name(self, obj):
+        # Reverse-geocoding hits an external API. Doing it for every row of a
+        # list response is N blocking network calls and times the endpoint out
+        # (especially without a LocationIQ key → rate-limited Nominatim). Only
+        # resolve the place name for single-object (detail) responses.
+        if isinstance(self.parent, serializers.ListSerializer):
+            return None
         if obj.latitude is None or obj.longitude is None:
             return None
         return reverse_geocode(float(obj.latitude), float(obj.longitude))
@@ -117,6 +123,10 @@ class FieldActivitySerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_location_name(self, obj):
+        # See LocationPingSerializer.get_location_name — skip the per-row
+        # network reverse-geocode in list responses to avoid timeouts.
+        if isinstance(self.parent, serializers.ListSerializer):
+            return None
         if obj.latitude is None or obj.longitude is None:
             return None
         return reverse_geocode(float(obj.latitude), float(obj.longitude))
