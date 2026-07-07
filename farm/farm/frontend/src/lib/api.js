@@ -115,9 +115,11 @@ api.request = function (config) {
 // a rejected promise would short-circuit the chain and no HTTP request
 // would be dispatched).
 api.interceptors.request.use(async (config) => {
-  // ── Log every outgoing request URL ──────────────────────────────
-  const base = config.baseURL || api.defaults.baseURL || "";
-  console.log("[API] REQUEST:", config.method?.toUpperCase(), `${base}${config.url}`, config.params || "");
+  // ── Log every outgoing request URL (dev only — keeps prod console clean) ──
+  if (import.meta.env.DEV) {
+    const base = config.baseURL || api.defaults.baseURL || "";
+    console.log("[API] REQUEST:", config.method?.toUpperCase(), `${base}${config.url}`, config.params || "");
+  }
 
   try {
     // ── Proactive token refresh ───────────────────────────────────

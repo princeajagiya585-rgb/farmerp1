@@ -539,6 +539,23 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(deleted, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=["post"], url_path="purge-deleted", url_name="purge-deleted")
+    def purge_deleted(self, request):
+        """Permanently (hard) delete EVERY soft-deleted user. SUPER_ADMIN only.
+
+        Empties the Deleted Users "trash". Each user's Employee record survives
+        (the user link is SET_NULL), so attendance and payroll history is kept;
+        their notifications and location pings cascade away. There are no PROTECT
+        constraints on the User FK, so the delete cannot fail on a dependency.
+        """
+        qs = User.objects.filter(deleted_at__isnull=False)
+        count = qs.count()
+        qs.delete()
+        logger.info("[PURGE_DELETED] %s permanently deleted %s user(s)", request.user, count)
+        return Response(
+            {"detail": f"Permanently deleted {count} user(s).", "deleted": count}
+        )
+
     @action(detail=True, methods=["post"], url_path="restore", url_name="restore")
     def restore(self, request, pk=None):
         """Restore a soft-deleted user — clears deleted_at and reactivates."""

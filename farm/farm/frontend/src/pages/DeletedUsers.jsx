@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { RotateCcw, Search, UserX } from "lucide-react";
+import { RotateCcw, Search, UserX, Trash2, AlertTriangle } from "lucide-react";
 import LoadingSpinner from "../components/LoadingSpinner";
-import { resource } from "../lib/api";
+import { resource, api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Badge, Button, Card, Modal, ToastContainer, useToast } from "../components/ui";
 import { roleLabels } from "../config/nav";
@@ -17,6 +17,8 @@ export default function DeletedUsers() {
   const [search, setSearch] = useState("");
   const [restoring, setRestoring] = useState(null); // user id being restored
   const [restoreConfirm, setRestoreConfirm] = useState(null); // user to restore
+  const [purgeConfirm, setPurgeConfirm] = useState(false); // confirm permanent delete-all
+  const [purging, setPurging] = useState(false);
   const [toasts, addToast, removeToast] = useToast();
 
   const loadDeletedUsers = useCallback(async () => {
@@ -56,6 +58,23 @@ export default function DeletedUsers() {
     }
   };
 
+  const handlePurge = async () => {
+    setPurging(true);
+    try {
+      const res = await api.post("/auth/users/purge-deleted/");
+      const n = res?.data?.deleted ?? users.length;
+      setPurgeConfirm(false);
+      addToast(`Permanently deleted ${n} user(s).`, "success");
+      loadDeletedUsers();
+    } catch (e) {
+      setPurgeConfirm(false);
+      const detail = e?.response?.data?.detail || "Failed to permanently delete users.";
+      addToast(detail, "error");
+    } finally {
+      setPurging(false);
+    }
+  };
+
   const filteredUsers = users.filter((u) => {
     if (!search) return true;
     const q = search.toLowerCase();
@@ -70,13 +89,18 @@ export default function DeletedUsers() {
   return (
     <div>
       <Card>
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-6 py-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Deleted Users</h2>
             <p className="mt-1 text-sm text-gray-500">
-              Users that have been permanently removed from the system. You can restore them if needed.
+              Soft-deleted users. You can restore them, or permanently delete them all.
             </p>
           </div>
+          {users.length > 0 && user?.role === "SUPER_ADMIN" && (
+            <Button variant="danger" onClick={() => setPurgeConfirm(true)} disabled={purging}>
+              <Trash2 size={16} /> Delete All Permanently
+            </Button>
+          )}
         </div>
 
         <div className="px-6 py-4">
@@ -251,6 +275,31 @@ export default function DeletedUsers() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* ── Permanent Delete-All Confirmation Modal ────────────────────── */}
+      <Modal open={purgeConfirm} onClose={() => setPurgeConfirm(false)} title="Delete All Permanently" width="max-w-sm">
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 rounded-xl bg-red-50 p-4 text-sm text-red-800 ring-1 ring-red-200">
+            <AlertTriangle size={20} className="shrink-0 text-red-600" />
+            <p>
+              This will <strong>permanently delete all {users.length} deleted user(s)</strong>.
+              This <strong>cannot be undone</strong> — they can no longer be restored.
+            </p>
+          </div>
+          <p className="rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
+            Their attendance and payroll history is kept (the employee record stays,
+            just unlinked). Their notifications and location pings are removed.
+          </p>
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={() => setPurgeConfirm(false)} disabled={purging}>
+              Cancel
+            </Button>
+            <Button type="button" variant="danger" onClick={handlePurge} disabled={purging}>
+              {purging ? "Deleting..." : (<><Trash2 size={15} /> Delete All Permanently</>)}
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       {/* Toast notifications */}
