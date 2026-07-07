@@ -131,22 +131,56 @@ DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 if DATABASE_URL:
     # Postgres (e.g. Supabase). Credentials live only in .env, never in code.
     _u = _urlparse.urlparse(DATABASE_URL)
+    _host = _u.hostname or ""
+    _user = _urlparse.unquote(_u.username or "")
+    _port = str(_u.port or 5432)
+
+    # ── Supabase pooler tenant fix ──────────────────────────────────────
+    # Supabase's connection poolers (…pooler.supabase.com) route by a *tenant*
+    # username of the form ``postgres.<project-ref>``.  A bare ``postgres``
+    # user makes the pooler reject every connection with
+    # ``FATAL: no tenant identifier provided`` (surfaces as OperationalError,
+    # i.e. a 500 on every request).  If the URL points at a pooler but the
+    # username is missing the ``.<ref>`` suffix, derive the ref from
+    # SUPABASE_URL and repair it automatically.
+    _is_pooler = "pooler.supabase.com" in _host
+    if _is_pooler and _user == "postgres":
+        _ref = _urlparse.urlparse(os.getenv("SUPABASE_URL", "")).hostname or ""
+        _ref = _ref.split(".")[0]  # <ref>.supabase.co -> <ref>
+        if _ref:
+            _user = f"postgres.{_ref}"
+
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
             "NAME": (_u.path or "/postgres").lstrip("/") or "postgres",
-            "USER": _urlparse.unquote(_u.username or ""),
+            "USER": _user,
             "PASSWORD": _urlparse.unquote(_u.password or ""),
-            "HOST": _u.hostname or "",
-            "PORT": str(_u.port or 5432),
-            # ── Connection pool ─────────────────────────────────────────
-            # Keep connections alive longer to avoid reconnection overhead.
-            # 300s = 5 min is a good balance for Railway + Supabase.
-            "CONN_MAX_AGE": 300,
+            "HOST": _host,
+            "PORT": _port,
+            # ── Connection lifetime ─────────────────────────────────────
+            # Behind a pooler (esp. the transaction pooler on :6543) the pool
+            # itself does the connection reuse, so Django must NOT hold its own
+            # persistent connections — doing so exhausts the pooler's session
+            # slots (``max clients reached``) and hands back sockets the pooler
+            # has already recycled (``server closed the connection``). Use a
+            # fresh connection per request when pooled; keep persistence for a
+            # direct Postgres connection.
+            "CONN_MAX_AGE": 0 if _is_pooler else 300,
+            "CONN_HEALTH_CHECKS": True,
+            # The transaction pooler multiplexes server connections per
+            # transaction, so named server-side cursors (used by .iterator())
+            # can't span the round-trip — disable them.
+            "DISABLE_SERVER_SIDE_CURSORS": _is_pooler,
             "OPTIONS": {
                 "sslmode": os.getenv("DB_SSLMODE", "require"),
                 # Connection timeout for Supabase (free tier can be slow to wake)
                 "connect_timeout": 30,
+                # psycopg3 prepares statements by default; the transaction
+                # pooler routes each transaction to a different backend, so a
+                # prepared statement created on one is missing on the next.
+                # None disables client-side prepared statements entirely.
+                "prepare_threshold": None,
                 # Keepalive to prevent Supabase from killing idle connections
                 "keepalives": 1,
                 "keepalives_idle": 60,
