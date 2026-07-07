@@ -308,7 +308,19 @@ If you did not request this, please ignore this email.
     email_sent = False
     error_detail = None
 
+    # Skip the SMTP attempt entirely when no credentials are configured.
+    # Otherwise send_mail() blocks for the full EMAIL_TIMEOUT (~30s) trying to
+    # reach a server it can't authenticate with, making the reset screen hang.
+    email_configured = bool(
+        settings.EMAIL_HOST_USER and settings.EMAIL_HOST_PASSWORD and settings.DEFAULT_FROM_EMAIL
+    )
+    if not email_configured:
+        error_detail = "Email is not configured (EMAIL_HOST_USER/EMAIL_HOST_PASSWORD)."
+        logger.info("[PASSWORD_RESET] Email not configured — returning OTP on screen for %s", email)
+
     try:
+        if not email_configured:
+            raise RuntimeError("email-not-configured")
         logger.info(
             "[PASSWORD_RESET] Attempting to send OTP %s to %s via %s:%s",
             otp.code, email, settings.EMAIL_HOST, settings.EMAIL_PORT,
@@ -322,6 +334,8 @@ If you did not request this, please ignore this email.
         )
         email_sent = True
         logger.info("[PASSWORD_RESET] OTP email sent successfully to %s", email)
+    except RuntimeError:
+        pass  # email-not-configured sentinel — fall through to on-screen OTP
     except smtplib.SMTPAuthenticationError as e:
         error_detail = "SMTP Authentication Failed. Check EMAIL_HOST_USER and EMAIL_HOST_PASSWORD."
         logger.error(
