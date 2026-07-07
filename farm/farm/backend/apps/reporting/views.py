@@ -222,7 +222,10 @@ class DashboardView(APIView):
         total_breakdowns = breakdown_qs.count()
         open_breakdowns = breakdown_qs.exclude(status="RESOLVED").count()
 
-        total_users = User.objects.filter(is_active=True).count()
+        # "Total Users" must match what the Users page lists (all users that
+        # aren't soft-deleted), not just currently-active ones — otherwise the
+        # dashboard shows e.g. 4 while the Users page shows 32.
+        total_users = User.objects.filter(deleted_at__isnull=True).count()
 
         # ── Farm breakdown for the HR box on the dashboard ─────────────────
         # Counts Employee records per farm (every Employee always has a farm
