@@ -50,6 +50,13 @@ class DashboardView(APIView):
         pending_approvals = att_qs.filter(
             approval_status=Attendance.ApprovalStatus.PENDING
         ).count()
+        # Users currently on the clock: checked in today but not yet checked out.
+        # This drops by one as soon as someone checks out.
+        checked_in_now = att_qs.filter(
+            date=today,
+            check_in_time__isnull=False,
+            check_out_time__isnull=True,
+        ).count()
         manager_count = emp_qs.filter(category="MANAGER").count()
 
         crop_qs = Crop.objects.filter(farm_id__in=farm_ids)
@@ -75,6 +82,34 @@ class DashboardView(APIView):
             )["s"]
             or 0
         )
+
+        # Per-farm Expenses / Revenue / Net for the Financial Management box.
+        # Two grouped aggregations merged in Python (avoids a JOIN that would
+        # multiply the sums together).
+        _exp_by_farm = dict(
+            Expense.objects.filter(
+                farm_id__in=farm_ids, status=Expense.Status.APPROVED
+            )
+            .values("farm_id")
+            .annotate(s=Sum("amount"))
+            .values_list("farm_id", "s")
+        )
+        _rev_by_farm = dict(
+            RevenueEntry.objects.filter(farm_id__in=farm_ids)
+            .values("farm_id")
+            .annotate(s=Sum("amount"))
+            .values_list("farm_id", "s")
+        )
+        financial_breakdown = [
+            {
+                "farm_id": str(farm.id),
+                "farm_name": farm.name,
+                "expenses": _exp_by_farm.get(farm.id) or 0,
+                "revenue": _rev_by_farm.get(farm.id) or 0,
+                "net": (_rev_by_farm.get(farm.id) or 0) - (_exp_by_farm.get(farm.id) or 0),
+            }
+            for farm in farms_qs
+        ]
 
         # Payroll extras
         total_advances = (
@@ -264,6 +299,7 @@ class DashboardView(APIView):
                     "total_employees": emp_qs.count(),
                     "present_today": present_today,
                     "absent_today": absent_today,
+                    "checked_in_now": checked_in_now,
                     "manager_count": manager_count,
                     "pending_approvals": pending_approvals,
                     "farm_breakdown": farm_user_breakdown,
@@ -276,6 +312,7 @@ class DashboardView(APIView):
                     "total_expenses": total_expenses,
                     "total_revenue": total_revenue,
                     "net": total_revenue - total_expenses,
+                    "farm_breakdown": financial_breakdown,
                     "total_advances": total_advances,
                     "outstanding_advances": outstanding_advances,
                     "total_deductions": total_deductions,

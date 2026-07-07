@@ -269,6 +269,17 @@ export default function Dashboard() {
                   />
                 );
               }
+              if (mod.key === "finance") {
+                return (
+                  <FinanceCard
+                    key="finance"
+                    mod={mod}
+                    kpi={kpi}
+                    navigate={navigate}
+                    t={t}
+                  />
+                );
+              }
               return (
                 <div
                   key={mod.key}
@@ -397,6 +408,18 @@ function HrCard({ mod, kpi, navigate, t }) {
             </div>
             <p className="text-sm font-bold text-gray-800">{t(mod.label)}</p>
           </div>
+          {/* Currently on the clock: checked in but not yet checked out.
+              Drops by one as soon as someone checks out. */}
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-600"
+            title={t("dashboard.checkedInNow", "Currently checked in")}
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+            </span>
+            {wk.checked_in_now ?? 0} {t("dashboard.checkedIn", "checked in")}
+          </span>
         </div>
         {breakdown.length > 0 ? (
           <div className="mb-3">
@@ -432,6 +455,75 @@ function HrCard({ mod, kpi, navigate, t }) {
             <p className="text-xs text-gray-400">{t("common.noRecords")}</p>
           </div>
         )}
+        <div className="flex items-center justify-end gap-1 text-xs font-medium text-brand-600 opacity-0 transition-opacity group-hover:opacity-100">
+          {t("common.view")} <ArrowRight size={12} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FinanceCard({ mod, kpi, navigate, t }) {
+  const fin = kpi.financial_kpis ?? {};
+  const breakdown = fin.farm_breakdown || [];
+  const Icon = mod.icon;
+  const fmt = (v) => `₹${Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+
+  return (
+    <div
+      onClick={() => navigate(mod.path)}
+      className="group col-span-1 cursor-pointer overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-card transition-all hover:-translate-y-0.5 hover:shadow-soft sm:col-span-2"
+    >
+      <div className={`h-1.5 w-full bg-gradient-to-r ${mod.color}`} />
+      <div className="p-4">
+        <div className="mb-3 flex items-center gap-3">
+          <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${mod.bg}`}>
+            <Icon size={20} className="text-gray-700" />
+          </div>
+          <p className="text-sm font-bold text-gray-800">{t(mod.label)}</p>
+        </div>
+        {breakdown.length > 0 ? (
+          <div className="mb-3">
+            {/* Header row */}
+            <div className="mb-1.5 flex items-center justify-between rounded-lg bg-gray-100 px-2.5 py-1.5 sm:px-3">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Farm</span>
+              <div className="flex items-center gap-2 sm:gap-3 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                <span className="w-14 text-right sm:w-16">{t("header.expenses", "Expenses")}</span>
+                <span className="w-14 text-right sm:w-16">{t("header.revenue")}</span>
+                <span className="w-14 text-right sm:w-16">{t("header.net")}</span>
+              </div>
+            </div>
+            {/* Per-farm rows */}
+            <div className="scrollable-content max-h-[160px] space-y-1 overflow-y-auto">
+              {breakdown.map((f) => (
+                <div
+                  key={f.farm_id}
+                  className="flex items-center justify-between rounded-lg bg-gray-50 px-2.5 py-1.5 sm:px-3"
+                >
+                  <span className="min-w-0 flex-1 truncate pr-2 text-xs font-bold text-green-700">🌾 {f.farm_name}</span>
+                  <div className="flex shrink-0 items-center gap-2 sm:gap-3 text-xs">
+                    <span className="w-14 text-right font-semibold text-rose-600 sm:w-16">{fmt(f.expenses)}</span>
+                    <span className="w-14 text-right font-semibold text-emerald-600 sm:w-16">{fmt(f.revenue)}</span>
+                    <span className={`w-14 text-right font-bold sm:w-16 ${Number(f.net) >= 0 ? "text-gray-800" : "text-red-600"}`}>{fmt(f.net)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="mb-3 flex items-center justify-center rounded-lg bg-gray-50 py-4">
+            <p className="text-xs text-gray-400">{t("common.noRecords")}</p>
+          </div>
+        )}
+        {/* Totals */}
+        <div className="mb-2 flex items-center justify-between rounded-lg bg-brand-50 px-2.5 py-1.5 sm:px-3 text-xs">
+          <span className="font-semibold text-gray-600">{t("common.total")}</span>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="w-14 text-right font-semibold text-rose-600 sm:w-16">{fmt(fin.total_expenses)}</span>
+            <span className="w-14 text-right font-semibold text-emerald-600 sm:w-16">{fmt(fin.total_revenue)}</span>
+            <span className="w-14 text-right font-bold text-gray-800 sm:w-16">{fmt(fin.net)}</span>
+          </div>
+        </div>
         <div className="flex items-center justify-end gap-1 text-xs font-medium text-brand-600 opacity-0 transition-opacity group-hover:opacity-100">
           {t("common.view")} <ArrowRight size={12} />
         </div>

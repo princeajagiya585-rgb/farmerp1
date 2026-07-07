@@ -98,7 +98,10 @@ export default function NotificationBell() {
   const loadList = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await repo.list({ page: 1 });
+      // The bell shows only NEW (unread) notifications in real time. Once a
+      // notification is read it drops out of the bell and lives on in the
+      // Notifications page history ("View All").
+      const data = await repo.list({ page: 1, is_read: false });
       setItems(data?.results ?? []);
     } catch {
       setItems([]);
