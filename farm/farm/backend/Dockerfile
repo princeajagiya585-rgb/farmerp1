@@ -44,5 +44,4 @@ EXPOSE 8000
 # ── Startup ────────────────────────────────────────────────────────────────
 # Run migrations + seed demo data, then start Daphne (HTTP + WebSocket).
 # Railway sets $PORT automatically; fall back to 8000 for local Docker.
-# CMD sh -c "python manage.py migrate --noinput && python manage.py seed_demo --noinput && exec daphne -b 0.0.0.0 -p \${PORT:-8000} config.asgi:application"
-CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]
+CMD sh -c "python manage.py migrate --noinput && exec daphne -b 0.0.0.0 -p ${PORT:-8000} config.asgi:application"
