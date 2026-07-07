@@ -1,8 +1,9 @@
 from calendar import monthrange
-from datetime import date
+from datetime import date, datetime
 
 from django.db.models import Count, Q
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -250,19 +251,68 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         serializer = self.get_serializer(attendance, context={'request': request})
         return Response(serializer.data, status=200)
 
+    def _resolve_attendance_datetime(self, request):
+        """Return the (date, check-in datetime) to record for a check-in.
+
+        Everyone gets LIVE attendance (today / now) by default. Only admins and
+        farm managers may back-date it by sending ``date`` (YYYY-MM-DD) and/or
+        ``check_in_time`` (``HH:MM``, ``HH:MM:SS``, or a full ISO datetime).
+        A plain employee's date/time input is ignored so they can only ever
+        mark live attendance.
+        """
+        now = timezone.now()
+        att_date = timezone.localdate()
+        check_in_dt = now
+
+        privileged = request.user.role in (Role.SUPER_ADMIN, Role.FARM_MANAGER)
+        if not privileged:
+            return att_date, check_in_dt
+
+        raw_date = (request.data.get("date") or "").strip()
+        raw_time = (request.data.get("check_in_time") or "").strip()
+
+        parsed_date = parse_date(raw_date) if raw_date else None
+        if parsed_date:
+            att_date = parsed_date
+
+        parsed_dt = parse_datetime(raw_time) if raw_time else None
+        if parsed_dt is None and raw_time:
+            # Fall back to a time-only value ("HH:MM" / "HH:MM:SS").
+            for fmt in ("%H:%M", "%H:%M:%S"):
+                try:
+                    parsed_dt = datetime.combine(att_date, datetime.strptime(raw_time, fmt).time())
+                    break
+                except ValueError:
+                    continue
+
+        if parsed_dt is not None:
+            if timezone.is_naive(parsed_dt):
+                parsed_dt = timezone.make_aware(parsed_dt, timezone.get_current_timezone())
+            check_in_dt = parsed_dt
+            if not parsed_date:
+                att_date = timezone.localtime(parsed_dt).date()
+        elif parsed_date:
+            # Date given without a time → that date at the current wall-clock time.
+            local_time = timezone.localtime(now).time()
+            check_in_dt = timezone.make_aware(
+                datetime.combine(att_date, local_time), timezone.get_current_timezone()
+            )
+
+        return att_date, check_in_dt
+
     def _do_check_in(self, employee, request):
         """Shared check-in logic used by both `check_in` and `check_in_by_code`."""
-        today = timezone.localdate()
+        att_date, check_in_dt = self._resolve_attendance_datetime(request)
         attendance, _created = Attendance.objects.get_or_create(
             employee=employee,
-            date=today,
+            date=att_date,
             defaults={"farm": employee.farm, "created_by": request.user},
         )
-        # Don't silently overwrite an existing check-in for today.
+        # Don't silently overwrite an existing check-in for that date.
         if not _created and attendance.check_in_time is not None:
             return attendance
 
-        attendance.check_in_time = timezone.now()
+        attendance.check_in_time = check_in_dt
         attendance.status = request.data.get("status", Attendance.Status.PRESENT)
         if request.data.get("check_in_lat") is not None:
             attendance.check_in_lat = request.data.get("check_in_lat")

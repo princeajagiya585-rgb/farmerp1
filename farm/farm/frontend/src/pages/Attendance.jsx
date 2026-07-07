@@ -59,6 +59,9 @@ export default function Attendance() {
   const [checkInPhoto, setCheckInPhoto] = useState(null);
   const [checkInPreview, setCheckInPreview] = useState(null);
   const [checkInPos, setCheckInPos] = useState(null);
+  // Admin/manager only: optionally back-date a check-in. Blank = live (now).
+  const [checkInDate, setCheckInDate] = useState("");
+  const [checkInTime, setCheckInTime] = useState("");
   const [posLoading, setPosLoading] = useState(false);
   const [checkOutModalOpen, setCheckOutModalOpen] = useState(false);
   const [checkOutTarget, setCheckOutTarget] = useState(null);
@@ -107,6 +110,8 @@ export default function Attendance() {
     setCheckInPhoto(null);
     setCheckInPreview(null);
     setCheckInPos(null);
+    setCheckInDate("");
+    setCheckInTime("");
     setMsg("");
     setCheckInModalOpen(true);
     setPosLoading(true);
@@ -136,6 +141,12 @@ export default function Attendance() {
         check_in_lat: loc?.lat,
         check_in_lng: loc?.lng,
       };
+      // Only admins/managers may set a custom date/time; employees are always live.
+      // (The backend enforces this too — an employee's date/time is ignored.)
+      if (canApprove) {
+        if (checkInDate) payload.date = checkInDate;
+        if (checkInTime) payload.check_in_time = checkInTime;
+      }
       const body = checkInPhoto ? toFormData({ ...payload, check_in_photo: checkInPhoto }) : payload;
       await api.post("/workforce/attendance/check_in/", body);
       addToast(t("attendance.checkinSuccess", { name: checkInTarget.name || t("common.employee") }), "success");
@@ -631,6 +642,35 @@ export default function Attendance() {
               ) : (
                 <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700 ring-1 ring-amber-200">
                   {t("common.locationUnavailable")}
+                </div>
+              )}
+
+              {/* Admin/manager only: optionally back-date the attendance.
+                  Employees never see this — their check-in is always live. */}
+              {canApprove && (
+                <div className="grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-3 ring-1 ring-gray-200">
+                  <p className="col-span-2 text-xs text-gray-500">
+                    {t("attendance.backdateHint", "Leave blank for a live check-in (now). Set a date/time to record past attendance.")}
+                  </p>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">{t("attendance.date")}</label>
+                    <input
+                      type="date"
+                      value={checkInDate}
+                      max={today}
+                      onChange={(e) => setCheckInDate(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-gray-600">{t("attendance.time", "Time")}</label>
+                    <input
+                      type="time"
+                      value={checkInTime}
+                      onChange={(e) => setCheckInTime(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500"
+                    />
+                  </div>
                 </div>
               )}
 
