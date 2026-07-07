@@ -10,11 +10,6 @@ User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
     full_name = serializers.SerializerMethodField()
-
-    @extend_schema_field(serializers.CharField())
-    def get_full_name(self, instance):
-        name = instance.get_full_name().strip()
-        return name if name else instance.username
     farms = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
     farm_names = serializers.SerializerMethodField()
     farm_ids = serializers.SerializerMethodField()
@@ -37,6 +32,11 @@ class UserSerializer(serializers.ModelSerializer):
             "aadhaar_number": {"required": False},
             "fcm_token": {"write_only": True, "required": False},
         }
+
+    @extend_schema_field(serializers.CharField())
+    def get_full_name(self, instance):
+        name = instance.get_full_name().strip()
+        return name if name else instance.username
 
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_farm_names(self, instance):
