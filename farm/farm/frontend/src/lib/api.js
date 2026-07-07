@@ -47,11 +47,11 @@ export const tokenStore = {
 
 // ── Request concurrency limiter ────────────────────────────────────
 // Many pages fire 5-8 API calls simultaneously on mount (e.g. GPS.jsx).
-// In Railway this burst can trigger rate limits. We limit to 3 concurrent
-// requests and queue the rest.
+// In Railway this burst can trigger rate limits. We limit concurrent
+// requests and queue the rest to smooth out the load.
 let inFlight = 0;
 const requestQueue = [];
-const MAX_CONCURRENCY = 3;
+const MAX_CONCURRENCY = 6; // Increased from 3 for better UX without overwhelming
 
 function processQueue() {
   while (inFlight < MAX_CONCURRENCY && requestQueue.length > 0) {
@@ -234,15 +234,18 @@ api.interceptors.response.use(
     const original = error.config;
     if (!original) return Promise.reject(error);
 
-    // Handle 429 Too Many Requests — activate a global cooldown
-    // instead of retrying (retrying would compound the load).
+    // ── 429 Too Many Requests: Global cooldown ────────────────────
+    // Don't retry on 429 (that would compound the load). Instead pause
+    // ALL requests for a while so the backend / Railway can recover.
     if (error.response?.status === 429) {
       const retryAfter = parseInt(error.response.headers["retry-after"] || "10", 10);
       activateGlobalCooldown(retryAfter);
       return Promise.reject(error);
     }
 
-    // Wait for global cooldown on every erroring request before proceeding
+    // ── Global cooldown check (from a previous 429) ────────────────
+    // Check this BEFORE any retry logic so a cooldown pause always takes
+    // priority over re-sending requests that would just get rejected again.
     if (isInGlobalCooldown()) {
       const wait = globalCooldownUntil - Date.now();
       if (wait > 0) {
@@ -250,12 +253,38 @@ api.interceptors.response.use(
       }
     }
 
+    // ── 502/503/504 (Bad Gateway / Service Unavailable / Gateway Timeout)
+    // These mean Railway is waking up, the backend is restarting, or
+    // the DB connection dropped.  Retry ONCE with a 3s delay because
+    // Railway free-tier sleeps after inactivity — the first request
+    // after a sleep will fail, and a retry usually succeeds.
+    const isServerError = [502, 503, 504].includes(error.response?.status);
+    if (isServerError && original && !original._retryServer) {
+      original._retryServer = true;
+      console.warn(`[API] Server error ${error.response.status}, retrying once after 3s...`);
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      return originalRequest(original);
+    }
+
+    // ── Network error (no response at all) — Railway wake-up retry ─
+    // Axios throws a network error when the backend is unreachable.
+    // On Railway free tier this happens when the server is sleeping.
+    // Retry ONCE with a 5s delay.
+    if (!error.response && !original._retryNetwork) {
+      original._retryNetwork = true;
+      console.warn("[API] Network error (server may be sleeping), retrying once after 5s...");
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      return originalRequest(original);
+    }
+
     // ── 401 Unauthorized: Try token refresh ────────────────────────
-    // If the request is NOT an auth endpoint (login/refresh), intercept
-    // the 401, refresh the token (once, with retry limit), and retry.
-    // If the refresh itself fails (including "Token is blacklisted"),
-    // the refreshAccessToken() will have already cleared the tokens
-    // and the request is rejected without further retries.
+    // Intercept 401, refresh the token, and retry.  This handles both
+    // expired access tokens and race conditions where multiple requests
+    // all arrive just as the token expires.
+    //
+    // DO NOT retry auth endpoints (login/refresh) — a 401 there means
+    // bad credentials, not an expired token.
+
     const isAuthEndpoint =
       original?.url?.includes("/auth/login") ||
       original?.url?.includes("/auth/refresh");
@@ -279,21 +308,31 @@ api.interceptors.response.use(
   },
 );
 
-// Generic REST helpers for a DRF resource (paginated).
-export const resource = (path) => ({
-  list: (params) => api.get(`/${path}/`, { params }).then((r) => r.data),
-  get: (id) => api.get(`/${path}/${id}/`).then((r) => r.data),
-  create: (data) =>
-    api.post(`/${path}/`, data, getConfig(data)).then((r) => r.data),
-  update: (id, data) =>
-    api.patch(`/${path}/${id}/`, data, getConfig(data)).then((r) => r.data),
-  remove: (id) => api.delete(`/${path}/${id}/`),
-  destroy: (id) => api.delete(`/${path}/${id}/`),
-  action: (id, verb, data) =>
-    api.post(`/${path}/${id}/${verb}/`, data, getConfig(data)).then((r) => r.data),
-  collectionAction: (verb, params) =>
-    api.get(`/${path}/${verb}/`, { params }).then((r) => r.data),
-});
+// ── Generic REST helpers for a DRF resource (paginated) ────────────
+// path is e.g. "auth/users" — no leading slash because API_BASE already
+// ends with /api/v1.  DRF endpoints MUST have a trailing slash
+// (APPEND_SLASH=True), so we always append one.
+function stripLeadingSlash(p) {
+  return p.replace(/^\/+/, "");
+}
+
+export const resource = (path) => {
+  const clean = stripLeadingSlash(path);
+  return {
+    list: (params) => api.get(`/${clean}/`, { params }).then((r) => r.data),
+    get: (id) => api.get(`/${clean}/${id}/`).then((r) => r.data),
+    create: (data) =>
+      api.post(`/${clean}/`, data, getConfig(data)).then((r) => r.data),
+    update: (id, data) =>
+      api.patch(`/${clean}/${id}/`, data, getConfig(data)).then((r) => r.data),
+    remove: (id) => api.delete(`/${clean}/${id}/`),
+    destroy: (id) => api.delete(`/${clean}/${id}/`),
+    action: (id, verb, data) =>
+      api.post(`/${clean}/${id}/${verb}/`, data, getConfig(data)).then((r) => r.data),
+    collectionAction: (verb, params) =>
+      api.get(`/${clean}/${verb}/`, { params }).then((r) => r.data),
+  };
+};
 
 /** Detect FormData payloads so Axios auto-sets multipart header. */
 function getConfig(data) {
