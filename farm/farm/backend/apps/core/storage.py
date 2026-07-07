@@ -143,6 +143,14 @@ class SupabaseFileStorage(Storage):
     def _bucket(self):
         return self.client.storage.from_(get_bucket_name())
 
+    @staticmethod
+    def _normalize(name):
+        """Supabase Storage keys must use forward slashes. On Windows Django
+        builds ``upload_to`` paths with backslashes (e.g. ``location_pings\\x.png``),
+        which Supabase rejects with ``InvalidKey``. Normalize to POSIX slashes so
+        uploads/serving/deletes work identically on every host OS."""
+        return (name or "").replace("\\", "/").lstrip("/")
+
     def _save(self, name, content):
         """Upload ``content`` to Supabase Storage at path ``name``.
 
@@ -150,6 +158,8 @@ class SupabaseFileStorage(Storage):
         """
         if content is None:
             raise ValueError("Cannot save None content to Supabase Storage.")
+
+        name = self._normalize(name)
 
         # Read file content — always seek(0) first to handle partially-
         # read file-like objects (e.g. after a validation pass).
@@ -200,6 +210,7 @@ class SupabaseFileStorage(Storage):
         """Return the public Supabase CDN URL for the file at path ``name``."""
         if not name:
             return ""
+        name = self._normalize(name)
         try:
             return self._bucket().get_public_url(name)
         except Exception as exc:
@@ -213,6 +224,7 @@ class SupabaseFileStorage(Storage):
         """Remove the file at path ``name`` from Supabase Storage."""
         if not name:
             return
+        name = self._normalize(name)
         try:
             self._bucket().remove([name])
             logger.debug("[Supabase] Deleted '%s'", name)
@@ -228,6 +240,7 @@ class SupabaseFileStorage(Storage):
         """
         if not name:
             return False
+        name = self._normalize(name)
         try:
             parent = os.path.dirname(name)
             files = self._bucket().list(path=parent)
@@ -265,8 +278,15 @@ class SupabaseFileStorage(Storage):
             return [], []
 
     def get_available_name(self, name, max_length=None):
-        """Return ``name`` as-is — our paths already include UUIDs."""
-        return name
+        """POSIX-normalize and guarantee a unique key.
+
+        Supabase's ``upload`` (without upsert) rejects an existing key with a
+        409, so two uploads named ``image.jpg`` (common from phone cameras)
+        would collide and fail. Append a short UUID before the extension so
+        every stored file gets a unique key."""
+        name = self._normalize(name)
+        root, ext = os.path.splitext(name)
+        return f"{root}_{uuid.uuid4().hex[:12]}{ext}"
 
     def _guess_content_type(self, filename, fallback_name=""):
         """Guess MIME type from file extension."""
