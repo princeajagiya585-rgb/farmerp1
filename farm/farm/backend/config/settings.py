@@ -180,7 +180,10 @@ AUTH_PASSWORD_VALIDATORS = [
 # ---------------------------------------------------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        # Rejects deactivated/suspended users on EVERY request (stock
+        # JWTAuthentication only checks signature/expiry, so a suspended
+        # user could keep using their token for up to 24h).
+        "apps.core.auth.ActiveJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",

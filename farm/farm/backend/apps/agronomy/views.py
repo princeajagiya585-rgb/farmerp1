@@ -54,17 +54,20 @@ class CropViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             f["quantity"] += h.quantity or Decimal("0")
             f["revenue"] += h.revenue or Decimal("0")
 
-        harvest_qty_by_crop = {k: v["quantity"] for k, v in by_crop.items()}
+        # Actual harvested quantity per crop id — used for both the seasonal
+        # roll-up and the crop-level yield analysis below.
+        actual_by_cropobj = {}
+        for h in harvests:
+            actual_by_cropobj[h.crop_id] = actual_by_cropobj.get(h.crop_id, Decimal("0")) + (h.quantity or Decimal("0"))
+
         for c in crops:
             season = c.season or "Unspecified"
             s = by_season.setdefault(season, {"season": season, "crops": 0, "expected_yield": Decimal("0"), "harvested": Decimal("0")})
             s["crops"] += 1
             s["expected_yield"] += c.expected_yield or Decimal("0")
+            s["harvested"] += actual_by_cropobj.get(c.id, Decimal("0"))
 
         yield_analysis = []
-        actual_by_cropobj = {}
-        for h in harvests:
-            actual_by_cropobj[h.crop_id] = actual_by_cropobj.get(h.crop_id, Decimal("0")) + (h.quantity or Decimal("0"))
         for c in crops:
             actual = actual_by_cropobj.get(c.id, Decimal("0"))
             expected = c.expected_yield or Decimal("0")

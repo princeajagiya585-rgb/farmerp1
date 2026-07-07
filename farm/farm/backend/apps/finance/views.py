@@ -265,7 +265,10 @@ class SaleViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        sale = serializer.save(created_by=user, buyer=user.get_full_name() or user.username)
+        # `buyer` is the customer name supplied by the client — do NOT overwrite
+        # it with the logged-in seller's name. Who entered the sale is recorded
+        # in `created_by`.
+        sale = serializer.save(created_by=user)
         LedgerEntry.objects.create(
             created_by=self.request.user,
             farm=sale.farm,

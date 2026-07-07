@@ -16,6 +16,11 @@ class NotificationViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Notification.objects.filter(recipient=self.request.user)
 
+    def perform_create(self, serializer):
+        # `recipient` is read-only and non-null; without setting it here a
+        # POST would pass validation then hit a NOT NULL violation (500).
+        serializer.save(recipient=self.request.user)
+
     @action(detail=True, methods=["post"])
     def mark_read(self, request, pk=None):
         notification = self.get_object()

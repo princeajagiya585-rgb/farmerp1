@@ -470,6 +470,19 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         month = request.query_params.get("month")
         year = request.query_params.get("year")
 
+        # Validate numeric params up front so a bad ?year=abc / ?month=xx
+        # returns 400 instead of raising ValueError → 500.
+        try:
+            month = int(month) if month else None
+            if month is not None and not (1 <= month <= 12):
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response({"detail": "month must be an integer 1-12."}, status=400)
+        try:
+            year = int(year) if year else None
+        except (TypeError, ValueError):
+            return Response({"detail": "year must be an integer."}, status=400)
+
         # All employees on farms the user can access (optionally filtered by farm)
         user = self.request.user
         if user.role == Role.EMPLOYEE:

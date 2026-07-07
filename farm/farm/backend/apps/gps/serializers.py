@@ -79,6 +79,7 @@ class ActivityPhotoSerializer(serializers.ModelSerializer):
         model = ActivityPhoto
         fields = "__all__"
 
+    @extend_schema_field(serializers.URLField(allow_null=True))
     def get_photo_url(self, obj):
         return build_absolute_photo_url(obj.photo, self.context.get('request'))
 

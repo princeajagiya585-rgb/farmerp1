@@ -113,9 +113,17 @@ class EmployeeSerializer(serializers.ModelSerializer):
           User role FARM_MANAGER  → Employee category MANAGER
           User role EMPLOYEE      → Employee category EMPLOYEE
 
-        If there is no linked user, the category from the request is kept
-        as-is (manually selected by the admin).
+        This is only a DEFAULT: an explicitly submitted category always wins
+        (including expanded categories like DRIVER/SECURITY/SUPERVISOR that
+        have no matching login role), and an existing category is never
+        clobbered on update.
         """
+        # Respect an explicitly provided category.
+        if "category" in validated_data:
+            return validated_data
+        # Don't overwrite a category that's already set on the instance.
+        if instance is not None and getattr(instance, "category", None):
+            return validated_data
         user = validated_data.get("user", getattr(instance, "user", None) if instance else None)
         if user:
             role_to_category = {

@@ -88,8 +88,19 @@ def user_created_for_employee(sender, instance, created, **kwargs):
         existing_employee = Employee.objects.filter(user=instance).first()
 
         if existing_employee:
-            # Update existing employee's category to match the user's role
-            if existing_employee.category != target_category:
+            # Only re-sync the category when the employee is still on a base
+            # login-role category (SUPER_ADMIN/MANAGER/EMPLOYEE). A manually
+            # assigned expanded category (DRIVER, SECURITY, SUPERVISOR, ...)
+            # must NOT be clobbered on every unrelated User.save().
+            base_categories = {
+                Employee.Category.SUPER_ADMIN,
+                Employee.Category.MANAGER,
+                Employee.Category.EMPLOYEE,
+            }
+            if (
+                existing_employee.category in base_categories
+                and existing_employee.category != target_category
+            ):
                 existing_employee.category = target_category
                 existing_employee.save(update_fields=["category"])
             return

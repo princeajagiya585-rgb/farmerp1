@@ -1,4 +1,5 @@
 """Geospatial helpers for GPS activity tracking and shared broadcast utility."""
+import json
 import math
 from functools import lru_cache
 
@@ -6,6 +7,7 @@ import requests
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
+from rest_framework.renderers import JSONRenderer
 
 
 # Super admins subscribe to this firehose group; everyone else subscribes only
@@ -21,11 +23,16 @@ def farm_group(farm_id):
 def _broadcast(message_type, data, farm_id):
     """Fan a payload out to the farm's group and the super-admin firehose."""
     channel_layer = get_channel_layer()
+    # Serializer .data holds raw UUID/Decimal/datetime objects (e.g. the
+    # user/farm/task PrimaryKeyRelatedFields are UUIDs). Both the in-memory
+    # consumer's json.dumps and channels_redis' msgpack encoder choke on those,
+    # so round-trip through DRF's JSONRenderer to get pure JSON primitives.
+    safe_data = json.loads(JSONRenderer().render(data))
     targets = [LOCATION_GROUP]
     if farm_id is not None:
         targets.append(farm_group(farm_id))
     for group in targets:
-        async_to_sync(channel_layer.group_send)(group, {"type": message_type, "data": data})
+        async_to_sync(channel_layer.group_send)(group, {"type": message_type, "data": safe_data})
 
 
 def broadcast_ping(instance, request=None):
