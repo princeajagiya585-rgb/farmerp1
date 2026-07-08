@@ -21,6 +21,8 @@ export default function InventoryMovements() {
       subtitle={t("inventoryMovements.subtitle")}
       path="inventory/movements"
       canWrite={canWrite}
+      showFarmFilter
+      showEmployeeFilter
       columns={[
         { key: "date", header: t("header.date") },
         { key: "item_name", header: t("header.item") },

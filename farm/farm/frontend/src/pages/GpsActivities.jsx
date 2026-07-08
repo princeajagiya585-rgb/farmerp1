@@ -30,6 +30,8 @@ export default function GpsActivities() {
       subtitle={t("gpsActivities.subtitle")}
       path="gps/activities"
       canWrite={canWrite}
+      showFarmFilter
+      showEmployeeFilter
       // Auto-refresh removed to avoid Railway 429 rate limits.
       // Users can manually reload or use WebSocket updates.
       rowActions={(row, reload) =>

@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import { Download, FileBarChart } from "lucide-react";
 import { resource } from "../lib/api";
-import { exportExcel } from "../lib/export";
+import { exportExcel, exportExcelMultiSheet } from "../lib/export";
 import { Button, Card, Input, PageHeader, Select, Table } from "../components/ui";
 
 const reports = resource("finance/reports");
@@ -54,45 +54,50 @@ export default function FinanceReports() {
   const runCrop = async () => setCropProf(await reports.collectionAction("crop_profitability", { year }));
 
   const exportAll = () => {
-    const farmRows = (farmProf?.rows || []).map((r) => ({ ...r }));
-    const cropRows = (cropProf?.rows || []).map((r) => ({ ...r }));
-    // Append total rows
-    const ft = totalRow(farmProf?.rows, ["income", "expenses", "profit"]);
-    const ct = totalRow(cropProf?.rows, ["income", "expenses", "profit"]);
-    if (ft) farmRows.push(ft);
-    if (ct) cropRows.push(ct);
-
-    const wb = [
-      { sheet: "Farm Profitability", data: farmRows, cols: [
-        { key: "farm", header: t("header.farm") },
-        { key: "income", header: t("header.income") },
-        { key: "expenses", header: t("header.expenses") },
-        { key: "profit", header: t("header.profit") },
-      ]},
-      { sheet: "Crop Profitability", data: cropRows, cols: [
-        { key: "crop", header: t("header.crop") },
-        { key: "income", header: t("header.income") },
-        { key: "expenses", header: t("header.expenses") },
-        { key: "profit", header: t("header.profit") },
-      ]},
-    ];
-
-    // Export first sheet via exportExcel
-    if (farmRows.length > 0) {
-      exportExcel(farmRows, [
-        { key: "farm", header: t("header.farm") },
-        { key: "income", header: t("header.income") },
-        { key: "expenses", header: t("header.expenses") },
-        { key: "profit", header: t("header.profit") },
-      ], "farm-profitability.xlsx", "Farm Profitability");
+    const wbData = [];
+    
+    // Farm profitability
+    if (farmProf?.rows?.length > 0) {
+      const farmRows = farmProf.rows.map((r) => ({
+        [t("header.farm")]: r.farm,
+        [t("header.income")]: Number(r.income || 0),
+        [t("header.expenses")]: Number(r.expenses || 0),
+        [t("header.profit")]: Number(r.profit || 0),
+      }));
+      const ft = totalRow(farmProf.rows, ["income", "expenses", "profit"]);
+      if (ft) {
+        farmRows.push({
+          [t("header.farm")]: t("common.total"),
+          [t("header.income")]: Number(ft.income || 0),
+          [t("header.expenses")]: Number(ft.expenses || 0),
+          [t("header.profit")]: Number(ft.profit || 0),
+        });
+      }
+      wbData.push({ name: t("financeReports.farmProfitability").substring(0, 31), data: farmRows });
     }
-    if (cropRows.length > 0) {
-      exportExcel(cropRows, [
-        { key: "crop", header: t("header.crop") },
-        { key: "income", header: t("header.income") },
-        { key: "expenses", header: t("header.expenses") },
-        { key: "profit", header: t("header.profit") },
-      ], "crop-profitability.xlsx", "Crop Profitability");
+    
+    // Crop profitability
+    if (cropProf?.rows?.length > 0) {
+      const cropRows = cropProf.rows.map((r) => ({
+        [t("header.crop")]: r.crop,
+        [t("header.income")]: Number(r.income || 0),
+        [t("header.expenses")]: Number(r.expenses || 0),
+        [t("header.profit")]: Number(r.profit || 0),
+      }));
+      const ct = totalRow(cropProf.rows, ["income", "expenses", "profit"]);
+      if (ct) {
+        cropRows.push({
+          [t("header.crop")]: t("common.total"),
+          [t("header.income")]: Number(ct.income || 0),
+          [t("header.expenses")]: Number(ct.expenses || 0),
+          [t("header.profit")]: Number(ct.profit || 0),
+        });
+      }
+      wbData.push({ name: t("financeReports.cropProfitability").substring(0, 31), data: cropRows });
+    }
+    
+    if (wbData.length > 0) {
+      exportExcelMultiSheet(wbData, `finance-reports-${year}.xlsx`, t("financeReports.title"));
     }
   };
 

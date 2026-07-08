@@ -18,6 +18,8 @@ export default function FinancePurchases() {
       path="finance/purchases"
       canWrite={canWrite}
       canEdit={canEdit}
+      showFarmFilter
+      showEmployeeFilter
       footerColumns={["total_amount"]}
       columns={[
         { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },

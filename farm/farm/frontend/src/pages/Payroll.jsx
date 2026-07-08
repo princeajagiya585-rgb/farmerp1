@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, Cog, Download, Pencil, Trash2 } from "lucide-react";
 import { resource } from "../lib/api";
-import { exportExcel } from "../lib/export";
+import { exportExcelMultiSheet } from "../lib/export";
 import { Badge, Button, Card, Input, Modal, PageHeader, Select, Table } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 
@@ -241,62 +241,54 @@ export default function Payroll() {
         action={canRun && <Button onClick={() => setOpen(true)}><Plus size={16} /> {t("payroll.newPeriod")}</Button>}
       />
 
-      {/* Excel export buttons */}
+      {/* Single Excel export button — combines all sections into one file */}
       <div className="mb-4 flex flex-wrap gap-2">
         <Button variant="secondary" onClick={() => {
-          const rows = periods.map((r) => ({
-            farm: r.farm_name || r.farm,
-            month: months[r.month - 1]?.label,
-            year: r.year,
-            status: r.status,
-          }));
-          exportExcel(rows, [
-            { key: "farm", header: t("header.farm") },
-            { key: "month", header: t("header.month") },
-            { key: "year", header: t("header.year") },
-            { key: "status", header: t("header.status") },
-          ], "payroll-periods.xlsx", "Payroll Periods");
+          const wbData = [];
+          
+          // Periods sheet
+          if (periods.length > 0) {
+            const periodRows = periods.map((r) => ({
+              [t("header.farm")]: r.farm_name || r.farm,
+              [t("header.month")]: months[r.month - 1]?.label,
+              [t("header.year")]: r.year,
+              [t("header.status")]: r.status,
+            }));
+            wbData.push({ name: t("payroll.payrollPeriods"), data: periodRows });
+          }
+          
+          // Payslips sheet
+          if (slips.length > 0) {
+            const slipRows = slips.map((r) => ({
+              [t("header.employee")]: r.employee_name,
+              [t("header.days")]: r.days_worked,
+              [t("header.gross")]: Number(r.gross_wage || 0),
+              [t("header.ot")]: Number(r.overtime_amount || 0),
+              [t("header.advances")]: Number(r.advance_deduction || 0),
+              [t("header.deductions")]: Number(r.other_deductions || 0),
+              [t("header.netPay")]: Number(r.net_pay || 0),
+              [t("header.status")]: r.status,
+            }));
+            wbData.push({ name: t("payroll.payslips"), data: slipRows });
+          }
+          
+          // Advances sheet
+          if (advances.length > 0) {
+            const advRows = advances.map((r) => ({
+              [t("header.employee")]: r.employee_name,
+              [t("header.amount")]: Number(r.amount || 0),
+              [t("header.repaid")]: Number(r.amount_repaid || 0),
+              [t("header.balance")]: Number(r.balance || 0),
+              [t("header.status")]: r.status,
+            }));
+            wbData.push({ name: t("payroll.outstandingAdvances"), data: advRows });
+          }
+          
+          if (wbData.length > 0) {
+            exportExcelMultiSheet(wbData, `payroll-${filterFarm || "all"}.xlsx`, t("payroll.titlePg"));
+          }
         }}>
-          <Download size={14} /> {t("payroll.payrollPeriods")} Excel
-        </Button>
-
-        <Button variant="secondary" onClick={() => {
-          const cols = [
-            { key: "employee_name", header: t("header.employee") },
-            { key: "days_worked", header: t("header.days") },
-            { key: "gross_wage", header: t("header.gross"), render: (r) => Number(r.gross_wage || 0) },
-            { key: "overtime_amount", header: t("header.ot"), render: (r) => Number(r.overtime_amount || 0) },
-            { key: "advance_deduction", header: t("header.advances"), render: (r) => Number(r.advance_deduction || 0) },
-            { key: "other_deductions", header: t("header.deductions"), render: (r) => Number(r.other_deductions || 0) },
-            { key: "net_pay", header: t("header.netPay"), render: (r) => Number(r.net_pay || 0) },
-            { key: "status", header: t("header.status") },
-          ];
-          const numKeys = ["gross_wage", "overtime_amount", "advance_deduction", "other_deductions", "net_pay"];
-          const total = { employee_name: "Total", days_worked: "", status: "" };
-          numKeys.forEach((k) => { total[k] = slips.reduce((s, r) => s + Number(r[k] || 0), 0); });
-          exportExcel([...slips, total], cols, "payslips.xlsx", "Payslips");
-        }}>
-          <Download size={14} /> {t("payroll.payslips")} Excel
-        </Button>
-
-        <Button variant="secondary" onClick={() => {
-          const cols = [
-            { key: "employee_name", header: t("header.employee") },
-            { key: "amount", header: t("header.amount"), render: (r) => Number(r.amount || 0) },
-            { key: "amount_repaid", header: t("header.repaid"), render: (r) => Number(r.amount_repaid || 0) },
-            { key: "balance", header: t("header.balance"), render: (r) => Number(r.balance || 0) },
-            { key: "status", header: t("header.status") },
-          ];
-          const total = {
-            employee_name: "Total",
-            amount: advances.reduce((s, r) => s + Number(r.amount || 0), 0),
-            amount_repaid: advances.reduce((s, r) => s + Number(r.amount_repaid || 0), 0),
-            balance: advances.reduce((s, r) => s + Number(r.balance || 0), 0),
-            status: "",
-          };
-          exportExcel([...advances, total], cols, "advances.xlsx", "Advances");
-        }}>
-          <Download size={14} /> {t("payroll.outstandingAdvances")} Excel
+          <Download size={14} /> {t("common.excel")}
         </Button>
       </div>
 

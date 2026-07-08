@@ -15,6 +15,8 @@ export default function AgronomyHarvest() {
       subtitle={t("agronomyHarvest.subtitlePg")}
       path="agronomy/harvest-records"
       canWrite={canWrite}
+      showFarmFilter
+      showEmployeeFilter
       footerColumns={["revenue"]}
       columns={[
         { key: "crop_name", header: t("header.crop") },

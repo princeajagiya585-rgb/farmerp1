@@ -25,6 +25,8 @@ export default function Agronomy() {
       subtitle={t("agronomy.subtitlePg")}
       path="agronomy/crops"
       canWrite={canWrite}
+      showFarmFilter
+      showEmployeeFilter
       rowActions={(row) => (
         <Link
           to={`/agronomy/${row.id}`}

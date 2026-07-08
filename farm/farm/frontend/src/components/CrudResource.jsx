@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Plus, Pencil, Trash2, Search, Download, Printer, ChevronLeft, ChevronRight, ChevronDown,
+  Plus, Pencil, Trash2, Search, Download, Printer, ChevronLeft, ChevronRight, ChevronDown, Filter,
 } from "lucide-react";
 import LoadingSpinner from "./LoadingSpinner";
 import { resource } from "../lib/api";
@@ -25,6 +25,8 @@ import {
  *  - rowActions: (row, reload) => ReactNode
  *  - defaultValues: object
  *  - searchable: bool
+ *  - showFarmFilter: bool — show farm dropdown filter
+ *  - showEmployeeFilter: bool — show employee dropdown filter
  */
 const EMPTY_PARAMS = {};
 
@@ -37,9 +39,12 @@ export default function CrudResource({
   renderFooter, // optional custom tfoot footer: (totals) => JSX
   hideExport, // hide the default Excel/Print buttons
   hideDateFilter, // hide the date-range filter
+  showFarmFilter, // show farm dropdown filter
+  showEmployeeFilter, // show employee dropdown filter
 }) {
   const { t, i18n } = useTranslation();
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
+  const isEmployee = user?.role === "EMPLOYEE";
   const canModify = canEdit !== undefined ? canEdit : canWrite;
   // Only super admins may delete — managers can create/edit but never delete.
   const canDelete = hasRole("SUPER_ADMIN");
@@ -55,6 +60,13 @@ export default function CrudResource({
   const [count, setCount] = useState(0);
   const [hasNext, setHasNext] = useState(false);
   const PAGE_SIZE = 25;
+  // Farm/Employee filter state
+  const [farmFilter, setFarmFilter] = useState("");
+  const [empFilter, setEmpFilter] = useState("");
+  const [appliedFarmFilter, setAppliedFarmFilter] = useState("");
+  const [appliedEmpFilter, setAppliedEmpFilter] = useState("");
+  const [farms, setFarms] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({});
   const [error, setError] = useState("");
@@ -93,6 +105,16 @@ export default function CrudResource({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
 
+  // Load farms/employees for filters
+  useEffect(() => {
+    if (showFarmFilter && !isEmployee) {
+      resource("farms").list({ page_size: 200 }).then((d) => setFarms(d.results || d)).catch(() => {});
+    }
+    if (showEmployeeFilter && !isEmployee) {
+      resource("workforce/employees").list({ page_size: 200 }).then((d) => setEmployees(d.results || d)).catch(() => {});
+    }
+  }, [showFarmFilter, showEmployeeFilter, isEmployee]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -100,6 +122,8 @@ export default function CrudResource({
       if (search) params.search = search;
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
+      if (appliedFarmFilter && !isEmployee) params.farm = appliedFarmFilter;
+      if (appliedEmpFilter && !isEmployee) params.employee = appliedEmpFilter;
       const data = await repo.list(params);
       if (Array.isArray(data)) {
         setRows(data);
@@ -115,7 +139,7 @@ export default function CrudResource({
     } finally {
       setLoading(false);
     }
-  }, [path, search, page, dateFrom, dateTo, listParams, t]);
+  }, [path, search, page, dateFrom, dateTo, appliedFarmFilter, appliedEmpFilter, listParams, isEmployee, t]);
 
   // Auto-refresh interval
   const intervalRef = useRef(null);
@@ -290,7 +314,7 @@ export default function CrudResource({
     return { ...row, ...totals };
   };
 
-  // Fetch ALL rows for Excel export
+  // Fetch ALL rows for Excel export (respects all filters)
   const exportAll = async () => {
     let allRows = rows;
     try {
@@ -298,6 +322,8 @@ export default function CrudResource({
       if (search) params.search = search;
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
+      if (appliedFarmFilter && !isEmployee) params.farm = appliedFarmFilter;
+      if (appliedEmpFilter && !isEmployee) params.employee = appliedEmpFilter;
       const data = await repo.list(params);
       allRows = Array.isArray(data) ? data : data.results || [];
     } catch {
@@ -438,6 +464,53 @@ export default function CrudResource({
               {(dateFrom || dateTo) && (
                 <button onClick={clearDates} className="rounded-lg px-2 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50">
                   {t("crud.clearDates")}
+                </button>
+              )}
+            </div>
+          )}
+          {/* Farm & Employee Filters with Apply button */}
+          {(showFarmFilter || showEmployeeFilter) && !isEmployee && (
+            <div className="flex flex-wrap items-end gap-2 rounded-lg bg-gray-50 p-2 border border-gray-200">
+              {showFarmFilter && (
+                <div className="min-w-[150px]">
+                  <select
+                    value={farmFilter}
+                    onChange={(e) => setFarmFilter(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs outline-none focus:border-brand-500"
+                  >
+                    <option value="">{t("workforce.allFarms")}</option>
+                    {farms.map((f) => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {showEmployeeFilter && (
+                <div className="min-w-[150px]">
+                  <select
+                    value={empFilter}
+                    onChange={(e) => setEmpFilter(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs outline-none focus:border-brand-500"
+                  >
+                    <option value="">{t("common.allEmployees")}</option>
+                    {employees.map((e) => (
+                      <option key={e.id} value={e.id}>{e.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <button
+                onClick={() => { setAppliedFarmFilter(farmFilter); setAppliedEmpFilter(empFilter); setPage(1); }}
+                className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
+              >
+                <Filter size={13} /> {t("common.applyFilters")}
+              </button>
+              {(appliedFarmFilter || appliedEmpFilter) && (
+                <button
+                  onClick={() => { setFarmFilter(""); setEmpFilter(""); setAppliedFarmFilter(""); setAppliedEmpFilter(""); setPage(1); }}
+                  className="rounded-lg px-2 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50"
+                >
+                  {t("common.reset")}
                 </button>
               )}
             </div>

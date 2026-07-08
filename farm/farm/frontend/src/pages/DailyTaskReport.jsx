@@ -8,7 +8,7 @@ import {
 } from "recharts";
 import { resource } from "../lib/api";
 import { Badge, Button, Card, PageHeader, Table } from "../components/ui";
-import { exportExcel } from "../lib/export";
+import { exportExcelMultiSheet } from "../lib/export";
 
 const tasksRepo = resource("tasks");
 const sessionsRepo = resource("tasks/sessions");
@@ -207,41 +207,54 @@ export default function DailyTaskReport() {
         title={t("dailyTaskReport.title")}
         subtitle={t("dailyTaskReport.subtitle")}
         action={
-          <div className="flex items-center gap-2">
-            {todayTasks.length > 0 && (
-              <Button variant="secondary" onClick={() => {
-                const exportRows = [
-                  ...todayTasks,
+          (todayTasks.length > 0 || todaySessions.length > 0) && (
+            <Button variant="secondary" onClick={() => {
+              const wbData = [];
+              
+              if (todayTasks.length > 0) {
+                const taskRows = [
+                  ...todayTasks.map((r) => ({
+                    [t("header.task")]: r.title,
+                    [t("header.assignee")]: r.assigned_to_name || r.assigned_employee_name || "—",
+                    [t("header.status")]: r.status,
+                    [t("header.progress")]: `${r.progress || 0}%`,
+                  })),
                   {
-                    title: t("common.total"),
-                    assigned_to_name: "",
-                    status: "",
-                    progress: todayTasks.reduce((s, t) => s + (t.progress || 0), 0),
+                    [t("header.task")]: t("common.total"),
+                    [t("header.assignee")]: "",
+                    [t("header.status")]: "",
+                    [t("header.progress")]: todayTasks.reduce((s, t) => s + (t.progress || 0), 0),
                   },
                 ];
-                exportExcel(exportRows, [{key:"title",header:t("header.task")},{key:"assigned_to_name",header:t("header.assignee")},{key:"status",header:t("header.status")},{key:"progress",header:t("tasks.progressPercent")}], "daily-tasks.xlsx", t("tasks.exportTasks"));
-              }}>
-                <Download size={15} /> {t("common.excel")}
-              </Button>
-            )}
-            {todaySessions.length > 0 && (
-              <Button variant="secondary" onClick={() => {
+                wbData.push({ name: t("common.todaysTasks", { count: "" }), data: taskRows });
+              }
+              
+              if (todaySessions.length > 0) {
                 const totalMin = todaySessions.reduce((s, t) => s + (t.duration_minutes || 0), 0);
-                const exportRows = [
-                  ...todaySessions,
+                const sessionRows = [
+                  ...todaySessions.map((r) => ({
+                    [t("header.worker")]: r.user_name || r.username || "—",
+                    [t("header.started")]: r.start_time ? new Date(r.start_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
+                    [t("header.ended")]: r.end_time ? new Date(r.end_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Active",
+                    [t("header.duration")]: formatDuration(r.duration_minutes),
+                  })),
                   {
-                    user_name: t("common.total"),
-                    start_time: "",
-                    end_time: "",
-                    duration_minutes: totalMin,
+                    [t("header.worker")]: t("common.total"),
+                    [t("header.started")]: "",
+                    [t("header.ended")]: "",
+                    [t("header.duration")]: formatDuration(totalMin),
                   },
                 ];
-                exportExcel(exportRows, [{key:"user_name",header:t("header.worker")},{key:"start_time",header:t("header.started")},{key:"end_time",header:t("header.ended")},{key:"duration_minutes",header:t("header.duration")}], "daily-sessions.xlsx", t("tasks.exportSessionsTitle"));
-              }}>
-                <Download size={15} /> {t("tasks.exportSessions")}
-              </Button>
-            )}
-          </div>
+                wbData.push({ name: t("tasks.exportSessionsTitle"), data: sessionRows });
+              }
+              
+              if (wbData.length > 0) {
+                exportExcelMultiSheet(wbData, `daily-report-${new Date().toISOString().slice(0, 10)}.xlsx`, t("dailyTaskReport.title"));
+              }
+            }}>
+              <Download size={15} /> {t("common.excel")}
+            </Button>
+          )
         }
       />
 

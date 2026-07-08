@@ -55,6 +55,8 @@ export default function Breakdowns() {
       subtitle={t("breakdowns.subtitlePg")}
       path="breakdowns/reports"
       canWrite={canWrite}
+      showFarmFilter
+      showEmployeeFilter
       rowActions={(row, load) =>
         canAct ? (
           <div className="flex gap-1">

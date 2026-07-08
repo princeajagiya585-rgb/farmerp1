@@ -4,7 +4,7 @@ import { Download } from "lucide-react";
 import CrudResource from "../components/CrudResource";
 import { Badge, Button, Card, PageHeader, Select, Table } from "../components/ui";
 import { resource } from "../lib/api";
-import { exportExcel } from "../lib/export";
+import { exportExcel, exportExcelMultiSheet } from "../lib/export";
 import { useAuth } from "../context/AuthContext";
 
 const TABS = [
@@ -49,12 +49,13 @@ export default function CropMonitoring() {
         ))}
       </div>
 
-      {tab === "growth" && (
-        <CrudResource
+      {tab === "growth" && (          <CrudResource
           title={t("cropMon.growthTitle")}
           subtitle={t("cropMon.growthSubtitle")}
           path="agronomy/growth-records"
           canWrite={canWrite}
+          showFarmFilter
+          showEmployeeFilter
           footerColumns={["height_cm", "health_index"]}
           columns={[
             { key: "crop_name",    header: t("cropMon.crop") },
@@ -77,12 +78,13 @@ export default function CropMonitoring() {
         />
       )}
 
-      {tab === "observations" && (
-        <CrudResource
+      {tab === "observations" && (          <CrudResource
           title={t("cropMon.obsTitle")}
           subtitle={t("cropMon.obsSubtitle")}
           path="agronomy/observations"
           canWrite={canWrite}
+          showFarmFilter
+          showEmployeeFilter
           columns={[
             { key: "crop_name",        header: t("cropMon.crop") },
             { key: "observed_on",      header: t("cropMon.date") },
@@ -189,77 +191,76 @@ function CropPerformance({ money, statusColor }) {
     loadAnalytics(e.target.value);
   };
 
-  const exportPerformance = () => {
-    if (!data?.by_crop?.length) return;
-    const rows = data.by_crop.map((r) => ({ ...r, revenue: Number(r.revenue || 0), quantity: Number(r.quantity || 0) }));
-    const total = { crop: t("common.total"), quantity: rows.reduce((s, r) => s + r.quantity, 0), revenue: rows.reduce((s, r) => s + r.revenue, 0) };
-    exportExcel([...rows, total], [
-      { key: "crop",     header: t("cropMon.crop") },
-      { key: "quantity", header: t("cropMon.totalHarvested"), render: (r) => Number(r.quantity || 0) },
-      { key: "revenue",  header: t("cropMon.revenueRs"),    render: (r) => Number(r.revenue  || 0) },
-    ], "crop-performance.xlsx", t("cropMon.cropwisePerformance"));
-  };
-
-  const exportYieldAnalysis = () => {
-    if (!data?.yield_analysis?.length) return;
-    const rows = data.yield_analysis.map((r) => ({
-      crop: r.crop, season: r.season,
-      expected_yield: Number(r.expected_yield || 0),
-      actual_yield:   Number(r.actual_yield   || 0),
-      variance:       Number(r.variance       || 0),
-    }));
-    const total = {
-      crop: t("common.total"), season: "",
-      expected_yield: rows.reduce((s, r) => s + r.expected_yield, 0),
-      actual_yield:   rows.reduce((s, r) => s + r.actual_yield,   0),
-      variance:       rows.reduce((s, r) => s + r.variance,       0),
-    };
-    exportExcel([...rows, total], [
-      { key: "crop",           header: t("cropMon.crop") },
-      { key: "season",         header: t("cropMon.season") },
-      { key: "expected_yield", header: t("cropMon.expectedYield"), render: (r) => Number(r.expected_yield || 0) },
-      { key: "actual_yield",   header: t("cropMon.actualYield"),   render: (r) => Number(r.actual_yield   || 0) },
-      { key: "variance",       header: t("cropMon.variance"),       render: (r) => Number(r.variance       || 0) },
-    ], "yield-analysis.xlsx", t("cropMon.yieldAnalysisShort"));
-  };
-
-  const exportSeasonal = () => {
-    if (!data?.by_season?.length) return;
-    const rows = data.by_season.map((r) => ({
-      season: r.season,
-      crops: Number(r.crops || 0),
-      expected_yield: Number(r.expected_yield || 0),
-    }));
-    const total = {
-      season: t("common.total"),
-      crops:          rows.reduce((s, r) => s + r.crops,          0),
-      expected_yield: rows.reduce((s, r) => s + r.expected_yield, 0),
-    };
-    exportExcel([...rows, total], [
-      { key: "season",         header: t("cropMon.season") },
-      { key: "crops",          header: t("cropMon.totalCrops"),    render: (r) => Number(r.crops          || 0) },
-      { key: "expected_yield", header: t("cropMon.expectedYield"), render: (r) => Number(r.expected_yield || 0) },
-    ], "seasonal-comparison.xlsx", t("cropMon.seasonalComparison"));
+  const exportAllPerformance = () => {
+    const wbData = [];
+    
+    if (data?.by_crop?.length > 0) {
+      const rows = data.by_crop.map((r) => ({
+        [t("cropMon.crop")]: r.crop,
+        [t("cropMon.totalHarvested")]: Number(r.quantity || 0),
+        [t("cropMon.revenue")]: Number(r.revenue || 0),
+      }));
+      rows.push({
+        [t("cropMon.crop")]: t("common.total"),
+        [t("cropMon.totalHarvested")]: rows.reduce((s, r) => s + r[t("cropMon.totalHarvested")], 0),
+        [t("cropMon.revenue")]: rows.reduce((s, r) => s + r[t("cropMon.revenue")], 0),
+      });
+      wbData.push({ name: "Crop Performance", data: rows });
+    }
+    
+    if (data?.yield_analysis?.length > 0) {
+      const rows = data.yield_analysis.map((r) => ({
+        [t("cropMon.crop")]: r.crop,
+        [t("cropMon.season")]: r.season,
+        [t("cropMon.expectedYield")]: Number(r.expected_yield || 0),
+        [t("cropMon.actualYield")]: Number(r.actual_yield || 0),
+        [t("cropMon.variance")]: Number(r.variance || 0),
+      }));
+      rows.push({
+        [t("cropMon.crop")]: t("common.total"),
+        [t("cropMon.season")]: "",
+        [t("cropMon.expectedYield")]: rows.reduce((s, r) => s + r[t("cropMon.expectedYield")], 0),
+        [t("cropMon.actualYield")]: rows.reduce((s, r) => s + r[t("cropMon.actualYield")], 0),
+        [t("cropMon.variance")]: rows.reduce((s, r) => s + r[t("cropMon.variance")], 0),
+      });
+      wbData.push({ name: "Yield Analysis", data: rows });
+    }
+    
+    if (data?.by_season?.length > 0) {
+      const rows = data.by_season.map((r) => ({
+        [t("cropMon.season")]: r.season,
+        [t("cropMon.totalCrops")]: Number(r.crops || 0),
+        [t("cropMon.expectedYield")]: Number(r.expected_yield || 0),
+      }));
+      rows.push({
+        [t("cropMon.season")]: t("common.total"),
+        [t("cropMon.totalCrops")]: rows.reduce((s, r) => s + r[t("cropMon.totalCrops")], 0),
+        [t("cropMon.expectedYield")]: rows.reduce((s, r) => s + r[t("cropMon.expectedYield")], 0),
+      });
+      wbData.push({ name: "Seasonal Comparison", data: rows });
+    }
+    
+    if (wbData.length > 0) {
+      exportExcelMultiSheet(wbData, `crop-performance-${new Date().toISOString().slice(0, 10)}.xlsx`, t("cropMon.tabPerformance"));
+    }
   };
 
   return (
     <div className="space-y-5">
-      <div className="min-w-[200px]">
-        <Select label={t("cropMon.filterByFarm")} value={farmFilter} onChange={handleFarmChange}>
-          <option value="">{t("cropMon.allFarms")}</option>
-          {farms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-        </Select>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-[200px]">
+          <Select label={t("cropMon.filterByFarm")} value={farmFilter} onChange={handleFarmChange}>
+            <option value="">{t("cropMon.allFarms")}</option>
+            {farms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </Select>
+        </div>
+        <Button variant="secondary" onClick={exportAllPerformance} disabled={!data?.by_crop?.length && !data?.yield_analysis?.length && !data?.by_season?.length}>
+          <Download size={14} /> {t("common.excel")}
+        </Button>
       </div>
 
       {/* Crop-wise performance */}
-      <Card
-        title={t("cropMon.cropwisePerformance")}
-        action={
-          <Button variant="secondary" onClick={exportPerformance} disabled={!data?.by_crop?.length}>
-            <Download size={14} /> {t("common.excel")}
-          </Button>
-        }
-      >
+      <Card title={t("cropMon.cropwisePerformance")}>
         <Table
           empty={t("cropMon.noHarvest")}
           footerColumns={["quantity", "revenue"]}
@@ -273,14 +274,7 @@ function CropPerformance({ money, statusColor }) {
       </Card>
 
       {/* Yield analysis — expected vs actual */}
-      <Card
-        title={t("cropMon.yieldAnalysis")}
-        action={
-          <Button variant="secondary" onClick={exportYieldAnalysis} disabled={!data?.yield_analysis?.length}>
-            <Download size={14} /> {t("common.excel")}
-          </Button>
-        }
-      >
+      <Card title={t("cropMon.yieldAnalysis")}>
         <Table
           empty={t("cropMon.noData")}
           footerColumns={["expected_yield", "actual_yield", "variance"]}
@@ -303,14 +297,7 @@ function CropPerformance({ money, statusColor }) {
       </Card>
 
       {/* Seasonal comparison */}
-      <Card
-        title={t("cropMon.seasonalComparison")}
-        action={
-          <Button variant="secondary" onClick={exportSeasonal} disabled={!data?.by_season?.length}>
-            <Download size={14} /> {t("common.excel")}
-          </Button>
-        }
-      >
+      <Card title={t("cropMon.seasonalComparison")}>
         <Table
           empty={t("cropMon.noSeasonal")}
           footerColumns={["crops", "expected_yield"]}

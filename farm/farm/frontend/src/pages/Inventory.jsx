@@ -14,6 +14,8 @@ export default function Inventory() {
       subtitle={t("inventory.subtitle")}
       path="inventory/items"
       canWrite={canWrite}
+      showFarmFilter
+      showEmployeeFilter
       footerColumns={["current_stock", "stock_value"]}
       columns={[
         { key: "name", header: t("header.item") },

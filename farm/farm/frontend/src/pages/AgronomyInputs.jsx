@@ -32,6 +32,8 @@ export default function AgronomyInputs() {
       subtitle={t("agronomyInputs.subtitlePg")}
       path="agronomy/input-applications"
       canWrite={canWrite}
+      showFarmFilter
+      showEmployeeFilter
       footerColumns={["quantity", "cost"]}
       columns={[
         { key: "product_name", header: t("header.product") },

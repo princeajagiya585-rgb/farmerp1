@@ -44,6 +44,8 @@ export default function Finance() {
           title={t("finance.expenses")}
           path="finance/expenses"
           canWrite={canWrite}
+          showFarmFilter
+          showEmployeeFilter
           footerColumns={["amount"]}
           columns={[
             { key: "description", header: t("header.description") },
@@ -108,6 +110,8 @@ export default function Finance() {
           title={t("finance.revenue")}
           path="finance/revenues"
           canWrite={canWrite}
+          showFarmFilter
+          showEmployeeFilter
           footerColumns={["amount"]}
           columns={[
             { key: "source", header: t("header.source") },

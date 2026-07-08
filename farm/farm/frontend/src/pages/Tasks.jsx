@@ -116,6 +116,8 @@ export default function Tasks() {
       path="tasks"
       canWrite
       canEdit={canManage}
+      showFarmFilter
+      showEmployeeFilter
       listParams={myTasksOnly ? { my_tasks: "true" } : {}}
       extraToolbar={
         canManage && (

@@ -24,6 +24,8 @@ export default function AssetMaintenance() {
       subtitle={t("maintenance.subtitlePg")}
       path="assets/maintenance"
       canWrite={canWrite}
+      showFarmFilter
+      showEmployeeFilter
       footerColumns={["cost"]}
       columns={[
         { key: "asset_name", header: t("header.asset") },

@@ -13,6 +13,8 @@ export default function AgronomyPlantation() {
       subtitle={t("agronomyPlantation.subtitlePg")}
       path="agronomy/plantation-records"
       canWrite={canWrite}
+      showFarmFilter
+      showEmployeeFilter
       columns={[
         { key: "crop_name", header: t("header.crop") },
         { key: "farm_name", header: t("header.farm") },

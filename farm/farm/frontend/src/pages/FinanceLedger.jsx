@@ -168,6 +168,8 @@ export default function FinanceLedger() {
       subtitle={t("financeLedger.subtitle")}
       path="finance/ledger"
       canWrite={canWrite}
+      showFarmFilter
+      showEmployeeFilter
       sortRows={sortRows}
       columns={columns}
       renderFooter={renderFooter}

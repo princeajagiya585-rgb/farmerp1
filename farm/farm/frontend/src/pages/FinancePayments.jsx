@@ -27,6 +27,8 @@ export default function FinancePayments() {
       path="finance/payments"
       canWrite={canWrite}
       canEdit={canEdit}
+      showFarmFilter
+      showEmployeeFilter
       footerColumns={["amount"]}
       columns={[
         { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },

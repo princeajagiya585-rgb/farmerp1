@@ -39,6 +39,8 @@ export default function AgronomyObservations() {
       subtitle={t("agronomyObs.subtitlePg")}
       path="agronomy/observations"
       canWrite={canWrite}
+      showFarmFilter
+      showEmployeeFilter
       columns={[
         { key: "title", header: t("header.title") },
         { key: "farm_name", header: t("header.farm") },

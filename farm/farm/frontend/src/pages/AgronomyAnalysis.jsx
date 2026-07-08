@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
 import { Download, Filter } from "lucide-react";
 import { resource } from "../lib/api";
-import { exportExcel, exportExcelMultiSheet } from "../lib/export";
+import { exportExcelMultiSheet } from "../lib/export";
 import { Button, Card, PageHeader, Select, Table } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 
@@ -80,28 +80,7 @@ export default function AgronomyAnalysis() {
     },
   ];
 
-  // ── Excel export helpers ────────────────────────────────────────────
-  const buildTotal = (rows, firstColKey, footerKeys) => {
-    const row = { [firstColKey]: t("common.total") };
-    const cols = Object.keys(rows[0] || {});
-    cols.forEach((k) => {
-      if (k !== firstColKey && !footerKeys.includes(k)) row[k] = "";
-    });
-    footerKeys.forEach((k) => {
-      row[k] = rows.reduce((s, r) => s + num(r[k]), 0);
-    });
-    return row;
-  };
-
-  const exportTable = (rows, cols, sheetName, filename, footerKeys) => {
-    const totalRow = footerKeys.length > 0 && rows.length > 0
-      ? buildTotal(rows, cols[0].key, footerKeys)
-      : null;
-    const exportRows = totalRow ? [...rows, totalRow] : rows;
-    exportExcel(exportRows, cols, filename, sheetName);
-  };
-
-  // ── Excel export with filters applied ─────────────────────────────────
+  // ── Excel export with filters applied (single combined file) ─────────
   const handleExport = () => {
     if (!data) return;
 
@@ -195,26 +174,7 @@ export default function AgronomyAnalysis() {
 
       <div className="mb-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* ── Crop-wise History ──────────────────────────────────── */}
-        <Card
-          title={t("agronomyAnalysis.cropHistory")}
-          action={
-            <Button
-              variant="secondary"
-              onClick={() =>
-                exportTable(
-                  data?.by_crop || [],
-                  CROP_COLS,
-                  t("agronomyAnalysis.exportCropHistory"),
-                  "crop-wise-history.xlsx",
-                  ["quantity", "revenue"]
-                )
-              }
-              disabled={!data?.by_crop?.length}
-            >
-              <Download size={14} /> {t("common.excel")}
-            </Button>
-          }
-        >
+        <Card title={t("agronomyAnalysis.cropHistory")}>
           <Table
             empty={t("agronomyAnalysis.noHarvest")}
             columns={CROP_COLS}
@@ -224,26 +184,7 @@ export default function AgronomyAnalysis() {
         </Card>
 
         {/* ── Farm-wise History ──────────────────────────────────── */}
-        <Card
-          title={t("agronomyAnalysis.farmHistory")}
-          action={
-            <Button
-              variant="secondary"
-              onClick={() =>
-                exportTable(
-                  data?.by_farm || [],
-                  FARM_COLS,
-                  t("agronomyAnalysis.exportFarmHistory"),
-                  "farm-wise-history.xlsx",
-                  ["quantity", "revenue"]
-                )
-              }
-              disabled={!data?.by_farm?.length}
-            >
-              <Download size={14} /> {t("common.excel")}
-            </Button>
-          }
-        >
+        <Card title={t("agronomyAnalysis.farmHistory")}>
           <Table
             empty={t("agronomyAnalysis.noHarvest")}
             columns={FARM_COLS}
@@ -254,28 +195,7 @@ export default function AgronomyAnalysis() {
       </div>
 
       {/* ── Seasonal Comparison ──────────────────────────────────── */}
-      <Card
-        title={t("agronomyAnalysis.seasonalComparison")}
-        className="mb-5"
-        action={
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() =>
-              exportTable(
-                data?.by_season || [],
-                SEASON_COLS,
-                t("agronomyAnalysis.exportSeasonal"),
-                "seasonal-comparison.xlsx",
-                ["crops", "expected_yield"]
-              )
-            }
-            disabled={!data?.by_season?.length}
-          >
-            <Download size={14} /> {t("common.excel")}
-          </Button>
-        }
-      >
+      <Card title={t("agronomyAnalysis.seasonalComparison")} className="mb-5">
         <Table
           empty={t("agronomyAnalysis.noCrops")}
           columns={SEASON_COLS}
@@ -285,27 +205,7 @@ export default function AgronomyAnalysis() {
       </Card>
 
       {/* ── Yield Analysis ────────────────────────────────────────── */}
-      <Card
-        title={t("agronomyAnalysis.yieldAnalysis")}
-        action={
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() =>
-              exportTable(
-                data?.yield_analysis || [],
-                YIELD_COLS,
-                t("agronomyAnalysis.exportYield"),
-                "yield-analysis.xlsx",
-                ["expected_yield", "actual_yield", "variance"]
-              )
-            }
-            disabled={!data?.yield_analysis?.length}
-          >
-            <Download size={14} /> {t("common.excel")}
-          </Button>
-        }
-      >
+      <Card title={t("agronomyAnalysis.yieldAnalysis")}>
         <Table
           empty={t("agronomyAnalysis.noCrops")}
           columns={YIELD_COLS}

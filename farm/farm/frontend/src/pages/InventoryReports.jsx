@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Download, FileBarChart } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { resource } from "../lib/api";
-import { exportExcel } from "../lib/export";
+import { exportExcel, exportExcelMultiSheet } from "../lib/export";
 import { Button, Card, Input, PageHeader, Select, Table } from "../components/ui";
 
 const itemsRepo     = resource("inventory/items");
@@ -11,11 +11,6 @@ const movementsRepo = resource("inventory/movements");
 const money = (v) => `₹${Number(v || 0).toLocaleString("en-IN")}`;
 
 const COLORS = ["#16a34a","#ef4444","#3b82f6","#f59e0b","#8b5cf6","#06b6d4","#f97316"];
-
-const VAL_COLS = [
-  { key: "category", header: "Category" },
-  { key: "value",    header: "Stock Value (₹)", render: (r) => Number(r.value || 0) },
-];
 
 export default function InventoryReports() {
   const { t } = useTranslation();
@@ -60,24 +55,38 @@ export default function InventoryReports() {
 
   const consumptionRows = consumption?.rows || [];
 
-  const exportConsumption = () => {
-    if (!consumptionRows.length) return;
-    const cols = [
-      { key: "item",     header: "Item" },
-      { key: "category", header: "Category" },
-      { key: "consumed", header: "Consumed", render: (r) => Number(r.consumed || 0) },
-    ];
-    const total = {
-      item: "Total", category: "",
-      consumed: consumptionRows.reduce((s, r) => s + Number(r.consumed || 0), 0),
-    };
-    exportExcel([...consumptionRows, total], cols, "consumption-report.xlsx", "Consumption Report");
-  };
-
-  const exportValuation = () => {
-    if (!valRows.length) return;
-    const total = { category: "Total", value: valRows.reduce((s, r) => s + Number(r.value || 0), 0) };
-    exportExcel([...valRows, total], VAL_COLS, "inventory-valuation.xlsx", "Stock Valuation");
+  const exportAllReports = () => {
+    const wbData = [];
+    
+    if (consumptionRows.length > 0) {
+      const rows = consumptionRows.map((r) => ({
+        Item: r.item,
+        Category: r.category,
+        Consumed: Number(r.consumed || 0),
+      }));
+      rows.push({
+        Item: "Total",
+        Category: "",
+        Consumed: consumptionRows.reduce((s, r) => s + Number(r.consumed || 0), 0),
+      });
+      wbData.push({ name: "Consumption Report", data: rows });
+    }
+    
+    if (valRows.length > 0) {
+      const rows = valRows.map((r) => ({
+        Category: r.category,
+        [t("header.stockValue")]: Number(r.value || 0),
+      }));
+      rows.push({
+        Category: "Total",
+        [t("header.stockValue")]: valRows.reduce((s, r) => s + Number(r.value || 0), 0),
+      });
+      wbData.push({ name: "Stock Valuation", data: rows });
+    }
+    
+    if (wbData.length > 0) {
+      exportExcelMultiSheet(wbData, `inventory-reports-${new Date().toISOString().slice(0, 10)}.xlsx`, t("inventoryReports.title"));
+    }
   };
 
   return (
@@ -103,8 +112,8 @@ export default function InventoryReports() {
           <Button onClick={runConsumption}>
             <FileBarChart size={15} /> Run Report
           </Button>
-          <Button variant="secondary" onClick={exportConsumption} disabled={!consumptionRows.length}>
-            <Download size={15} /> Excel
+          <Button variant="secondary" onClick={exportAllReports} disabled={!consumptionRows.length && !valRows.length}>
+            <Download size={15} /> {t("common.excel")}
           </Button>
         </div>
 
@@ -159,15 +168,9 @@ export default function InventoryReports() {
       </Card>
 
       {/* ── Stock Valuation ────────────────────────────────────── */}
+      {/* Valuation section - no separate export button, all exports combined above */}
       <Card
         title={t("inventoryReports.valuation")}
-        action={
-          valRows.length > 0 && (
-            <Button variant="secondary" onClick={exportValuation}>
-              <Download size={15} /> Excel
-            </Button>
-          )
-        }
       >
         <Table
           empty="No items."
