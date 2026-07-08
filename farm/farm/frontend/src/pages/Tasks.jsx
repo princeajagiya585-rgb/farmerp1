@@ -392,9 +392,11 @@ export default function Tasks() {
               </div>
             )}
 
-            {/* Photo capture */}
+            {/* Photo capture (required — work proof needs a photo) */}
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">{t("common.workPhoto")}</label>
+              <label className="block text-sm font-medium text-gray-700">
+                {t("common.workPhoto")} <span className="text-red-500">*</span>
+              </label>
               {workPhotoPreview ? (
                 <div className="relative">
                   <img src={workPhotoPreview} alt="Preview" className="w-full h-40 object-cover rounded-lg" />
@@ -426,7 +428,7 @@ export default function Tasks() {
             <Button variant="secondary" onClick={() => setWorkModal(null)} disabled={workSaving}>
               {t("gps.cancel")}
             </Button>
-            <Button onClick={submitWork} disabled={workSaving || !workPos}>
+            <Button onClick={submitWork} disabled={workSaving || !workPos || !workPhoto}>
               {workSaving ? (
                 <span className="flex items-center gap-2">
                   <Loader2 size={16} className="animate-spin" />

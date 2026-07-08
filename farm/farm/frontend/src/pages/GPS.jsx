@@ -801,6 +801,9 @@ export default function GPS() {
                 : []),
             ]}
             rows={(dateFrom || dateTo ? filteredPings : visibleAllPings).filter((r) => {
+              // Attendance-era work entries (no task attached) stay off the
+              // Location Map — attendance lives only on the Attendance page.
+              if (["CHECKIN", "CHECKOUT", "DURING_WORK"].includes(r.activity) && !r.task) return false;
               if (filterUser && String(r.user) !== String(filterUser)) return false;
               if (filterActivity && r.activity !== filterActivity) return false;
               return true;
