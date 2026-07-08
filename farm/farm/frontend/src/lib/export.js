@@ -123,6 +123,62 @@ function extractText(vnode) {
 }
 
 /**
+ * Export multiple sheets to a single Excel .xlsx file.
+ * Uses multi-fallback download for Android WebView compatibility.
+ *
+ * @param {Array} data - [{ name: "Sheet1", data: [{ col1: val, col2: val }] }]
+ * @param {string} filename - e.g. "analysis.xlsx"
+ * @param {string} [title="Data"]
+ */
+export function exportExcelMultiSheet(data, filename = "export.xlsx", title = "Data") {
+  const wb = XLSX.utils.book_new();
+
+  data.forEach((sheet) => {
+    if (!sheet.data || sheet.data.length === 0) return;
+
+    const rows = sheet.data;
+    const cols = Object.keys(rows[0] || {});
+    const header = cols;
+    const rowsData = rows.map((r) => cols.map((c) => {
+      const v = r[c];
+      if (v == null) return "";
+      if (typeof v === "object") return JSON.stringify(v);
+      return String(v);
+    }));
+
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rowsData]);
+
+    // Style header row
+    ws["!cols"] = cols.map(() => ({ wch: 18 }));
+    const range = XLSX.utils.decode_range(ws["!ref"]);
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+      const addr = XLSX.utils.encode_cell({ r: 0, c: C });
+      if (!ws[addr]) continue;
+      ws[addr].s = {
+        fill: { fgColor: { rgb: "16A34A" } },
+        font: { bold: true, color: { rgb: "FFFFFF" }, sz: 12 },
+        alignment: { horizontal: "center", vertical: "center" },
+        border: {
+          top: { style: "thin", color: { rgb: "E5E7EB" } },
+          bottom: { style: "thin", color: { rgb: "E5E7EB" } },
+          left: { style: "thin", color: { rgb: "E5E7EB" } },
+          right: { style: "thin", color: { rgb: "E5E7EB" } },
+        },
+      };
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, sheet.name.substring(0, 31));
+  });
+
+  // Generate the XLSX file as a blob and download with fallbacks
+  const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  const blob = new Blob([wbout], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  downloadBlob(blob, filename);
+}
+
+/**
  * Export rows to plain CSV (fallback).
  * Uses multi-fallback download for Android WebView compatibility.
  *

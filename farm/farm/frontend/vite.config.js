@@ -18,6 +18,11 @@ const pwaManifest = {
   lang: "en",
   categories: ["agriculture", "business", "productivity", "farming"],
   id: "/",
+  permissions: [
+    "geolocation",
+    "camera",
+    "notifications",
+  ],
   shortcuts: [
     {
       name: "Dashboard",
