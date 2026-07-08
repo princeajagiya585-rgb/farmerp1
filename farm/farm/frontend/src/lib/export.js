@@ -14,43 +14,34 @@ function cell(value) {
  * window.location.href which forces the WebView to handle the download natively.
  */
 function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-
-  // 1. Try msSaveBlob (IE / Edge Legacy)
+  // 1. msSaveBlob (IE / Edge Legacy)
   if (navigator.msSaveBlob) {
     navigator.msSaveBlob(blob, filename);
-    URL.revokeObjectURL(url);
     return;
   }
 
-  // 2. Create an <a> element and click it (works in desktop browsers,
-  //    newer mobile browsers)
+  const url = URL.createObjectURL(blob);
+
+  // 2. Android WebViews block programmatic <a>.click() — navigate directly so
+  //    the native download manager handles it. Detected via the "wv" UA token.
+  if (/\bwv\b/.test(navigator.userAgent)) {
+    window.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    return;
+  }
+
+  // 3. Standard browsers: a single <a> click — exactly ONE download.
+  //    (The old code also fired a delayed location.href fallback whose "did
+  //    the click work?" check was always true, so every export downloaded
+  //    the file twice.)
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;
   a.style.display = "none";
   document.body.appendChild(a);
   a.click();
-
-  // 3. Fallback for WebViews / mobile browsers where <a>.click() is blocked:
-  //    After a short delay, if the download didn't start (common in WebViews),
-  //    navigate directly to the blob URL. This forces the WebView to handle
-  //    the download through its native download manager.
-  setTimeout(() => {
-    // Check if the <a> element is still in the DOM — if so, the click likely
-    // didn't trigger a download (WebView blocked it).
-    if (document.body.contains(a)) {
-      // Try window.location.href first (most WebView-compatible)
-      window.location.href = url;
-      // Also try window.open as a secondary fallback (for some WebView configs)
-      setTimeout(() => {
-        window.open(url, "_blank");
-      }, 200);
-    }
-    document.body.removeChild(a);
-    // Revoke the URL after a generous delay to ensure download has started
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
-  }, 500);
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
 /**
