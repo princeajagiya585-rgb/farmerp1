@@ -25,7 +25,6 @@ export default function AssetMaintenance() {
       path="assets/maintenance"
       canWrite={canWrite}
       showFarmFilter
-      showEmployeeFilter
       showUserFilter
       footerColumns={["cost"]}
       columns={[

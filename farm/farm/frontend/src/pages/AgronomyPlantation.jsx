@@ -14,7 +14,6 @@ export default function AgronomyPlantation() {
       path="agronomy/plantation-records"
       canWrite={canWrite}
       showFarmFilter
-      showEmployeeFilter
       showUserFilter
       columns={[
         { key: "crop_name", header: t("header.crop") },

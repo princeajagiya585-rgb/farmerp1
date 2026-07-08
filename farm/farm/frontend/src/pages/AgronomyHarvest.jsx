@@ -16,7 +16,6 @@ export default function AgronomyHarvest() {
       path="agronomy/harvest-records"
       canWrite={canWrite}
       showFarmFilter
-      showEmployeeFilter
       showUserFilter
       footerColumns={["revenue"]}
       columns={[

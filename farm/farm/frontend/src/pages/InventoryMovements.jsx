@@ -22,7 +22,6 @@ export default function InventoryMovements() {
       path="inventory/movements"
       canWrite={canWrite}
       showFarmFilter
-      showEmployeeFilter
       showUserFilter
       columns={[
         { key: "date", header: t("header.date") },

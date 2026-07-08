@@ -94,6 +94,7 @@
   "common.checkInFailed": "Check-in failed.",
   "common.checkOutFailed": "Check-out failed.",
   "common.selectEmployeeFirst": "Select an employee first.",
+  "common.allUsers": "All Users",
   "common.allEmployees": "All Employees",
   "common.fromDate": "From Date",
   "common.toDate": "To Date",

@@ -28,7 +28,6 @@ export default function FinancePayments() {
       canWrite={canWrite}
       canEdit={canEdit}
       showFarmFilter
-      showEmployeeFilter
       showUserFilter
       footerColumns={["amount"]}
       columns={[

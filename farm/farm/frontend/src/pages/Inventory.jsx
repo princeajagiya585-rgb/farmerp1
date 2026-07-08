@@ -15,7 +15,6 @@ export default function Inventory() {
       path="inventory/items"
       canWrite={canWrite}
       showFarmFilter
-      showEmployeeFilter
       showUserFilter
       footerColumns={["current_stock", "stock_value"]}
       columns={[

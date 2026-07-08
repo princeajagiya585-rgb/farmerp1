@@ -169,7 +169,6 @@ export default function FinanceLedger() {
       path="finance/ledger"
       canWrite={canWrite}
       showFarmFilter
-      showEmployeeFilter
       showUserFilter
       sortRows={sortRows}
       columns={columns}

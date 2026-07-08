@@ -45,7 +45,6 @@ export default function Finance() {
           path="finance/expenses"
           canWrite={canWrite}
           showFarmFilter
-          showEmployeeFilter
           showUserFilter
           footerColumns={["amount"]}
           columns={[
@@ -112,7 +111,6 @@ export default function Finance() {
           path="finance/revenues"
           canWrite={canWrite}
           showFarmFilter
-          showEmployeeFilter
           showUserFilter
           footerColumns={["amount"]}
           columns={[

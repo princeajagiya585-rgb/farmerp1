@@ -55,7 +55,7 @@ export default function CropMonitoring() {
           path="agronomy/growth-records"
           canWrite={canWrite}
           showFarmFilter
-          showEmployeeFilter
+          showUserFilter
           footerColumns={["height_cm", "health_index"]}
           columns={[
             { key: "crop_name",    header: t("cropMon.crop") },
@@ -84,7 +84,6 @@ export default function CropMonitoring() {
           path="agronomy/observations"
           canWrite={canWrite}
           showFarmFilter
-          showEmployeeFilter
           columns={[
             { key: "crop_name",        header: t("cropMon.crop") },
             { key: "observed_on",      header: t("cropMon.date") },

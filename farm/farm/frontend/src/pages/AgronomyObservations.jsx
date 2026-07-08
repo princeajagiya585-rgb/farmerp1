@@ -40,7 +40,6 @@ export default function AgronomyObservations() {
       path="agronomy/observations"
       canWrite={canWrite}
       showFarmFilter
-      showEmployeeFilter
       showUserFilter
       columns={[
         { key: "title", header: t("header.title") },

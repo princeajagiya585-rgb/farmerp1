@@ -14,7 +14,6 @@ export default function AgronomyGrowth() {
       path="agronomy/growth-records"
       canWrite={canWrite}
       showFarmFilter
-      showEmployeeFilter
       showUserFilter
       columns={[
         { key: "crop_name", header: t("header.crop") },

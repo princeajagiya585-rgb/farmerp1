@@ -56,7 +56,6 @@ export default function Breakdowns() {
       path="breakdowns/reports"
       canWrite={canWrite}
       showFarmFilter
-      showEmployeeFilter
       showUserFilter
       rowActions={(row, load) =>
         canAct ? (

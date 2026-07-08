@@ -33,7 +33,6 @@ export default function AgronomyInputs() {
       path="agronomy/input-applications"
       canWrite={canWrite}
       showFarmFilter
-      showEmployeeFilter
       showUserFilter
       footerColumns={["quantity", "cost"]}
       columns={[
