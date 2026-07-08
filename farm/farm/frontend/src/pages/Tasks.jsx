@@ -450,7 +450,10 @@ export default function Tasks() {
                   {t("common.saving")}
                 </span>
               ) : (
-                t(workPhaseConfig[workModal.phase].labelKey)
+                <span className="flex items-center gap-2">
+                  <Check size={16} />
+                  {t("common.submit")}
+                </span>
               )}
             </Button>
           </div>
