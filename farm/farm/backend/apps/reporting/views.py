@@ -278,10 +278,18 @@ class DashboardView(APIView):
             check_out_time__isnull=True,
         ).values("employee__farm_id").annotate(cnt=Count("id")).values("cnt")
 
+        # Subquery: everyone who completed a check-in today (checked out or not)
+        checkin_today_subquery = Attendance.objects.filter(
+            employee__farm_id=OuterRef("id"),
+            date=today,
+            check_in_time__isnull=False,
+        ).values("employee__farm_id").annotate(cnt=Count("id")).values("cnt")
+
         farms_with_emp_counts = farms_qs.annotate(
             total_count=Count("employees"),
             active_count=Count("employees", filter=Q(employees__is_active=True)),
             checked_in_count=Coalesce(Subquery(checked_in_subquery), Value(0)),
+            checkin_today_count=Coalesce(Subquery(checkin_today_subquery), Value(0)),
         )
         farm_user_breakdown = [
             {
@@ -290,6 +298,7 @@ class DashboardView(APIView):
                 "total_count": farm.total_count,
                 "active_count": farm.active_count,
                 "checked_in_count": farm.checked_in_count,
+                "checkin_today_count": farm.checkin_today_count,
             }
             for farm in farms_with_emp_counts
         ]
