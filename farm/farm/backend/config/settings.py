@@ -27,7 +27,7 @@ if not SECRET_KEY:
 DEBUG = env_bool("DEBUG", False)
 ALLOWED_HOSTS = env_list(
     "ALLOWED_HOSTS",
-    "localhost,127.0.0.1"
+    "localhost,127.0.0.1,.up.railway.app,.railway.app,farmerp1.vercel.app"
 )
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
