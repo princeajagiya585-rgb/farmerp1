@@ -265,35 +265,36 @@ export default function Tasks() {
       ]}
       rowActions={(row, reload) => (
         <>
-          {/* Work-proof flow: Before Work → During Work + Completed Work.
-              Each step records location + photo and shows on the Location Map. */}
-          {!["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status) && row.work_phase === "BEFORE" && (
+          {/* Work-proof flow (all users): Before Work → During Work + Completed Work.
+              Each step records location + photo and shows on the Location Map.
+              A row without work_phase (e.g. cached API data) defaults to BEFORE. */}
+          {!["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status) && (row.work_phase || "BEFORE") === "BEFORE" && (
             <button
               onClick={() => openWorkModal(row, "BEFORE", reload)}
-              className="inline-flex items-center gap-1 rounded p-1.5 text-emerald-600 hover:bg-emerald-50"
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
               title={t("gps.beforeWork")}
             >
-              <Camera size={15} />
-              <span className="text-xs font-medium">{t("gps.beforeWork")}</span>
+              <Camera size={14} />
+              {t("gps.beforeWork")}
             </button>
           )}
           {!["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status) && row.work_phase === "DURING" && (
             <>
               <button
                 onClick={() => openWorkModal(row, "DURING", reload)}
-                className="inline-flex items-center gap-1 rounded p-1.5 text-blue-600 hover:bg-blue-50"
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
                 title={t("gps.duringWork")}
               >
-                <Camera size={15} />
-                <span className="text-xs font-medium">{t("gps.duringWork")}</span>
+                <Camera size={14} />
+                {t("gps.duringWork")}
               </button>
               <button
                 onClick={() => openWorkModal(row, "COMPLETED", reload)}
-                className="inline-flex items-center gap-1 rounded p-1.5 text-green-700 hover:bg-green-50"
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
                 title={t("gps.completedWork")}
               >
-                <CheckCircle size={15} />
-                <span className="text-xs font-medium">{t("gps.completedWork")}</span>
+                <CheckCircle size={14} />
+                {t("gps.completedWork")}
               </button>
             </>
           )}
