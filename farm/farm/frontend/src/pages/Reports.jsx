@@ -50,22 +50,30 @@ export default function Reports() {
     api.get("/reporting/attendance/").then((r) => setAttendance(r.data)).catch(() => {});
   }, [appliedUserFilter]);
 
+  // Normalise API shapes to {name, value} so the charts always render —
+  // the finance report sends {category, total} and the crop report sends
+  // {crop, total_quantity}.
   const expenseData = toArray(
     finance?.expense_by_category || finance?.expenses_by_category || finance?.by_category
-  );
-  const cropData = toArray(crops?.by_crop || crops?.harvest_by_crop || crops);
+  ).map((r) => ({
+    name: r.name ?? r.category ?? "—",
+    value: Number(r.value ?? r.total ?? r.amount ?? 0),
+  }));
+  const cropData = toArray(crops?.by_crop || crops?.harvest_by_crop || crops).map((r) => ({
+    name: r.name ?? r.crop ?? "—",
+    value: Number(r.value ?? r.total_quantity ?? r.quantity ?? 0),
+  }));
   const attData = toArray(attendance?.by_date || attendance);
   const lowStockRows = toArray(inventory?.low_stock || []);
 
   const exportExpenses = () => {
     if (!expenseData.length) return;
-    const valKey = expenseData[0]?.value != null ? "value" : "amount";
-    const total = expenseData.reduce((s, r) => s + Number(r[valKey] || 0), 0);
+    const total = expenseData.reduce((s, r) => s + Number(r.value || 0), 0);
     exportExcel(
-      [...expenseData, { name: "Total", [valKey]: total }],
+      [...expenseData, { name: "Total", value: total }],
       [
         { key: "name", header: "Category" },
-        { key: valKey, header: "Amount (₹)", render: (r) => Number(r[valKey] || 0) },
+        { key: "value", header: "Amount (₹)", render: (r) => Number(r.value || 0) },
       ],
       "expenses-by-category.xlsx",
       "Expenses by Category"
@@ -77,7 +85,7 @@ export default function Reports() {
       <PageHeader
         title={t("reports.titlePg")}
         subtitle={t("reports.subtitlePg")}
-        extraActions={
+        action={
           (hasRole("SUPER_ADMIN", "FARM_MANAGER")) && (
             <div className="flex items-center gap-2">
               <select
@@ -122,7 +130,7 @@ export default function Reports() {
                 <XAxis dataKey="name" />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey={expenseData[0]?.value != null ? "value" : "amount"} fill="#ef4444" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="value" fill="#ef4444" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -141,7 +149,7 @@ export default function Reports() {
                 <XAxis dataKey="name" />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey={cropData[0]?.value != null ? "value" : "quantity"} fill="#16a34a" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="value" fill="#16a34a" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -149,14 +157,14 @@ export default function Reports() {
           )}
           {cropData.length > 0 && (
             <div className="mt-2 rounded-lg bg-gray-50 p-2 text-xs text-gray-500">
-              <b>Total:</b> {cropData.reduce((s, r) => s + Number(r[cropData[0]?.value != null ? "value" : "quantity"] || 0), 0)}
+              <b>Total:</b> {cropData.reduce((s, r) => s + Number(r.value || 0), 0)}
             </div>
           )}
         </Card>
 
         <Card title={t("reports.inventoryValuation")}>
           <p className="text-sm text-gray-600">Items: <b>{inventory?.item_count ?? inventory?.total_items ?? "—"}</b></p>
-          <p className="text-sm text-gray-600">Total Stock Value: <b>{money(inventory?.total_value ?? inventory?.stock_value ?? 0)}</b></p>
+          <p className="text-sm text-gray-600">Total Stock Value: <b>{money(inventory?.total_stock_value ?? inventory?.total_value ?? inventory?.stock_value ?? 0)}</b></p>
           <h4 className="mt-3 mb-1 text-xs font-semibold uppercase text-gray-500">Low Stock</h4>
           <Table
             footerColumns={["current_stock", "reorder_level"]}

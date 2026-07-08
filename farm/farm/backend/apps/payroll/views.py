@@ -456,18 +456,21 @@ class PayslipViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
     def monthly_report(self, request):
         """Monthly payroll report: per-employee payslip rows + totals.
 
-        Query params (optional): farm, month, year.
+        Query params (optional): farm, month, year, employee.
         """
         qs = self.filter_queryset(self.get_queryset())
         farm = request.query_params.get("farm")
         month = request.query_params.get("month")
         year = request.query_params.get("year")
+        employee = request.query_params.get("employee")
         if farm:
             qs = qs.filter(farm_id=farm)
         if month:
             qs = qs.filter(period__month=month)
         if year:
             qs = qs.filter(period__year=year)
+        if employee:
+            qs = qs.filter(employee_id=employee)
 
         fields = [
             "gross_wage",

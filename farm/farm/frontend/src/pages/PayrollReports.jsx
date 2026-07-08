@@ -46,6 +46,7 @@ export default function PayrollReports() {
 
   // Monthly payroll report
   const [mFarm, setMFarm] = useState("");
+  const [mEmp, setMEmp] = useState("");
   const [mMonth, setMMonth] = useState(new Date().getMonth() + 1);
   const [mYear, setMYear] = useState(new Date().getFullYear());
   const [monthly, setMonthly] = useState(null);
@@ -68,6 +69,7 @@ export default function PayrollReports() {
   const runMonthly = async () => {
     const params = { month: mMonth, year: mYear };
     if (mFarm) params.farm = mFarm;
+    if (mEmp) params.employee = mEmp;
     setMonthly(await slipRepo.collectionAction("monthly_report", params));
   };
   const loadOutstanding = async () => setOutstanding(await advRepo.collectionAction("outstanding"));
@@ -89,6 +91,12 @@ export default function PayrollReports() {
             <Select label="Farm" value={mFarm} onChange={(e) => setMFarm(e.target.value)}>
               <option value="">All farms</option>
               {farms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </Select>
+          </div>
+          <div className="min-w-[200px]">
+            <Select label={translate("header.employee")} value={mEmp} onChange={(e) => setMEmp(e.target.value)}>
+              <option value="">{translate("common.allEmployees")}</option>
+              {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
             </Select>
           </div>
           <div className="min-w-[150px]">
