@@ -120,6 +120,8 @@ export default function GPS() {
 
   // Map of user_id → ongoing/to-do task titles for the Work column
   const [userTaskMap, setUserTaskMap] = useState({});
+  // Map of task_id → farm name, to show Farm on pings that lack it
+  const [taskFarmMap, setTaskFarmMap] = useState({});
 
   // Toast notifications
   const [toasts, addToast, removeToast] = useToast();
@@ -143,6 +145,14 @@ export default function GPS() {
 
       const userTasksMap = {};
       const todayStr = new Date().toISOString().slice(0, 10);
+
+      // Farm lookup for every task (incl. closed ones) — used as a fallback
+      // for the Farm column when a ping row has no farm attached.
+      const farmMap = {};
+      for (const tk of tasks) {
+        if (tk.farm_name) farmMap[String(tk.id)] = tk.farm_name;
+      }
+      setTaskFarmMap(farmMap);
 
       const addTaskToUser = (uid, title) => {
         if (!uid) return;
@@ -707,12 +717,10 @@ export default function GPS() {
               {
                 key: "farm",
                 header: t("header.farm"),
-                render: (r) =>
-                  r.farm_name ? (
-                    <span className="text-xs text-gray-600">{r.farm_name}</span>
-                  ) : (
-                    "—"
-                  ),
+                render: (r) => {
+                  const farm = r.farm_name || taskFarmMap[String(r.task)];
+                  return farm ? <span className="text-xs text-gray-600">{farm}</span> : "—";
+                },
               },
               {
                 key: "activity",
@@ -877,7 +885,10 @@ export default function GPS() {
                     {
                       key: "farm",
                       header: t("header.farm"),
-                      render: (r) => (r.farm_name ? <span className="text-xs text-gray-600">{r.farm_name}</span> : "—"),
+                      render: (r) => {
+                        const farm = r.farm_name || taskFarmMap[String(r.task)];
+                        return farm ? <span className="text-xs text-gray-600">{farm}</span> : "—";
+                      },
                     },
                     {
                       key: "recorded_at",

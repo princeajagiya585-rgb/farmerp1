@@ -99,6 +99,21 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
         # Default the farm from the linked task so farm filters and the
         # geofence check work without the client sending it explicitly.
         task = serializer.validated_data.get("task")
+        activity = serializer.validated_data.get("activity")
+        if task:
+            # Before Work and Completed Work are one-shot per task.
+            if activity == LocationPing.Activity.CHECKIN and task.location_pings.filter(
+                activity=LocationPing.Activity.CHECKIN
+            ).exists():
+                raise serializers.ValidationError(
+                    {"detail": "Before Work is already recorded for this task."}
+                )
+            if activity == LocationPing.Activity.CHECKOUT and task.location_pings.filter(
+                activity=LocationPing.Activity.CHECKOUT
+            ).exists():
+                raise serializers.ValidationError(
+                    {"detail": "Completed Work is already recorded for this task."}
+                )
         extra = {}
         if task and not serializer.validated_data.get("farm"):
             extra["farm"] = task.farm
