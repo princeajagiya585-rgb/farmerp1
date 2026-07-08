@@ -13,6 +13,7 @@ export default function FinanceCostCenters() {
       title={t("financeCostCenters.title")}
       subtitle={t("financeCostCenters.subtitle")}
       path="finance/cost-centers"
+      showFarmFilter
       canWrite={canWrite}
       columns={[
         { key: "name", header: t("header.name") },

@@ -38,6 +38,8 @@ export default function PayrollDeductions() {
       title={t("payrollDeductions.title")}
       subtitle={t("payrollDeductions.subtitle")}
       path="payroll/deductions"
+      showFarmFilter
+      showEmployeeFilter
       showUserFilter
       canWrite={canWrite}
       fieldDependencies={[

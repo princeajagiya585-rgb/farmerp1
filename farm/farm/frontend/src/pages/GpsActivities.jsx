@@ -31,7 +31,7 @@ export default function GpsActivities() {
       path="gps/activities"
       canWrite={canWrite}
       showFarmFilter
-      showEmployeeFilter
+      showUserFilter
       // Auto-refresh removed to avoid Railway 429 rate limits.
       // Users can manually reload or use WebSocket updates.
       rowActions={(row, reload) =>

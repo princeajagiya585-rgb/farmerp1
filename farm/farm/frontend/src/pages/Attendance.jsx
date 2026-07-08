@@ -111,6 +111,27 @@ export default function Attendance() {
     }).catch(() => {});
   }, [myProfile, rows]);
 
+  // Re-resolve my employee profile + today's attendance. Needed right after a
+  // first-ever check-in: the backend links the Employee to this user during
+  // check_in, so the profile (and the Check Out button) only appears after a
+  // refetch.
+  const refreshMyToday = async () => {
+    try {
+      const d = await empRepo.list({ page_size: 200 });
+      const all = d.results || d;
+      setEmployees(all);
+      const profile = all.find((e) => String(e.user) === String(currentUser?.id));
+      if (!profile) return;
+      setMyProfile(profile);
+      setEmpId(String(profile.id));
+      const ad = await repo.list({ employee: profile.id, date: TODAY, page_size: 1 });
+      const list = Array.isArray(ad) ? ad : ad.results || [];
+      setTodayAttendance(list[0] || null);
+    } catch {
+      /* ignore */
+    }
+  };
+
   const openCheckInModal = async (emp) => {
     setCheckInTarget(emp);
     setCheckInPhoto(null);
@@ -158,11 +179,11 @@ export default function Attendance() {
       addToast(t("attendance.checkinSuccess", { name: checkInTarget.name || t("common.employee") }), "success");
       setCheckInModalOpen(false);
       load();
-      if (myProfile && checkInTarget.id === myProfile.id) {
-        repo.list({ employee: myProfile.id, date: TODAY }).then((d) => {
-          const list = Array.isArray(d) ? d : d.results || [];
-          setTodayAttendance(list[0] || null);
-        }).catch(() => {});
+      // Refresh the "today" card so the Check Out button appears immediately —
+      // also covers the first-ever check-in where the profile link is created
+      // server-side during check_in.
+      if (!myProfile || checkInTarget.id === myProfile.id) {
+        refreshMyToday();
       }
     } catch (e) {
       const detail = e.response?.data?.detail || t("common.checkInFailed");
@@ -210,11 +231,8 @@ export default function Attendance() {
       addToast(t("attendance.checkoutSuccess", { name: checkOutTarget.employee_name || t("common.employee") }), "success");
       setCheckOutModalOpen(false);
       load();
-      if (myProfile && checkOutTarget.employee === myProfile.id) {
-        repo.list({ employee: myProfile.id, date: TODAY }).then((d) => {
-          const list = Array.isArray(d) ? d : d.results || [];
-          setTodayAttendance(list[0] || null);
-        }).catch(() => {});
+      if (!myProfile || checkOutTarget.employee === myProfile.id) {
+        refreshMyToday();
       }
     } catch (e) {
       const detail = e.response?.data?.detail || t("common.checkOutFailed");

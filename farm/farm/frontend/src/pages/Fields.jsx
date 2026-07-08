@@ -12,6 +12,7 @@ export default function Fields() {
       title={t("fields.titlePg")}
       subtitle={t("fields.subtitlePg")}
       path="farms/fields"
+      showFarmFilter
       canWrite={canWrite}
       columns={[
         { key: "name", header: t("header.name") },

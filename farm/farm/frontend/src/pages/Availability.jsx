@@ -25,6 +25,7 @@ export default function Availability() {
       canWrite={canWrite}
       showFarmFilter
       showEmployeeFilter
+      showUserFilter
       columns={[
         { key: "employee_name", header: t("header.employee") },
         { key: "farm_name", header: t("header.farm") },

@@ -496,6 +496,15 @@ class PaymentViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
     filterset_fields = ["employee", "payslip", "mode"]
     search_fields = ["reference"]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Payment has no direct farm field — the frontend "All Farms" filter
+        # sends ?farm=<id>, so map it through the employee's farm.
+        farm = self.request.query_params.get("farm")
+        if farm:
+            qs = qs.filter(employee__farm_id=farm)
+        return qs
+
     @action(detail=False, methods=["get"])
     def history(self, request):
         """Worker payment history: payment records + total paid.

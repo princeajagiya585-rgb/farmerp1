@@ -32,6 +32,8 @@ export default function PayrollAdvances() {
       title={t("payrollAdvances.title")}
       subtitle={t("payrollAdvances.subtitle")}
       path="payroll/advances"
+      showFarmFilter
+      showEmployeeFilter
       showUserFilter
       canWrite={canWrite}
       fieldDependencies={[

@@ -13,6 +13,7 @@ export default function Geofences() {
       title={t("geofences.title")}
       subtitle={t("geofences.subtitle")}
       path="gps/geofences"
+      showFarmFilter
       canWrite={canWrite}
       // Auto-refresh removed to avoid Railway 429 rate limits.
       // Data changes infrequently (geofences are rarely modified).

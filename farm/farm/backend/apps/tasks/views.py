@@ -97,6 +97,11 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             qs = qs.filter(
                 Q(assigned_to=user) | Q(assigned_employee__user=user)
             )
+        # The frontend "All Employees" dropdown sends ?employee=<id>; Task has
+        # no `employee` field, so map it to assigned_employee here.
+        employee = self.request.query_params.get("employee")
+        if employee:
+            qs = qs.filter(assigned_employee_id=employee)
         return qs
 
     @action(detail=True, methods=["post"])
