@@ -4,13 +4,19 @@ import { FileBarChart, Download } from "lucide-react";
 import { resource } from "../lib/api";
 import { Button, Card, Input, PageHeader, Select, Table } from "../components/ui";
 import { exportExcel } from "../lib/export";
+import { useAuth } from "../context/AuthContext";
 
 const att = resource("workforce/attendance");
+const empRepo = resource("workforce/employees");
 
 export default function AttendanceReports() {
   const { t } = useTranslation();
+  const { user, hasRole } = useAuth();
+  const isEmployee = user?.role === "EMPLOYEE";
   const [farms, setFarms] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [farm, setFarm] = useState("");
+  const [employee, setEmployee] = useState("");
   const [month, setMonth] = useState("");
   const [year, setYear] = useState(new Date().getFullYear());
   const [report, setReport] = useState(null);
@@ -21,6 +27,7 @@ export default function AttendanceReports() {
 
   useEffect(() => {
     resource("farms").list({ page_size: 200 }).then((d) => setFarms(d.results || d));
+    empRepo.list({ page_size: 200 }).then((d) => setEmployees(d.results || d));
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -28,6 +35,7 @@ export default function AttendanceReports() {
   const run = async () => {
     const params = { year };
     if (farm) params.farm = farm;
+    if (employee && !isEmployee) params.employee = employee;
     if (month) params.month = month;
     setReport(await att.collectionAction("report", params));
   };
@@ -72,6 +80,14 @@ export default function AttendanceReports() {
       />
       <Card>
         <div className="mb-4 flex flex-wrap items-end gap-3">
+          {!isEmployee && employees.length > 0 && (
+            <div className="min-w-[180px]">
+              <Select label={t("header.employee")} value={employee} onChange={(e) => setEmployee(e.target.value)}>
+                <option value="">{t("common.allEmployees")}</option>
+                {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </Select>
+            </div>
+          )}
           <div className="min-w-[180px]">
             <Select label={t("attendanceReports.selectFarm")} value={farm} onChange={(e) => setFarm(e.target.value)}>
               <option value="">{t("workforce.allFarms")}</option>

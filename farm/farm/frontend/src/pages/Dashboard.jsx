@@ -428,7 +428,7 @@ function HrCard({ mod, kpi, navigate, t }) {
               <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Farm</span>
               <div className="flex items-center gap-3 sm:gap-4 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                 <span title="Total users assigned to this farm">Total Users</span>
-                <span title="Active users on this farm">Active</span>
+                <span title="Employees checked in today">Check In</span>
               </div>
             </div>
             {/* Farm rows — scrollable */}
@@ -443,7 +443,7 @@ function HrCard({ mod, kpi, navigate, t }) {
                     <span className="w-5 text-right font-semibold text-gray-800 sm:w-6">{farm.total_count}</span>
                     <span className="flex w-5 items-center justify-end gap-1 font-semibold text-green-600 sm:w-6">
                       <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500" />
-                      {farm.active_count}
+                      {farm.checked_in_count ?? 0}
                     </span>
                   </div>
                 </div>

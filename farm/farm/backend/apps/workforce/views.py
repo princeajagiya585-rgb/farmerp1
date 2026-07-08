@@ -517,6 +517,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         Days without any attendance record are counted as Absent.
         """
         farm = request.query_params.get("farm")
+        employee = request.query_params.get("employee")
         month = request.query_params.get("month")
         year = request.query_params.get("year")
 
@@ -544,6 +545,8 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             employees = Employee.objects.filter(farm_id__in=farm_ids) if farm_ids else Employee.objects.none()
         if farm:
             employees = employees.filter(farm_id=farm)
+        if employee:
+            employees = employees.filter(id=employee)
 
         # Calculate total days in the selected period
         today = timezone.localdate()
@@ -566,6 +569,8 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         att_qs = Attendance.objects.all()
         if farm:
             att_qs = att_qs.filter(farm_id=farm)
+        if employee:
+            att_qs = att_qs.filter(employee_id=employee)
         if month:
             att_qs = att_qs.filter(date__month=month)
         if year:

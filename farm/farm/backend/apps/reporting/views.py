@@ -266,9 +266,22 @@ class DashboardView(APIView):
         # Counts Employee records per farm (every Employee always has a farm
         # FK set, which is more reliable than the User.farms M2M).  Farms with
         # zero employees still appear so Super Admins see every farm.
+        # Also count employees who have checked in today but not yet checked out.
+        from django.db.models import OuterRef, Subquery, Value
+        from django.db.models.functions import Coalesce
+
+        # Subquery: count checked-in employees for each farm (checked in today, not checked out)
+        checked_in_subquery = Attendance.objects.filter(
+            employee__farm_id=OuterRef("id"),
+            date=today,
+            check_in_time__isnull=False,
+            check_out_time__isnull=True,
+        ).values("employee__farm_id").annotate(cnt=Count("id")).values("cnt")
+
         farms_with_emp_counts = farms_qs.annotate(
             total_count=Count("employees"),
             active_count=Count("employees", filter=Q(employees__is_active=True)),
+            checked_in_count=Coalesce(Subquery(checked_in_subquery), Value(0)),
         )
         farm_user_breakdown = [
             {
@@ -276,6 +289,7 @@ class DashboardView(APIView):
                 "farm_name": farm.name,
                 "total_count": farm.total_count,
                 "active_count": farm.active_count,
+                "checked_in_count": farm.checked_in_count,
             }
             for farm in farms_with_emp_counts
         ]

@@ -47,8 +47,10 @@ export default function Attendance() {
   const [editRow, setEditRow] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [saveEditLoading, setSaveEditLoading] = useState(false);
+  const [farms, setFarms] = useState([]);
   const [filters, setFilters] = useState({
     employee: "",
+    farm: "",
     date_from: "",
     date_to: "",
     status: "",
@@ -72,6 +74,7 @@ export default function Attendance() {
   const load = () => {
     const params = { page_size: 50 };
     if (filters.employee) params.employee = filters.employee;
+    if (filters.farm) params.farm = filters.farm;
     if (filters.date_from) params.date_after = filters.date_from;
     if (filters.date_to) params.date_before = filters.date_to;
     if (filters.status) params.status = filters.status;
@@ -95,7 +98,11 @@ export default function Attendance() {
         }
       }
     });
-  }, [currentUser]);
+    // Load farms for filter
+    if (!isEmployee) {
+      resource("farms").list({ page_size: 200 }).then((d) => setFarms(d.results || d));
+    }
+  }, [currentUser, isEmployee]);
 
   useEffect(() => {
     if (!myProfile) return;
@@ -414,7 +421,7 @@ export default function Attendance() {
       )}
 
       <Card>
-        <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-4 bg-gray-50 rounded-lg">
+        <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 p-4 bg-gray-50 rounded-lg">
           {!isEmployee && (
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">{t("attendance.employee")}</label>
@@ -427,6 +434,23 @@ export default function Attendance() {
                 {employees.map((e) => (
                   <option key={e.id} value={e.id}>
                     {e.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {!isEmployee && farms.length > 0 && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">{t("header.farm")}</label>
+              <select
+                value={filters.farm}
+                onChange={(e) => setFilters({ ...filters, farm: e.target.value })}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+              >
+                <option value="">{t("workforce.allFarms")}</option>
+                {farms.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
                   </option>
                 ))}
               </select>
@@ -485,6 +509,7 @@ export default function Attendance() {
             onClick={() => {
               setFilters({
                 employee: "",
+                farm: "",
                 date_from: "",
                 date_to: "",
                 status: "",
