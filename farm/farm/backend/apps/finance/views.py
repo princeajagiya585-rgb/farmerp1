@@ -48,15 +48,6 @@ class ExpenseViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     filterset_fields = ["farm", "category", "status", "is_paid", "created_by"]
     search_fields = ["description"]
 
-    EMPLOYEE_ROLES = {Role.EMPLOYEE}
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        user = self.request.user
-        if user.role in self.EMPLOYEE_ROLES:
-            return qs.filter(created_by=user)
-        return qs
-
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
@@ -108,17 +99,8 @@ class PurchaseViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     farm_lookup = "farm_id"
     allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = []
-    filterset_fields = ["farm", "status", "is_paid"]
+    filterset_fields = ["farm", "status", "is_paid", "created_by"]
     search_fields = ["invoice_no", "notes"]
-
-    EMPLOYEE_ROLES = {Role.EMPLOYEE}
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        user = self.request.user
-        if user.role in self.EMPLOYEE_ROLES:
-            return qs.filter(created_by=user)
-        return qs
 
     def perform_create(self, serializer):
         """Auto-approve purchase and create a debit LedgerEntry."""
@@ -172,9 +154,9 @@ class LedgerEntryViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     ).all()
     serializer_class = LedgerEntrySerializer
     farm_lookup = "farm_id"
-    allowed_roles = [Role.FARM_MANAGER]
+    allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = [Role.FARM_MANAGER]
-    filterset_fields = ["farm", "entry_type", "account"]
+    filterset_fields = ["farm", "entry_type", "account", "created_by"]
     search_fields = ["reference", "description", "account"]
 
 
@@ -186,17 +168,8 @@ class PaymentViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     farm_lookup = "farm_id"
     allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = []
-    filterset_fields = ["farm", "mode"]
+    filterset_fields = ["farm", "mode", "created_by"]
     search_fields = ["reference"]
-
-    EMPLOYEE_ROLES = {Role.EMPLOYEE}
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        user = self.request.user
-        if user.role in self.EMPLOYEE_ROLES:
-            return qs.filter(created_by=user)
-        return qs
 
     def perform_create(self, serializer):
         payment = serializer.save(created_by=self.request.user)
@@ -222,15 +195,6 @@ class RevenueEntryViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     readonly_roles = []
     filterset_fields = ["farm", "source", "created_by"]
     search_fields = ["description"]
-
-    EMPLOYEE_ROLES = {Role.EMPLOYEE}
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        user = self.request.user
-        if user.role in self.EMPLOYEE_ROLES:
-            return qs.filter(created_by=user)
-        return qs
 
     def perform_create(self, serializer):
         revenue = serializer.save(created_by=self.request.user)
@@ -269,22 +233,13 @@ class BudgetViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
 
 class SaleViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
-    queryset = Sale.objects.select_related("farm", "crop").all()
+    queryset = Sale.objects.select_related("farm", "crop", "created_by").all()
     serializer_class = SaleSerializer
     farm_lookup = "farm_id"
     allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = []
-    filterset_fields = ["farm", "crop", "buyer"]
+    filterset_fields = ["farm", "crop", "buyer", "created_by"]
     search_fields = ["buyer", "notes"]
-
-    EMPLOYEE_ROLES = {Role.EMPLOYEE}
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        user = self.request.user
-        if user.role in self.EMPLOYEE_ROLES:
-            return qs.filter(created_by=user)
-        return qs
 
     def perform_create(self, serializer):
         user = self.request.user

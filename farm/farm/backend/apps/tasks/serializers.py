@@ -61,10 +61,27 @@ class TaskSerializer(serializers.ModelSerializer):
     is_overdue = serializers.BooleanField(read_only=True)
     active_session = serializers.SerializerMethodField()
     total_tracked_minutes = serializers.SerializerMethodField()
+    work_phase = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
         fields = "__all__"
+
+    @extend_schema_field(serializers.CharField())
+    def get_work_phase(self, obj):
+        """Which work-proof step comes next for this task.
+
+        BEFORE    → no work pings yet; show the "Before Work" button.
+        DURING    → before-work ping exists; show "During Work" + "Completed Work".
+        COMPLETED → completed-work ping exists; the flow is finished.
+        (CHECKIN/CHECKOUT ping activities are labelled Before/Completed Work in the UI.)
+        """
+        activities = set(obj.location_pings.values_list("activity", flat=True))
+        if "CHECKOUT" in activities:
+            return "COMPLETED"
+        if "CHECKIN" in activities:
+            return "DURING"
+        return "BEFORE"
 
     @extend_schema_field(TaskWorkSessionSerializer(allow_null=True))
     def get_active_session(self, obj):

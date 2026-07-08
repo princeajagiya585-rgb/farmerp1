@@ -1,5 +1,5 @@
 from calendar import monthrange
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -11,20 +11,6 @@ from rest_framework.response import Response
 from apps.core.mixins import BaseModelViewSet, EmployeeSelfScopedMixin
 from apps.accounts.models import Role
 from apps.farms.views import FarmScopedQuerysetMixin
-
-# ── Cross-app imports for GPS location logging ──────────────────────────
-from apps.gps.models import FieldActivity, LocationPing
-from apps.gps.utils import broadcast_field_activity, broadcast_ping
-from apps.tasks.models import Task
-
-
-def _resolve_task(request):
-    """Return the Task selected on a check-in/during-work/check-out submit,
-    or None. Safe against missing/invalid ids."""
-    tid = request.data.get("task")
-    if not tid:
-        return None
-    return Task.objects.filter(id=tid).first()
 
 from .models import (
     Employee,
@@ -68,7 +54,7 @@ class EmployeeViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMode
     employee_self_lookup = "user"  # Employee links directly to the user
     allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = [Role.EMPLOYEE]
-    filterset_fields = ["farm", "category", "employment_type", "is_active", "department"]
+    filterset_fields = ["farm", "category", "employment_type", "is_active", "department", "user"]
     search_fields = ["first_name", "last_name", "employee_code", "phone", "designation"]
 
     @action(detail=True, methods=["get"])
@@ -183,6 +169,9 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
     filterset_fields = ["employee", "farm", "date", "status", "approval_status"]
     search_fields = ["remarks"]
 
+    # How many past days get an automatic ABSENT record when missing.
+    ABSENT_BACKFILL_DAYS = 30
+
     def get_queryset(self):
         qs = super().get_queryset()
         # Date range filters
@@ -194,13 +183,50 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             qs = qs.filter(date__lte=date_before)
         return qs
 
+    def list(self, request, *args, **kwargs):
+        self._backfill_absent_days()
+        return super().list(request, *args, **kwargs)
+
+    def _backfill_absent_days(self):
+        """Ensure every active employee has an attendance row per day.
+
+        Days with no check-in stay ABSENT automatically; a check-in flips the
+        row to PRESENT (see ``_do_check_in``). Managers/admins can edit any
+        row manually. Idempotent and cheap: only missing (employee, date)
+        pairs inside the window are created.
+        """
+        today = timezone.localdate()
+        window_start = today - timedelta(days=self.ABSENT_BACKFILL_DAYS)
+        employees = list(Employee.objects.filter(is_active=True).select_related("farm"))
+        if not employees:
+            return
+        existing = set(
+            Attendance.objects.filter(date__gte=window_start, date__lte=today)
+            .values_list("employee_id", "date")
+        )
+        missing = []
+        for emp in employees:
+            start = window_start
+            if emp.created_at:
+                start = max(window_start, timezone.localtime(emp.created_at).date())
+            d = start
+            while d <= today:
+                if (emp.id, d) not in existing:
+                    missing.append(
+                        Attendance(
+                            employee=emp,
+                            farm=emp.farm,
+                            date=d,
+                            status=Attendance.Status.ABSENT,
+                        )
+                    )
+                d += timedelta(days=1)
+        if missing:
+            Attendance.objects.bulk_create(missing, ignore_conflicts=True)
+
     @action(detail=False, methods=["post"])
     def check_in(self, request):
-        """Create or update today's attendance with check-in details.
-
-        Also creates a LocationPing so the check-in appears on the GPS
-        Location Map ("Your Location History") and live tracking map.
-        """
+        """Create or update today's attendance with check-in details."""
         employee_id = request.data.get("employee")
         if not employee_id:
             return Response({"detail": "employee is required."}, status=400)
@@ -324,55 +350,11 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             attendance.check_in_photo = check_in_photo
         attendance.save()
 
-        # ── Create a LocationPing so the check-in appears on the GPS map ──
-        task = _resolve_task(request)
-        if request.data.get("check_in_lat") is not None and request.data.get("check_in_lng") is not None:
-            ping_user = employee.user or request.user
-            ping = LocationPing.objects.create(
-                user=ping_user,
-                created_by=request.user,
-                farm=attendance.farm,
-                latitude=request.data["check_in_lat"],
-                longitude=request.data["check_in_lng"],
-                activity=LocationPing.Activity.CHECKIN,
-                recorded_at=attendance.check_in_time,
-                task=task,
-                photo=check_in_photo if check_in_photo else None
-            )
-            broadcast_ping(ping, request=request)
-
-        # ── Create a FieldActivity so check-in shows on admin's Field Activities page ──
-        # Avoid duplicates: only create if no FieldActivity for this user exists today
-        fa_user = employee.user or request.user
-        today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        existing_activity = FieldActivity.objects.filter(
-            user=fa_user,
-            recorded_at__gte=today_start,
-        ).first()
-        if not existing_activity and request.data.get("check_in_lat") is not None:
-            fa = FieldActivity.objects.create(
-                user=fa_user,
-                created_by=request.user,
-                farm=attendance.farm,
-                task=task,
-                description="Checked in for work",
-                latitude=request.data.get("check_in_lat"),
-                longitude=request.data.get("check_in_lng"),
-                photo=check_in_photo if check_in_photo else None,
-                status=FieldActivity.Status.SUBMITTED,
-                recorded_at=attendance.check_in_time,
-            )
-            broadcast_field_activity(fa, request=request)
-
         return attendance
 
     @action(detail=True, methods=["post"])
     def check_out(self, request, pk=None):
-        """Set check-out time and optional overtime.
-
-        Also creates a LocationPing so the check-out appears on the GPS
-        Location Map and live tracking map.
-        """
+        """Set check-out time and optional overtime."""
         attendance = self.get_object()
         # Guard against checking out twice or before checking in.
         if attendance.check_in_time is None:
@@ -390,94 +372,6 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         if check_out_photo:
             attendance.check_out_photo = check_out_photo
         attendance.save()
-
-        # ── Create a LocationPing so the check-out appears on the GPS map ──
-        task = _resolve_task(request)
-        if request.data.get("check_out_lat") is not None and request.data.get("check_out_lng") is not None:
-            # Use the employee's linked user if available (important when a
-            # manager checks out on behalf of a worker)
-            ping_user = attendance.employee.user or request.user
-            ping = LocationPing.objects.create(
-                user=ping_user,
-                created_by=request.user,
-                farm=attendance.farm,
-                latitude=request.data["check_out_lat"],
-                longitude=request.data["check_out_lng"],
-                activity=LocationPing.Activity.CHECKOUT,
-                recorded_at=attendance.check_out_time,
-                task=task,
-                photo=check_out_photo if check_out_photo else None
-            )
-            broadcast_ping(ping, request=request)
-
-        serializer = self.get_serializer(attendance, context={'request': request})
-        return Response(serializer.data, status=200)
-
-    @action(detail=False, methods=["post"])
-    def during_work(self, request):
-        """Record a during-work ping (photo + location) for today's attendance.
-
-        Also creates a LocationPing with DURING_WORK activity so it appears
-        on the GPS map, and a FieldActivity for admin verification.
-        Returns the attendance record with full data.
-        """
-        employee_id = request.data.get("employee")
-        if not employee_id:
-            return Response({"detail": "employee is required."}, status=400)
-
-        employee = Employee.objects.filter(pk=employee_id).first()
-        if not employee:
-            return Response({"detail": "Employee not found."}, status=404)
-
-        # An employee may only post during-work for themselves.
-        if request.user.role == Role.EMPLOYEE and employee.user_id != request.user.pk:
-            return Response({"detail": "You may only update your own work."}, status=403)
-
-        today = timezone.localdate()
-        attendance, _created = Attendance.objects.get_or_create(
-            employee=employee,
-            date=today,
-            defaults={"farm": employee.farm, "created_by": request.user},
-        )
-
-        lat = request.data.get("latitude")
-        lng = request.data.get("longitude")
-        during_work_photo = request.FILES.get("photo")
-        now = timezone.now()
-
-        # ── Create LocationPing with DURING_WORK activity ──
-        task = _resolve_task(request)
-        if lat is not None and lng is not None:
-            ping_user = employee.user or request.user
-            ping = LocationPing.objects.create(
-                user=ping_user,
-                created_by=request.user,
-                farm=attendance.farm,
-                latitude=lat,
-                longitude=lng,
-                activity=LocationPing.Activity.DURING_WORK,
-                recorded_at=now,
-                task=task,
-                photo=during_work_photo if during_work_photo else None,
-            )
-            broadcast_ping(ping, request=request)
-
-        # ── Create/update FieldActivity for admin verification ──
-        if lat is not None and lng is not None:
-            fa_user = employee.user or request.user
-            fa = FieldActivity.objects.create(
-                user=fa_user,
-                created_by=request.user,
-                farm=attendance.farm,
-                task=task,
-                description="During work photo update",
-                latitude=lat,
-                longitude=lng,
-                photo=during_work_photo if during_work_photo else None,
-                status=FieldActivity.Status.SUBMITTED,
-                recorded_at=now,
-            )
-            broadcast_field_activity(fa, request=request)
 
         serializer = self.get_serializer(attendance, context={'request': request})
         return Response(serializer.data, status=200)

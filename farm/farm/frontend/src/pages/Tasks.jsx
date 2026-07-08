@@ -1,12 +1,22 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, CheckCheck, CheckCircle, Play, Pause, Square, Send, User } from "lucide-react";
+import { Camera, Check, CheckCheck, CheckCircle, Loader2, MapPin, Send, User, X } from "lucide-react";
 import CrudResource from "../components/CrudResource";
 import { Badge, Button } from "../components/ui";
-import { resource } from "../lib/api";
+import { resource, toFormData } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
 const repo = resource("tasks");
+const pingsRepo = resource("gps/pings");
+
+// Work-proof flow: each phase posts a geo-tagged (optionally photographed)
+// LocationPing tied to the task. CHECKIN/CHECKOUT activities are labelled
+// "Before Work"/"Completed Work" throughout the UI.
+const workPhaseConfig = {
+  BEFORE: { activity: "CHECKIN", labelKey: "gps.beforeWork" },
+  DURING: { activity: "DURING_WORK", labelKey: "gps.duringWork" },
+  COMPLETED: { activity: "CHECKOUT", labelKey: "gps.completedWork" },
+};
 const prioColor = { LOW: "gray", MEDIUM: "blue", HIGH: "yellow", URGENT: "red" };
 const statusColor = {
   TODO: "gray", IN_PROGRESS: "blue", SUBMITTED: "purple", VERIFIED: "green", COMPLETED: "green", CANCELLED: "red",
@@ -68,6 +78,75 @@ export default function Tasks() {
     reload();
   };
 
+  // ── Work-proof modal (Before / During / Completed Work) ──────────────
+  const [workModal, setWorkModal] = useState(null); // { row, phase, reload }
+  const [workPhoto, setWorkPhoto] = useState(null);
+  const [workPhotoPreview, setWorkPhotoPreview] = useState(null);
+  const [workPos, setWorkPos] = useState(null);
+  const [workPosLoading, setWorkPosLoading] = useState(false);
+  const [workSaving, setWorkSaving] = useState(false);
+  const [workError, setWorkError] = useState(null);
+
+  const openWorkModal = (row, phase, reload) => {
+    setWorkModal({ row, phase, reload });
+    setWorkPhoto(null);
+    setWorkPhotoPreview(null);
+    setWorkError(null);
+    setWorkPos(null);
+    if (!navigator.geolocation) {
+      setWorkError(t("gps.noLocation"));
+      return;
+    }
+    setWorkPosLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setWorkPos({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        });
+        setWorkPosLoading(false);
+      },
+      () => {
+        setWorkPosLoading(false);
+        setWorkError(t("gps.noLocation"));
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  };
+
+  const handleWorkPhotoChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setWorkPhoto(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setWorkPhotoPreview(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  const submitWork = async () => {
+    if (!workModal || !workPos) return;
+    setWorkSaving(true);
+    setWorkError(null);
+    try {
+      const data = {
+        latitude: Number(workPos.lat.toFixed(6)),
+        longitude: Number(workPos.lng.toFixed(6)),
+        accuracy: workPos.accuracy != null ? Math.round(workPos.accuracy) : null,
+        activity: workPhaseConfig[workModal.phase].activity,
+        task: workModal.row.id,
+      };
+      await pingsRepo.create(workPhoto ? toFormData({ ...data, photo: workPhoto }) : data);
+      const reload = workModal.reload;
+      setWorkModal(null);
+      reload();
+    } catch (err) {
+      setWorkError(err.response?.data?.detail || err.message);
+    } finally {
+      setWorkSaving(false);
+    }
+  };
+
   const formatDuration = (minutes) => {
     if (!minutes && minutes !== 0) return "—";
     const h = Math.floor(minutes / 60);
@@ -110,6 +189,7 @@ export default function Tasks() {
   };
 
   return (
+    <>
     <CrudResource
       title={t("tasks.titlePg")}
       subtitle={t("tasks.subtitlePg")}
@@ -185,32 +265,37 @@ export default function Tasks() {
       ]}
       rowActions={(row, reload) => (
         <>
-          {/* All users (incl. employees) can start/stop their work timer */}
-          {!["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status) &&
-            (row.active_session ? (
-              <button
-                onClick={() => act(row.id, "stop_work", reload)}
-                className="inline-flex items-center gap-1 rounded p-1.5 text-amber-600 hover:bg-amber-50"
-                title={t("tasks.breakTask")}
-              >
-                <Pause size={15} />
-                <span className="text-xs font-medium">{t("tasks.break")}</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => act(row.id, "start_work", reload)}
-                className="inline-flex items-center gap-1 rounded p-1.5 text-green-600 hover:bg-green-50"
-                title={t("tasks.resumeTask")}
-              >
-                <Play size={15} />
-                <span className="text-xs font-medium">{t("tasks.start")}</span>
-              </button>
-            ))}
-          {/* All users: mark their task complete */}
-          {!["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status) && (
-            <button onClick={() => act(row.id, "mark_complete", reload)} className="rounded p-1.5 text-green-700 hover:bg-green-50" title={t("tasks.completeTask")}>
-              <CheckCircle size={15} />
+          {/* Work-proof flow: Before Work → During Work + Completed Work.
+              Each step records location + photo and shows on the Location Map. */}
+          {!["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status) && row.work_phase === "BEFORE" && (
+            <button
+              onClick={() => openWorkModal(row, "BEFORE", reload)}
+              className="inline-flex items-center gap-1 rounded p-1.5 text-emerald-600 hover:bg-emerald-50"
+              title={t("gps.beforeWork")}
+            >
+              <Camera size={15} />
+              <span className="text-xs font-medium">{t("gps.beforeWork")}</span>
             </button>
+          )}
+          {!["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status) && row.work_phase === "DURING" && (
+            <>
+              <button
+                onClick={() => openWorkModal(row, "DURING", reload)}
+                className="inline-flex items-center gap-1 rounded p-1.5 text-blue-600 hover:bg-blue-50"
+                title={t("gps.duringWork")}
+              >
+                <Camera size={15} />
+                <span className="text-xs font-medium">{t("gps.duringWork")}</span>
+              </button>
+              <button
+                onClick={() => openWorkModal(row, "COMPLETED", reload)}
+                className="inline-flex items-center gap-1 rounded p-1.5 text-green-700 hover:bg-green-50"
+                title={t("gps.completedWork")}
+              >
+                <CheckCircle size={15} />
+                <span className="text-xs font-medium">{t("gps.completedWork")}</span>
+              </button>
+            </>
           )}
           {/* Admin workflow: submit / verify / complete */}
           {canManage && ["TODO", "IN_PROGRESS"].includes(row.status) && (
@@ -262,5 +347,99 @@ export default function Tasks() {
         { name: "due_date", label: t("tasks.fieldDueDate"), type: "date" },
       ]}
     />
+
+    {/* Work-proof modal: location + photo for the selected task & phase */}
+    {workModal && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000] p-4">
+        <div className="bg-white rounded-xl w-full max-w-md shadow-xl relative z-[1001]">
+          <div className="p-6 border-b flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-800">
+              {t(workPhaseConfig[workModal.phase].labelKey)} — {workModal.row.title}
+            </h3>
+            <button
+              onClick={() => setWorkModal(null)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <X size={20} />
+            </button>
+          </div>
+          <div className="p-6 space-y-4">
+            {workError && (
+              <div className="p-3 rounded-lg text-sm font-medium bg-red-50 text-red-700 ring-1 ring-red-200">
+                {workError}
+              </div>
+            )}
+
+            {/* Current location */}
+            {workPosLoading ? (
+              <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+                <Loader2 size={16} className="animate-spin text-brand-600 mt-1" />
+                <p className="text-sm font-semibold text-gray-800">{t("common.gettingLocation")}</p>
+              </div>
+            ) : workPos ? (
+              <div className="flex items-start gap-3 rounded-lg bg-brand-50 p-3">
+                <MapPin size={16} className="text-brand-600 mt-1" />
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">{t("gps.currentLocation")}</p>
+                  <p className="text-xs text-gray-600">
+                    {workPos.lat.toFixed(6)}, {workPos.lng.toFixed(6)}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500 bg-red-50 p-3 rounded-lg ring-1 ring-red-200">
+                {t("common.couldNotGetLocation")}
+              </div>
+            )}
+
+            {/* Photo capture */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">{t("common.workPhoto")}</label>
+              {workPhotoPreview ? (
+                <div className="relative">
+                  <img src={workPhotoPreview} alt="Preview" className="w-full h-40 object-cover rounded-lg" />
+                  <button
+                    onClick={() => { setWorkPhoto(null); setWorkPhotoPreview(null); }}
+                    className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-70"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    <Camera size={24} className="text-gray-400 mb-2" />
+                    <p className="text-sm text-gray-500">{t("gps.clickPhoto")}</p>
+                  </div>
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleWorkPhotoChange}
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+          <div className="p-6 border-t flex gap-3 justify-end">
+            <Button variant="secondary" onClick={() => setWorkModal(null)} disabled={workSaving}>
+              {t("gps.cancel")}
+            </Button>
+            <Button onClick={submitWork} disabled={workSaving || !workPos}>
+              {workSaving ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 size={16} className="animate-spin" />
+                  {t("common.saving")}
+                </span>
+              ) : (
+                t(workPhaseConfig[workModal.phase].labelKey)
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

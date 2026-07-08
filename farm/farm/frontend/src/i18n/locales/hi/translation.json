@@ -595,6 +595,8 @@
   "gps.noDataFound": "चयनित तिथि सीमा के लिए कोई स्थान डेटा नहीं मिला।",
   "gps.noDataYet": "अभी तक कोई स्थान डेटा नहीं।",
   "gps.noPhoto": "कोई फोटो नहीं",
+  "gps.taskWorkTitle": "कार्य अनुसार वर्क एंट्री",
+  "gps.noTaskWork": "अभी तक कोई टास्क वर्क एंट्री नहीं। Tasks पेज पर Before/During/Completed Work बटन का उपयोग करें।",
   "gps.outside": "बाहर",
   "gps.pendingVerificationTitle": "लंबित फील्ड गतिविधि सत्यापन",
   "gps.pingDeleted": "लोकेशन पिंग हटा दिया गया।",

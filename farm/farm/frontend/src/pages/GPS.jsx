@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { MapPin, Navigation, Users, Clock, Check, X, Crosshair, Download, Target, Camera, Loader2, Pencil, Trash2 } from "lucide-react";
-import { api, resource, toFormData } from "../lib/api";
+import { MapPin, Navigation, Users, Clock, Check, X, Download, Target, Loader2, Pencil, Trash2 } from "lucide-react";
+import { api, resource } from "../lib/api";
 import { openMapUrl, hasValidCoords } from "../lib/maps";
 import { connectLocationStream } from "../lib/realtime";
 import { Badge, Button, Card, PageHeader, Table, ToastContainer, useToast } from "../components/ui";
@@ -11,7 +11,6 @@ import { useAuth } from "../context/AuthContext";
 
 const pingRepo = resource("gps/pings");
 const actRepo = resource("gps/activities");
-const attRepo = resource("workforce/attendance");
 
 const activityLabelMap = { CHECKIN: "gps.activityCheckin", CHECKOUT: "gps.activityCheckout", DURING_WORK: "gps.duringWork", TASK: "gps.activityTask", PATROL: "gps.activityPatrol", TRACK: "gps.activityTrack" };
 const activityColorMap = { CHECKIN: "green", CHECKOUT: "red", DURING_WORK: "purple", TASK: "blue", TRACK: "purple", PATROL: "gray" };
@@ -75,33 +74,6 @@ function appendPing(list, ping) {
   return [ping, ...list];
 }
 
-/** Derive current work-session info for each user from a list of pings. */
-function getUserWorkInfo(pings) {
-  const workMap = {};
-  for (const ping of pings) {
-    const uid = String(ping.user);
-    if (!workMap[uid]) {
-      workMap[uid] = { checkin: null, checkout: null, duringWork: [], isActive: false };
-    }
-    const w = workMap[uid];
-    if (ping.activity === "CHECKIN" && (!w.checkin || new Date(ping.recorded_at) > new Date(w.checkin.recorded_at))) {
-      w.checkin = ping;
-    }
-    if (ping.activity === "CHECKOUT" && (!w.checkout || new Date(ping.recorded_at) > new Date(w.checkout.recorded_at))) {
-      w.checkout = ping;
-    }
-    if (ping.activity === "DURING_WORK") {
-      w.duringWork.push(ping);
-    }
-  }
-  for (const w of Object.values(workMap)) {
-    if (w.checkin && (!w.checkout || new Date(w.checkout.recorded_at) < new Date(w.checkin.recorded_at))) {
-      w.isActive = true;
-    }
-  }
-  return workMap;
-}
-
 // Activity filter options — limit to work-related activities only
 const workFilterOptions = [
   { value: "CHECKIN", labelKey: "gps.activityCheckin" },
@@ -119,30 +91,11 @@ export default function GPS() {
   const [live, setLive] = useState([]);
   const [activities, setActivities] = useState([]);
   const [wsStatus, setWsStatus] = useState("connecting");
-  const [checkingIn, setCheckingIn] = useState(false);
-  const [checkingOut, setCheckingOut] = useState(false);
-  const [duringWorkOpen, setDuringWorkOpen] = useState(false);
-  const [duringWorkPhoto, setDuringWorkPhoto] = useState(null);
-  const [duringWorkPhotoPreview, setDuringWorkPhotoPreview] = useState(null);
-  const [duringWorkMsg, setDuringWorkMsg] = useState(null);
-  const [sendingDuringWork, setSendingDuringWork] = useState(false);
-  const [checkinMsg, setCheckinMsg] = useState(null);
-  const [checkoutMsg, setCheckoutMsg] = useState(null);
-  const [lastCheckin, setLastCheckin] = useState(null);
-  const [lastCheckout, setLastCheckout] = useState(null);
   const [currentPos, setCurrentPos] = useState(null);
   const [locationLoading, setLocationLoading] = useState(true);
   const [watchError, setWatchError] = useState(null);
   const watchId = useRef(null);
   const wsCleanup = useRef(null);
-
-  // Modal state
-  const [checkInModalOpen, setCheckInModalOpen] = useState(false);
-  const [checkOutModalOpen, setCheckOutModalOpen] = useState(false);
-  const [checkInPhoto, setCheckInPhoto] = useState(null);
-  const [checkInPhotoPreview, setCheckInPhotoPreview] = useState(null);
-  const [checkOutPhoto, setCheckOutPhoto] = useState(null);
-  const [checkOutPhotoPreview, setCheckOutPhotoPreview] = useState(null);
 
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -152,7 +105,6 @@ export default function GPS() {
 
   const [allRecentPings, setAllRecentPings] = useState([]);
   const [historyPings, setHistoryPings] = useState([]);
-  const [myEmployeeProfile, setMyEmployeeProfile] = useState(null);
   const [clearingAll, setClearingAll] = useState(false);
 
   // Date range filter state
@@ -168,9 +120,6 @@ export default function GPS() {
 
   // Map of user_id → ongoing/to-do task titles for the Work column
   const [userTaskMap, setUserTaskMap] = useState({});
-  // The current user's selectable tasks + the one picked for a work submit
-  const [myTasks, setMyTasks] = useState([]);
-  const [workTask, setWorkTask] = useState("");
 
   // Toast notifications
   const [toasts, addToast, removeToast] = useToast();
@@ -216,20 +165,9 @@ export default function GPS() {
     }
   }, []);
 
-  // Load the employee profile linked to the current user & users list for filters
+  // Load users list for the User filter dropdown
   useEffect(() => {
     if (!currentUser?.id) return;
-    resource("workforce/employees")
-      .list({ page_size: 200 })
-      .then((d) => {
-        const all = Array.isArray(d) ? d : d.results || [];
-        const profile = all.find(
-          (e) => String(e.user) === String(currentUser.id)
-        );
-        if (profile) setMyEmployeeProfile(profile);
-      })
-      .catch(() => {});
-    // Load users for the User filter dropdown
     resource("auth/users")
       .list({ page_size: 200 })
       .then((d) => {
@@ -241,24 +179,6 @@ export default function GPS() {
     // Build the Work column maps (pending tasks + live active task per user)
     loadWorkTasks();
   }, [currentUser, loadWorkTasks]);
-
-  // Load the current user's own ongoing/to-do tasks for the work task picker
-  useEffect(() => {
-    if (!currentUser?.id) return;
-    resource("tasks")
-      .list({ page_size: 200 })
-      .then((d) => {
-        const all = Array.isArray(d) ? d : d.results || [];
-        const mine = all.filter((tk) => {
-          if (["CANCELLED", "COMPLETED", "VERIFIED"].includes(tk.status)) return false;
-          const byUser = String(tk.assigned_to) === String(currentUser.id);
-          const byEmp = myEmployeeProfile && String(tk.assigned_employee) === String(myEmployeeProfile.id);
-          return byUser || byEmp;
-        });
-        setMyTasks(mine);
-      })
-      .catch(() => {});
-  }, [currentUser, myEmployeeProfile]);
 
   const loadHistory = useCallback(async (from, to) => {
     setLoadingHistory(true);
@@ -287,9 +207,9 @@ export default function GPS() {
       .list({ date_from: today, ordering: "-recorded_at", page_size: 100 })
       .then((d) => setAllRecentPings(Array.isArray(d) ? d : d.results || []))
       .catch(() => {});
-    // Load full history (unfiltered)
+    // Load full history (unfiltered) — also feeds the task-wise work entries
     pingRepo
-      .list({ page_size: 50, ordering: "-recorded_at" })
+      .list({ page_size: 200, ordering: "-recorded_at" })
       .then((d) => setHistoryPings(Array.isArray(d) ? d : d.results || []))
       .catch(() => {});
     if (!isEmployee) {
@@ -348,6 +268,8 @@ export default function GPS() {
         } else {
           // Regular location ping — append to all recent & update live for map
           setAllRecentPings((prev) => appendPing(prev, data));
+          // Keep the task-wise work entries fresh too
+          setHistoryPings((prev) => appendPing(prev, data));
           // Keep live deduplicated for map markers
           setLive((prev) => {
             const idx = prev.findIndex((p) => String(p.user) === String(data.user));
@@ -430,6 +352,19 @@ export default function GPS() {
   const visibleHistoryPings = isEmployee
     ? historyPings.filter((p) => String(p.user) === String(currentUser?.id))
     : historyPings;
+
+  // Task-wise work entries: every Before/During/Completed Work ping that is
+  // linked to a task, grouped per task (newest ping first within each group).
+  const taskWorkGroups = (() => {
+    const groups = {};
+    for (const p of visibleHistoryPings) {
+      if (!p.task) continue;
+      const key = String(p.task);
+      if (!groups[key]) groups[key] = { id: key, title: p.task_title || `#${key}`, entries: [] };
+      groups[key].entries.push(p);
+    }
+    return Object.values(groups);
+  })();
 
   // Markers to plot on the live tracking map (use deduplicated live positions).
   const mapMarkers = [
@@ -514,343 +449,6 @@ export default function GPS() {
     }
   };
 
-  const openCheckInModal = useCallback(async () => {
-    setCheckInModalOpen(true);
-    setCheckInPhoto(null);
-    setCheckInPhotoPreview(null);
-    setCheckinMsg(null);
-    setWorkTask("");
-    // Always try to get a fresh location when opening modal
-    setLocationLoading(true);
-    try {
-      const pos = await getCurrentPosition();
-      setCurrentPos(pos);
-    } catch (err) {
-      // Keep previous position as fallback, show warning
-    } finally {
-      setLocationLoading(false);
-    }
-  }, [getCurrentPosition]);
-
-  const handlePhotoChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setCheckInPhoto(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setCheckInPhotoPreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const doCheckIn = async () => {
-    setCheckingIn(true);
-    setCheckinMsg(null);
-
-    try {
-      // Get the freshest location possible right before sending
-      let pos = currentPos;
-      try {
-        const fresh = await getCurrentPosition();
-        pos = fresh;
-        setCurrentPos(fresh);
-      } catch {
-        if (!pos) {
-          setCheckinMsg({ type: "error", text: t("gps.noLocation") });
-          setCheckingIn(false);
-          return;
-        }
-      }
-
-      const lat = Number(pos.lat.toFixed(6));
-      const lng = Number(pos.lng.toFixed(6));
-
-      let result;
-      // Use linked profile if available, otherwise record a LocationPing
-      if (myEmployeeProfile) {
-        // Create Attendance record using linked profile
-        const payload = {
-          employee: myEmployeeProfile.id,
-          check_in_lat: lat,
-          check_in_lng: lng,
-          ...(workTask ? { task: workTask } : {}),
-        };
-        if (checkInPhoto) {
-          result = await api.post(
-            "/workforce/attendance/check_in/",
-            toFormData({ ...payload, check_in_photo: checkInPhoto })
-          );
-        } else {
-          result = await api.post("/workforce/attendance/check_in/", payload);
-        }
-        const attRecord = result.data;
-        setLastCheckin({
-          recorded_at: attRecord.check_in_time,
-          ...attRecord,
-        });
-
-        setCheckinMsg({
-          type: "success",
-          text: t("gps.checkinSuccess"),
-        });
-      } else {
-        // No linked profile — just record a LocationPing
-        const data = {
-          latitude: lat,
-          longitude: lng,
-          accuracy: pos.accuracy != null ? Math.round(pos.accuracy) : null,
-          activity: "CHECKIN",
-          ...(workTask ? { task: workTask } : {}),
-        };
-        if (checkInPhoto) {
-          result = await pingRepo.create(
-            toFormData({ ...data, photo: checkInPhoto })
-          );
-        } else {
-          result = await pingRepo.create(data);
-        }
-        setLastCheckin({ recorded_at: result.recorded_at, ...result });
-
-        setCheckinMsg({
-          type: "success",
-          text: t("gps.locationRecorded"),
-        });
-      }
-
-      setCheckInModalOpen(false);
-      load();
-    } catch (err) {
-      const detail = err.response?.data?.detail || err.message || t("gps.checkinFailed");
-      setCheckinMsg({
-        type: "error",
-        text: detail,
-      });
-    } finally {
-      setCheckingIn(false);
-    }
-  };
-
-  const openCheckOutModal = useCallback(async () => {
-    setCheckOutModalOpen(true);
-    setCheckOutPhoto(null);
-    setCheckOutPhotoPreview(null);
-    setCheckoutMsg(null);
-    setWorkTask("");
-    // Always try to get a fresh location when opening modal
-    setLocationLoading(true);
-    try {
-      const pos = await getCurrentPosition();
-      setCurrentPos(pos);
-    } catch (err) {
-      // Keep previous position as fallback, show warning
-    } finally {
-      setLocationLoading(false);
-    }
-  }, [getCurrentPosition]);
-
-  const handleCheckOutPhotoChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setCheckOutPhoto(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setCheckOutPhotoPreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleDuringWorkPhotoChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setDuringWorkPhoto(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setDuringWorkPhotoPreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const doDuringWork = async () => {
-    setSendingDuringWork(true);
-    setDuringWorkMsg(null);
-
-    try {
-      let pos = currentPos;
-      try {
-        const fresh = await getCurrentPosition();
-        pos = fresh;
-        setCurrentPos(fresh);
-      } catch {
-        if (!pos) {
-          setDuringWorkMsg({ type: "error", text: t("gps.noLocation") });
-          setSendingDuringWork(false);
-          return;
-        }
-      }
-
-      const lat = Number(pos.lat.toFixed(6));
-      const lng = Number(pos.lng.toFixed(6));
-
-      if (myEmployeeProfile) {
-        // Use the attendance during_work API (same pattern as check_in/check_out)
-        const payload = {
-          employee: myEmployeeProfile.id,
-          latitude: lat,
-          longitude: lng,
-          ...(workTask ? { task: workTask } : {}),
-        };
-        let result;
-        if (duringWorkPhoto) {
-          result = await api.post(
-            "/workforce/attendance/during_work/",
-            toFormData({ ...payload, photo: duringWorkPhoto })
-          );
-        } else {
-          result = await api.post("/workforce/attendance/during_work/", payload);
-        }
-        const attRecord = result.data;
-        setDuringWorkMsg({ type: "success", text: t("gps.duringWorkSuccess") });
-      } else {
-        // No linked profile — record a LocationPing directly
-        const data = {
-          latitude: lat,
-          longitude: lng,
-          accuracy: pos.accuracy != null ? Math.round(pos.accuracy) : null,
-          activity: "DURING_WORK",
-          ...(workTask ? { task: workTask } : {}),
-        };
-        if (duringWorkPhoto) {
-          await pingRepo.create(toFormData({ ...data, photo: duringWorkPhoto }));
-        } else {
-          await pingRepo.create(data);
-        }
-        setDuringWorkMsg({ type: "success", text: t("gps.locationRecorded") });
-      }
-
-      setDuringWorkOpen(false);
-      load();
-    } catch (err) {
-      setDuringWorkMsg({ type: "error", text: err.response?.data?.detail || err.message || t("gps.checkinFailed") });
-    } finally {
-      setSendingDuringWork(false);
-    }
-  };
-
-  const doCheckOut = async () => {
-    setCheckingOut(true);
-    setCheckoutMsg(null);
-
-    try {
-      // Get the freshest location possible right before sending
-      let pos = currentPos;
-      try {
-        const fresh = await getCurrentPosition();
-        pos = fresh;
-        setCurrentPos(fresh);
-      } catch {
-        if (!pos) {
-          setCheckoutMsg({ type: "error", text: t("gps.noLocation") });
-          setCheckingOut(false);
-          return;
-        }
-      }
-
-      const lat = Number(pos.lat.toFixed(6));
-      const lng = Number(pos.lng.toFixed(6));
-
-      let result;
-      if (myEmployeeProfile) {
-        // Find today's attendance record for this employee
-        const attList = await resource("workforce/attendance").list({
-          employee: myEmployeeProfile.id,
-          date: new Date().toISOString().slice(0, 10),
-          page_size: 1,
-        });
-        const attRows = Array.isArray(attList)
-          ? attList
-          : attList.results || [];
-        const attendance = attRows[0];
-
-        if (attendance) {
-          // Check out via attendance endpoint (also creates a LocationPing)
-          const data = {
-            check_out_lat: lat,
-            check_out_lng: lng,
-            ...(workTask ? { task: workTask } : {}),
-          };
-          const body = checkOutPhoto ? toFormData({ ...data, check_out_photo: checkOutPhoto }) : data;
-          result = await attRepo.action(attendance.id, "check_out", body);
-          setLastCheckout({
-            recorded_at: result.check_out_time,
-            ...result
-          });
-        } else {
-          // No attendance record yet — fallback to LocationPing only
-          const data = {
-            latitude: lat,
-            longitude: lng,
-            accuracy: pos.accuracy != null ? Math.round(pos.accuracy) : null,
-            activity: "CHECKOUT",
-            ...(workTask ? { task: workTask } : {}),
-          };
-          result = await pingRepo.create(data);
-          setLastCheckout(result);
-        }
-      } else {
-        // No linked profile — just record a LocationPing
-        const data = {
-          latitude: lat,
-          longitude: lng,
-          accuracy: pos.accuracy != null ? Math.round(pos.accuracy) : null,
-          activity: "CHECKOUT",
-          ...(workTask ? { task: workTask } : {}),
-        };
-        if (checkOutPhoto) {
-          result = await pingRepo.create(
-            toFormData({ ...data, photo: checkOutPhoto })
-          );
-        } else {
-          result = await pingRepo.create(data);
-        }
-        setLastCheckout(result);
-      }
-
-      setCheckoutMsg({
-        type: "success",
-        text: t("gps.checkoutSuccess"),
-      });
-      setCheckOutModalOpen(false);
-      load();
-    } catch (err) {
-      const detail = err.response?.data?.detail || err.message || t("gps.checkoutFailed");
-      setCheckoutMsg({
-        type: "error",
-        text: detail,
-      });
-    } finally {
-      setCheckingOut(false);
-    }
-  };
-
-  // Task picker shown in the Before/During/Completed Work modals
-  const taskPicker = (
-    <div className="space-y-2">
-      <label className="block text-sm font-medium text-gray-700">{t("gps.selectTask")}</label>
-      <select
-        value={workTask}
-        onChange={(e) => setWorkTask(e.target.value)}
-        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
-      >
-        <option value="">{t("gps.noTaskSelected")}</option>
-        {myTasks.map((tk) => <option key={tk.id} value={tk.id}>{tk.title}</option>)}
-      </select>
-      {!myTasks.length && <p className="text-xs text-gray-400">{t("gps.noTasksAssigned")}</p>}
-    </div>
-  );
-
   return (
     <div>
       <PageHeader
@@ -870,78 +468,9 @@ export default function GPS() {
               <Download size={15} /> {t("common.excel")}
             </Button>
           )}
-          <div className="flex items-center gap-3">
-            {lastCheckin && (
-              <span className="hidden text-xs text-gray-400 sm:block">
-                {t("gps.lastIn")} {new Date(lastCheckin.recorded_at || Date.now()).toLocaleTimeString()}
-              </span>
-            )}
-            {lastCheckout && (
-              <span className="hidden text-xs text-gray-400 sm:block">
-                {t("gps.lastOut")} {new Date(lastCheckout.recorded_at || Date.now()).toLocaleTimeString()}
-              </span>
-            )}
-            <Button
-              onClick={openCheckInModal}
-              disabled={checkingIn}
-            >                {checkingIn ? <Loader2 size={16} className="animate-spin mr-2" /> : <Crosshair size={16} className="mr-2" />}
-              {checkingIn ? t("gps.checkingIn") : t("gps.beforeWork")}
-            </Button>
-            <Button
-              onClick={() => { setWorkTask(""); setDuringWorkOpen(true); }}
-              disabled={sendingDuringWork}
-            >                {sendingDuringWork ? <Loader2 size={16} className="animate-spin mr-2" /> : <Camera size={16} className="mr-2" />}
-              {sendingDuringWork ? t("common.saving") : t("gps.duringWork")}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={openCheckOutModal}
-              disabled={checkingOut}
-            >                {checkingOut ? <Loader2 size={16} className="animate-spin mr-2" /> : <Crosshair size={16} className="mr-2" />}
-              {checkingOut ? t("gps.checkingOut") : t("gps.completedWork")}
-            </Button>
-          </div>
           </div>
         }
       />
-
-      {/* Check-in feedback banner */}
-      {checkinMsg && (
-        <div
-          className={`mb-4 flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium ${
-            checkinMsg.type === "success"
-              ? "bg-green-50 text-green-700 ring-1 ring-green-200"
-              : "bg-red-50 text-red-700 ring-1 ring-red-200"
-          }`}
-        >
-          <span className="flex-1">{checkinMsg.text}</span>
-          <button
-            onClick={() => setCheckinMsg(null)}
-            className="text-current opacity-50 hover:opacity-100"
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
-
-      {/* Check-out feedback banner */}
-      {checkoutMsg && (
-        <div
-          className={`mb-4 flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium ${
-            checkoutMsg.type === "success"
-              ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200"
-              : "bg-red-50 text-red-700 ring-1 ring-red-200"
-          }`}
-        >
-          <span className="flex-1">{checkoutMsg.text}</span>
-          <button
-            onClick={() => setCheckoutMsg(null)}
-            className="text-current opacity-50 hover:opacity-100"
-          >
-            <X size={16} />
-          </button>
-        </div>
-      )}
 
       {/* Live Map */}
       <Card className="mb-5">
@@ -975,12 +504,7 @@ export default function GPS() {
                 {t("common.disconnected")}
               </span>
             )}
-            {lastCheckin && (
-              <span className="hidden md:inline-flex items-center gap-1 text-brand-600">
-                <MapPin size={12} />
-                {t("gps.lastCheckin")} {new Date(lastCheckin.recorded_at || Date.now()).toLocaleTimeString()}
-              </span>
-            )}                <span>{t("common.realtime")}</span>
+            <span>{t("common.realtime")}</span>
           </div>
         </div>
         <LiveMap height={420} markers={mapMarkers} />
@@ -1027,19 +551,6 @@ export default function GPS() {
           </div>
         )}
 
-        {/* Quick checkin card at the bottom of the map for mobile (employees only) */}
-        {isEmployee && (
-          <div className="mt-3 flex items-center justify-between rounded-lg bg-gray-50 p-3 md:hidden">
-            <span className="text-sm text-gray-600">{t("common.recordLocation")}</span>
-            <Button
-              onClick={openCheckInModal}
-              disabled={checkingIn}
-            >
-              {checkingIn ? <Loader2 size={14} className="animate-spin mr-1" /> : <Crosshair size={14} className="mr-1" />}
-              {checkingIn ? t("gps.checkingIn") : t("gps.beforeWork")}
-            </Button>
-          </div>
-        )}
       </Card>
 
       {/* Live Locations Table — admin only */}
@@ -1300,350 +811,98 @@ export default function GPS() {
       )}
 
 
-      {/* Check-in Modal */}
-      {checkInModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000] p-4">
-          <div className="bg-white rounded-xl w-full max-w-md shadow-xl relative z-[1001]">
-            <div className="p-6 border-b flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-800">{t("gps.checkinTitle")}</h3>
-              <button
-                onClick={() => setCheckInModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              {/* Current Location Display */}
-              {locationLoading ? (
-                <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
-                  <div className="mt-1">
-                    <Loader2 size={16} className="animate-spin text-brand-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{t("common.gettingLocation")}</p>
-                  </div>
-                </div>
-              ) : currentPos ? (
-                <div className="flex items-start gap-3 rounded-lg bg-brand-50 p-3">
-                  <div className="mt-1">
-                    <MapPin size={16} className="text-brand-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{t("gps.currentLocation")}</p>
-                    <p className="text-xs text-gray-600">
-                      {currentPos.lat.toFixed(6)}, {currentPos.lng.toFixed(6)}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-sm text-gray-500 bg-red-50 p-3 rounded-lg ring-1 ring-red-200">
-                  {t("common.couldNotGetLocation")}
-                </div>
-              )}
-
-              {/* Work task picker */}
-              {taskPicker}
-
-              {/* Photo Upload */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  {t("gps.checkinPhoto")}
-                </label>
-                {checkInPhotoPreview ? (
-                  <div className="relative">
-                    <img
-                      src={checkInPhotoPreview}
-                      alt="Preview"
-                      className="w-full h-40 object-cover rounded-lg"
-                    />
-                    <button
-                      onClick={() => {
-                        setCheckInPhoto(null);
-                        setCheckInPhotoPreview(null);
-                      }}
-                      className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-70"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                      <Camera size={24} className="text-gray-400 mb-2" />
-                      <p className="text-sm text-gray-500">
-                        {t("gps.clickPhoto")}
-                      </p>
-                    </div>
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handlePhotoChange}
-                    />
-                  </label>
-                )}
+      {/* Task-wise work entries: Before / During / Completed Work per task */}
+      <Card title={t("gps.taskWorkTitle")} className="mb-5">
+        {taskWorkGroups.length === 0 ? (
+          <p className="text-sm text-gray-400">{t("gps.noTaskWork")}</p>
+        ) : (
+          <div className="space-y-4">
+            {taskWorkGroups.map((g) => (
+              <div key={g.id} className="rounded-xl p-3 ring-1 ring-gray-100">
+                <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-800">
+                  {g.title}
+                  <Badge color={g.entries.some((e) => e.activity === "CHECKOUT") ? "green" : "blue"}>
+                    {g.entries.some((e) => e.activity === "CHECKOUT")
+                      ? t("gps.completedWork")
+                      : t("gps.duringWork")}
+                  </Badge>
+                </h4>
+                <Table
+                  columns={[
+                    {
+                      key: "activity",
+                      header: t("gps.activityLabel"),
+                      render: (r) => (
+                        <Badge color={activityColorMap[r.activity] || "gray"}>
+                          {t(activityLabelMap[r.activity] || r.activity)}
+                        </Badge>
+                      ),
+                    },
+                    {
+                      key: "user_name",
+                      header: t("header.user"),
+                      render: (r) => r.user_name || r.user,
+                    },
+                    {
+                      key: "photo",
+                      header: t("header.photo"),
+                      render: (r) => <PhotoWithFallbackInline url={r.photo} noPhotoLabel={t("gps.noPhoto")} />,
+                    },
+                    {
+                      key: "location",
+                      header: t("farmDetail.location"),
+                      render: (r) =>
+                        r.location_name ? (
+                          <span className="block max-w-[220px] truncate text-xs text-gray-600" title={r.location_name}>
+                            {r.location_name}
+                          </span>
+                        ) : hasValidCoords(r.latitude, r.longitude) ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              openMapUrl(r.latitude, r.longitude);
+                            }}
+                            className="text-xs text-brand-600 hover:underline"
+                          >
+                            {Number(r.latitude).toFixed(4)}, {Number(r.longitude).toFixed(4)}
+                          </button>
+                        ) : (
+                          "—"
+                        ),
+                    },
+                    {
+                      key: "farm",
+                      header: t("header.farm"),
+                      render: (r) => (r.farm_name ? <span className="text-xs text-gray-600">{r.farm_name}</span> : "—"),
+                    },
+                    {
+                      key: "recorded_at",
+                      header: t("header.time"),
+                      render: (r) =>
+                        r.recorded_at ? (
+                          <span className="flex items-center gap-1 text-xs text-gray-600">
+                            <Clock size={11} />
+                            {new Date(r.recorded_at).toLocaleString()}
+                          </span>
+                        ) : (
+                          "—"
+                        ),
+                    },
+                    {
+                      key: "map",
+                      header: t("common.openInMaps"),
+                      render: (r) => <MapViewButton lat={r.latitude} lng={r.longitude} label={t("common.view")} />,
+                    },
+                  ]}
+                  rows={g.entries}
+                  empty={t("gps.noTaskWork")}
+                />
               </div>
-            </div>
-            <div className="p-6 border-t flex gap-3 justify-end">
-              <Button
-                variant="secondary"
-                onClick={() => setCheckInModalOpen(false)}
-                disabled={checkingIn}
-              >
-                {t("gps.cancel")}
-              </Button>
-              <Button
-                onClick={doCheckIn}
-                disabled={checkingIn || !currentPos}
-              >
-                {checkingIn ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 size={16} className="animate-spin" />
-                    {t("gps.checkingIn")}
-                  </span>
-                ) : (
-                  t("gps.confirmCheckIn")
-                )}
-              </Button>
-            </div>
+            ))}
           </div>
-        </div>
-      )}
-
-      {/* Check-out Modal */}
-      {checkOutModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000] p-4">
-          <div className="bg-white rounded-xl w-full max-w-md shadow-xl relative z-[1001]">
-            <div className="p-6 border-b flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-800">{t("gps.checkoutTitle")}</h3>
-              <button
-                onClick={() => setCheckOutModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              {/* Current Location Display */}
-              {locationLoading ? (
-                <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
-                  <div className="mt-1">
-                    <Loader2 size={16} className="animate-spin text-brand-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{t("common.gettingLocation")}</p>
-                  </div>
-                </div>
-              ) : currentPos ? (
-                <div className="flex items-start gap-3 rounded-lg bg-brand-50 p-3">
-                  <div className="mt-1">
-                    <MapPin size={16} className="text-brand-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{t("gps.currentLocation")}</p>
-                    <p className="text-xs text-gray-600">
-                      {currentPos.lat.toFixed(6)}, {currentPos.lng.toFixed(6)}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-sm text-gray-500 bg-red-50 p-3 rounded-lg ring-1 ring-red-200">
-                  {t("common.couldNotGetLocation")}
-                </div>
-              )}
-
-              {/* Work task picker */}
-              {taskPicker}
-
-              {/* Photo Upload */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  {t("gps.checkoutPhoto")}
-                </label>
-                {checkOutPhotoPreview ? (
-                  <div className="relative">
-                    <img
-                      src={checkOutPhotoPreview}
-                      alt="Preview"
-                      className="w-full h-40 object-cover rounded-lg"
-                    />
-                    <button
-                      onClick={() => {
-                        setCheckOutPhoto(null);
-                        setCheckOutPhotoPreview(null);
-                      }}
-                      className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-70"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                      <Camera size={24} className="text-gray-400 mb-2" />
-                      <p className="text-sm text-gray-500">
-                        {t("gps.clickPhoto")}
-                      </p>
-                    </div>
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleCheckOutPhotoChange}
-                    />
-                  </label>
-                )}
-              </div>
-            </div>
-            <div className="p-6 border-t flex gap-3 justify-end">
-              <Button
-                variant="secondary"
-                onClick={() => setCheckOutModalOpen(false)}
-                disabled={checkingOut}
-              >
-                {t("gps.cancel")}
-              </Button>
-              <Button
-                onClick={doCheckOut}
-                disabled={checkingOut || !currentPos}
-              >
-                {checkingOut ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 size={16} className="animate-spin" />
-                    {t("gps.checkingOut")}
-                  </span>
-                ) : (
-                  t("gps.confirmCheckOut")
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* During Work Modal */}
-      {duringWorkOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000] p-4">
-          <div className="bg-white rounded-xl w-full max-w-md shadow-xl relative z-[1001]">
-            <div className="p-6 border-b flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-800">{t("gps.duringWork")} — {t("common.photo")}</h3>
-              <button
-                onClick={() => setDuringWorkOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              {duringWorkMsg && (
-                <div className={`p-3 rounded-lg text-sm font-medium ${
-                  duringWorkMsg.type === "success"
-                    ? "bg-green-50 text-green-700 ring-1 ring-green-200"
-                    : "bg-red-50 text-red-700 ring-1 ring-red-200"
-                }`}>
-                  {duringWorkMsg.text}
-                </div>
-              )}
-              {/* Current Location Display */}
-              {locationLoading ? (
-                <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
-                  <div className="mt-1">
-                    <Loader2 size={16} className="animate-spin text-brand-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{t("common.gettingLocation")}</p>
-                  </div>
-                </div>
-              ) : currentPos ? (
-                <div className="flex items-start gap-3 rounded-lg bg-brand-50 p-3">
-                  <div className="mt-1">
-                    <MapPin size={16} className="text-brand-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{t("gps.currentLocation")}</p>
-                    <p className="text-xs text-gray-600">
-                      {currentPos.lat.toFixed(6)}, {currentPos.lng.toFixed(6)}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-sm text-gray-500 bg-red-50 p-3 rounded-lg ring-1 ring-red-200">
-                  {t("common.couldNotGetLocation")}
-                </div>
-              )}
-
-              {/* Work task picker */}
-              {taskPicker}
-
-              {/* Photo Upload */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  {t("common.workPhoto")}
-                </label>
-                {duringWorkPhotoPreview ? (
-                  <div className="relative">
-                    <img
-                      src={duringWorkPhotoPreview}
-                      alt="Preview"
-                      className="w-full h-40 object-cover rounded-lg"
-                    />
-                    <button
-                      onClick={() => {
-                        setDuringWorkPhoto(null);
-                        setDuringWorkPhotoPreview(null);
-                      }}
-                      className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-70"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                      <Camera size={24} className="text-gray-400 mb-2" />
-                      <p className="text-sm text-gray-500">
-                        {t("gps.clickPhoto")}
-                      </p>
-                    </div>
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleDuringWorkPhotoChange}
-                    />
-                  </label>
-                )}
-              </div>
-            </div>
-            <div className="p-6 border-t flex gap-3 justify-end">
-              <Button
-                variant="secondary"
-                onClick={() => setDuringWorkOpen(false)}
-                disabled={sendingDuringWork}
-              >
-                {t("gps.cancel")}
-              </Button>
-              <Button
-                onClick={doDuringWork}
-                disabled={sendingDuringWork || !currentPos}
-              >
-                {sendingDuringWork ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 size={16} className="animate-spin" />
-                    {t("common.saving")}
-                  </span>
-                ) : (
-                  t("gps.duringWork")
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </Card>
 
       {/* Field Activity Verification (admins only) */}
       {!isEmployee && canVerify && (

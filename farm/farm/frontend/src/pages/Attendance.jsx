@@ -9,7 +9,6 @@ import { useAuth } from "../context/AuthContext";
 
 const repo = resource("workforce/attendance");
 const empRepo = resource("workforce/employees");
-const pingRepo = resource("gps/pings");
 
 const getLocation = () =>
   new Promise((resolve) => {

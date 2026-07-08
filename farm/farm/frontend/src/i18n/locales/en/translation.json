@@ -1454,6 +1454,8 @@
   "gps.noDataFound": "No location data found for the selected date range.",
   "gps.noDataYet": "No location data yet.",
   "gps.noPhoto": "No Photo",
+  "gps.taskWorkTitle": "Task Work Entries",
+  "gps.noTaskWork": "No task work entries yet. Use the Before/During/Completed Work buttons on the Tasks page.",
   "gps.outside": "Outside",
   "gps.pendingVerificationTitle": "Pending Field Activity Verification",
   "gps.pingDeleted": "Location ping deleted.",

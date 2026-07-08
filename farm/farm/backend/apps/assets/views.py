@@ -13,12 +13,12 @@ class AssetViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     (used by the "Equipment & Machinery" sub-module).
     """
 
-    queryset = Asset.objects.select_related("farm", "assigned_to").all()
+    queryset = Asset.objects.select_related("farm", "assigned_to", "created_by").all()
     serializer_class = AssetSerializer
     farm_lookup = "farm_id"
-    allowed_roles = [Role.FARM_MANAGER]
+    allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = [Role.EMPLOYEE]
-    filterset_fields = ["farm", "asset_type", "status", "assigned_to"]
+    filterset_fields = ["farm", "asset_type", "status", "assigned_to", "created_by"]
     search_fields = ["name", "code", "manufacturer", "model_number", "serial_number", "notes"]
 
     def get_queryset(self):
@@ -30,10 +30,10 @@ class AssetViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
 
 class AssetMaintenanceViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
-    queryset = AssetMaintenance.objects.select_related("asset", "asset__farm").all()
+    queryset = AssetMaintenance.objects.select_related("asset", "asset__farm", "created_by").all()
     serializer_class = AssetMaintenanceSerializer
     farm_lookup = "asset__farm_id"
-    allowed_roles = [Role.FARM_MANAGER]
+    allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = [Role.EMPLOYEE]
-    filterset_fields = ["asset", "maintenance_type", "date"]
+    filterset_fields = ["asset", "maintenance_type", "date", "created_by"]
     search_fields = ["description", "performed_by"]

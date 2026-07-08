@@ -96,12 +96,65 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
         return qs
 
     def perform_create(self, serializer):
+        # Default the farm from the linked task so farm filters and the
+        # geofence check work without the client sending it explicitly.
+        task = serializer.validated_data.get("task")
+        extra = {}
+        if task and not serializer.validated_data.get("farm"):
+            extra["farm"] = task.farm
         instance = serializer.save(
             created_by=self.request.user,
             user=self.request.user,
             recorded_at=serializer.validated_data.get("recorded_at") or timezone.now(),
+            **extra,
         )
+        self._advance_task_phase(instance)
         broadcast_ping(instance, request=self.request)
+
+    @staticmethod
+    def _advance_task_phase(ping):
+        """Move the linked task through its work flow.
+
+        A Before-Work ping (CHECKIN) starts the task and its work timer; a
+        During-Work ping keeps the timer alive; a Completed-Work ping
+        (CHECKOUT) stops the timer and closes the task.
+        """
+        from apps.tasks.models import Task, TaskWorkSession
+
+        task = ping.task
+        if not task:
+            return
+        if ping.activity in (
+            LocationPing.Activity.CHECKIN,
+            LocationPing.Activity.DURING_WORK,
+        ):
+            if task.status == Task.Status.TODO:
+                task.status = Task.Status.IN_PROGRESS
+                task.save(update_fields=["status", "updated_at"])
+            # Start the work timer if the worker doesn't have one running.
+            has_active = TaskWorkSession.objects.filter(
+                task=task, user=ping.user, end_time__isnull=True
+            ).exists()
+            if not has_active:
+                TaskWorkSession.objects.create(
+                    task=task,
+                    user=ping.user,
+                    created_by=ping.user,
+                    start_time=timezone.now(),
+                )
+        elif ping.activity == LocationPing.Activity.CHECKOUT:
+            # Stop every running timer on the task, then close it.
+            TaskWorkSession.objects.filter(
+                task=task, end_time__isnull=True
+            ).update(end_time=timezone.now())
+            if task.status not in (
+                Task.Status.COMPLETED,
+                Task.Status.VERIFIED,
+                Task.Status.CANCELLED,
+            ):
+                task.status = Task.Status.COMPLETED
+                task.progress = 100
+                task.save(update_fields=["status", "progress", "updated_at"])
 
     @action(detail=False, methods=["get"])
     def live(self, request):

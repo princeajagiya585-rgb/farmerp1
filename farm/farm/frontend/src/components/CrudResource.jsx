@@ -137,10 +137,10 @@ export default function CrudResource({
       if (search) params.search = search;
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
-      if (appliedFarmFilter && !isEmployee) params.farm = appliedFarmFilter;
+      if (appliedFarmFilter) params.farm = appliedFarmFilter;
       if (appliedEmpFilter) params.employee = appliedEmpFilter;
-      if (appliedUserFilter && !isEmployee) params.user = appliedUserFilter;
-      if (appliedBuyerFilter && !isEmployee) params.buyer = appliedBuyerFilter;
+      if (appliedUserFilter) params.user = appliedUserFilter;
+      if (appliedBuyerFilter) params.buyer = appliedBuyerFilter;
       const data = await repo.list(params);
       if (Array.isArray(data)) {
         setRows(data);
@@ -339,10 +339,10 @@ export default function CrudResource({
       if (search) params.search = search;
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
-      if (appliedFarmFilter && !isEmployee) params.farm = appliedFarmFilter;
-      if (appliedEmpFilter && !isEmployee) params.employee = appliedEmpFilter;
-      if (appliedUserFilter && !isEmployee) params.user = appliedUserFilter;
-      if (appliedBuyerFilter && !isEmployee) params.buyer = appliedBuyerFilter;
+      if (appliedFarmFilter) params.farm = appliedFarmFilter;
+      if (appliedEmpFilter) params.employee = appliedEmpFilter;
+      if (appliedUserFilter) params.user = appliedUserFilter;
+      if (appliedBuyerFilter) params.buyer = appliedBuyerFilter;
       const data = await repo.list(params);
       allRows = Array.isArray(data) ? data : data.results || [];
     } catch {
@@ -488,8 +488,7 @@ export default function CrudResource({
             </div>
           )}
           {/* Farm, Employee, User & Buyer Filters with Apply button */}
-          {(showFarmFilter || showEmployeeFilter || showUserFilter || showBuyerFilter) && (
-            <div className="flex flex-wrap items-end gap-2 rounded-lg bg-gray-50 p-2 border border-gray-200">
+          {(showFarmFilter || showEmployeeFilter || showUserFilter || showBuyerFilter) && (          <div className="flex flex-wrap items-end gap-2 rounded-lg bg-gray-50 p-2 border border-gray-200">
               {showFarmFilter && (
                 <div className="min-w-[150px]">
                   <select

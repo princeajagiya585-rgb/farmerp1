@@ -21,7 +21,7 @@ class ItemViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     farm_lookup = "farm_id"
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = [Role.EMPLOYEE]
-    filterset_fields = ["farm", "category"]
+    filterset_fields = ["farm", "category", "created_by"]
     search_fields = ["name", "sku", "supplier", "description"]
 
     @action(detail=False, methods=["get"])
@@ -55,7 +55,7 @@ class StockMovementViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     farm_lookup = "farm_id"
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = [Role.EMPLOYEE]
-    filterset_fields = ["item", "farm", "movement_type"]
+    filterset_fields = ["item", "farm", "movement_type", "created_by"]
     search_fields = ["reference", "reason", "notes", "item__name", "item__sku"]
 
     @action(detail=False, methods=["get"])

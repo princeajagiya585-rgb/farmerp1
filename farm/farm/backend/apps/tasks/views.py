@@ -78,14 +78,19 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        # Employees see only tasks assigned to them — bypass farm scoping entirely
-        # so their own tasks are visible even when user.farms is out of sync.
-        if user.role == Role.EMPLOYEE:
+        # If an employee, and an assigned_to or assigned_employee filter is provided,
+        # let the filter be applied. Otherwise, if no filter is provided, still
+        # restrict to self.
+        if user.role == Role.EMPLOYEE and not (
+            self.request.query_params.get("assigned_to") or
+            self.request.query_params.get("assigned_employee")
+        ):
             qs = GenericAPIView.get_queryset(self)
             return qs.filter(
                 Q(assigned_to=user) | Q(assigned_employee__user=user)
             )
-        # For non-employees, apply farm scoping
+        # For all other cases (non-employees, or employees with a filter),
+        # apply farm scoping and other filters.
         qs = super().get_queryset()
         # Admin users can optionally filter to only their tasks via ?my_tasks=true
         if self.request.query_params.get("my_tasks") == "true":
@@ -292,8 +297,8 @@ class TaskWorkSessionViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         user = self.request.user
-        # Employees see only their own sessions; admins/managers see all
-        if user.role == Role.EMPLOYEE:
+        # Employees see only their own sessions unless a specific user filter is provided.
+        if user.role == Role.EMPLOYEE and not self.request.query_params.get("user"):
             qs = qs.filter(user=user)
         return qs
 
