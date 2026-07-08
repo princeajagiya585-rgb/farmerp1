@@ -28,6 +28,7 @@ import {
  *  - showFarmFilter: bool — show farm dropdown filter
  *  - showEmployeeFilter: bool — show employee dropdown filter
  *  - showUserFilter: bool — show user dropdown filter
+ *  - showBuyerFilter: bool — show buyer text filter
  */
 const EMPTY_PARAMS = {};
 
@@ -43,6 +44,7 @@ export default function CrudResource({
   showFarmFilter, // show farm dropdown filter
   showEmployeeFilter, // show employee dropdown filter
   showUserFilter, // show user dropdown filter
+  showBuyerFilter, // show buyer text filter
 }) {
   const { t, i18n } = useTranslation();
   const { hasRole, user } = useAuth();
@@ -66,9 +68,11 @@ export default function CrudResource({
   const [farmFilter, setFarmFilter] = useState("");
   const [empFilter, setEmpFilter] = useState("");
   const [userFilter, setUserFilter] = useState("");
+  const [buyerFilter, setBuyerFilter] = useState("");
   const [appliedFarmFilter, setAppliedFarmFilter] = useState("");
   const [appliedEmpFilter, setAppliedEmpFilter] = useState("");
   const [appliedUserFilter, setAppliedUserFilter] = useState("");
+  const [appliedBuyerFilter, setAppliedBuyerFilter] = useState("");
   const [farms, setFarms] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [users, setUsers] = useState([]);
@@ -136,6 +140,7 @@ export default function CrudResource({
       if (appliedFarmFilter && !isEmployee) params.farm = appliedFarmFilter;
       if (appliedEmpFilter && !isEmployee) params.employee = appliedEmpFilter;
       if (appliedUserFilter && !isEmployee) params.user = appliedUserFilter;
+      if (appliedBuyerFilter && !isEmployee) params.buyer = appliedBuyerFilter;
       const data = await repo.list(params);
       if (Array.isArray(data)) {
         setRows(data);
@@ -151,7 +156,7 @@ export default function CrudResource({
     } finally {
       setLoading(false);
     }
-  }, [path, search, page, dateFrom, dateTo, appliedFarmFilter, appliedEmpFilter, appliedUserFilter, listParams, isEmployee, t]);
+  }, [path, search, page, dateFrom, dateTo, appliedFarmFilter, appliedEmpFilter, appliedUserFilter, appliedBuyerFilter, listParams, isEmployee, t]);
 
   // Auto-refresh interval
   const intervalRef = useRef(null);
@@ -337,6 +342,7 @@ export default function CrudResource({
       if (appliedFarmFilter && !isEmployee) params.farm = appliedFarmFilter;
       if (appliedEmpFilter && !isEmployee) params.employee = appliedEmpFilter;
       if (appliedUserFilter && !isEmployee) params.user = appliedUserFilter;
+      if (appliedBuyerFilter && !isEmployee) params.buyer = appliedBuyerFilter;
       const data = await repo.list(params);
       allRows = Array.isArray(data) ? data : data.results || [];
     } catch {
@@ -481,8 +487,8 @@ export default function CrudResource({
               )}
             </div>
           )}
-          {/* Farm, Employee & User Filters with Apply button */}
-          {(showFarmFilter || showEmployeeFilter || showUserFilter) && !isEmployee && (
+          {/* Farm, Employee, User & Buyer Filters with Apply button */}
+          {(showFarmFilter || showEmployeeFilter || showUserFilter || showBuyerFilter) && !isEmployee && (
             <div className="flex flex-wrap items-end gap-2 rounded-lg bg-gray-50 p-2 border border-gray-200">
               {showFarmFilter && (
                 <div className="min-w-[150px]">
@@ -526,15 +532,25 @@ export default function CrudResource({
                   </select>
                 </div>
               )}
+              {showBuyerFilter && (
+                <div className="min-w-[150px]">
+                  <input
+                    value={buyerFilter}
+                    onChange={(e) => setBuyerFilter(e.target.value)}
+                    placeholder={t("header.buyer")}
+                    className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs outline-none focus:border-brand-500"
+                  />
+                </div>
+              )}
               <button
-                onClick={() => { setAppliedFarmFilter(farmFilter); setAppliedEmpFilter(empFilter); setAppliedUserFilter(userFilter); setPage(1); }}
+                onClick={() => { setAppliedFarmFilter(farmFilter); setAppliedEmpFilter(empFilter); setAppliedUserFilter(userFilter); setAppliedBuyerFilter(buyerFilter); setPage(1); }}
                 className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-700"
               >
                 <Filter size={13} /> {t("common.applyFilters")}
               </button>
-              {(appliedFarmFilter || appliedEmpFilter || appliedUserFilter) && (
+              {(appliedFarmFilter || appliedEmpFilter || appliedUserFilter || appliedBuyerFilter) && (
                 <button
-                  onClick={() => { setFarmFilter(""); setEmpFilter(""); setUserFilter(""); setAppliedFarmFilter(""); setAppliedEmpFilter(""); setAppliedUserFilter(""); setPage(1); }}
+                  onClick={() => { setFarmFilter(""); setEmpFilter(""); setUserFilter(""); setBuyerFilter(""); setAppliedFarmFilter(""); setAppliedEmpFilter(""); setAppliedUserFilter(""); setAppliedBuyerFilter(""); setPage(1); }}
                   className="rounded-lg px-2 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50"
                 >
                   {t("common.reset")}

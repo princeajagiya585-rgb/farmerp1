@@ -37,7 +37,17 @@ from .serializers import (
 )
 
 
-class ExpenseViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
+class UserFilterMixin:
+    """Add ?user=<id> filtering by created_by field to any viewset."""
+    def filter_queryset(self, request, queryset, view):
+        qs = super().filter_queryset(request, queryset, view)
+        user_param = request.query_params.get("user")
+        if user_param:
+            qs = qs.filter(created_by_id=user_param)
+        return qs
+
+
+class ExpenseViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = Expense.objects.select_related(
         "farm", "approved_by"
     ).all()
@@ -88,7 +98,7 @@ class ExpenseViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         return Response(self.get_serializer(expense).data)
 
 
-class PurchaseViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
+class PurchaseViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = Purchase.objects.select_related(
         "farm", "approved_by", "created_by"
     ).prefetch_related("items").all()
@@ -154,7 +164,7 @@ class PurchaseItemViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     search_fields = ["name", "purchase__invoice_no"]
 
 
-class LedgerEntryViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
+class LedgerEntryViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = LedgerEntry.objects.select_related(
         "farm", "created_by"
     ).all()
@@ -166,7 +176,7 @@ class LedgerEntryViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     search_fields = ["reference", "description", "account"]
 
 
-class PaymentViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
+class PaymentViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = Payment.objects.select_related(
         "farm", "expense", "purchase", "created_by"
     ).all()
@@ -202,7 +212,7 @@ class PaymentViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         )
 
 
-class RevenueEntryViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
+class RevenueEntryViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = RevenueEntry.objects.select_related("farm").all()
     serializer_class = RevenueEntrySerializer
     farm_lookup = "farm_id"
@@ -237,7 +247,7 @@ class CostCenterViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     search_fields = ["name", "code", "description"]
 
 
-class BudgetViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
+class BudgetViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = Budget.objects.select_related("farm", "cost_center").all()
     serializer_class = BudgetSerializer
     farm_lookup = "farm_id"
@@ -247,13 +257,13 @@ class BudgetViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     search_fields = ["notes", "cost_center__name"]
 
 
-class SaleViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
+class SaleViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = Sale.objects.select_related("farm", "crop").all()
     serializer_class = SaleSerializer
     farm_lookup = "farm_id"
     allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = []
-    filterset_fields = ["farm", "crop"]
+    filterset_fields = ["farm", "crop", "buyer"]
     search_fields = ["buyer", "notes"]
 
     EMPLOYEE_ROLES = {Role.EMPLOYEE}
@@ -321,6 +331,7 @@ class FinanceReportViewSet(viewsets.ViewSet):
     def cash_flow(self, request):
         """Cash in (revenue + sales) vs cash out (payments), grouped by period."""
         farm = request.query_params.get("farm")
+        user_param = request.query_params.get("user")
         start = parse_date(request.query_params.get("start") or "")
         end = parse_date(request.query_params.get("end") or "")
         group = request.query_params.get("group", "day")
@@ -330,6 +341,8 @@ class FinanceReportViewSet(viewsets.ViewSet):
         pay = self._scope(Payment.objects.all())
         if farm:
             rev, sale, pay = rev.filter(farm_id=farm), sale.filter(farm_id=farm), pay.filter(farm_id=farm)
+        if user_param:
+            rev, sale, pay = rev.filter(created_by_id=user_param), sale.filter(created_by_id=user_param), pay.filter(created_by_id=user_param)
         if start:
             rev, sale, pay = rev.filter(date__gte=start), sale.filter(date__gte=start), pay.filter(date__gte=start)
         if end:
@@ -380,6 +393,7 @@ class FinanceReportViewSet(viewsets.ViewSet):
     def pnl(self, request):
         """Profit & Loss for a month/year/date range (optionally one farm)."""
         farm = request.query_params.get("farm")
+        user_param = request.query_params.get("user")
         month = request.query_params.get("month")
         year = request.query_params.get("year")
         start = parse_date(request.query_params.get("start") or "")
@@ -393,6 +407,8 @@ class FinanceReportViewSet(viewsets.ViewSet):
         def flt(qs):
             if farm:
                 qs = qs.filter(farm_id=farm)
+            if user_param:
+                qs = qs.filter(created_by_id=user_param)
             if year:
                 qs = qs.filter(date__year=year)
             if month:
@@ -432,6 +448,7 @@ class FinanceReportViewSet(viewsets.ViewSet):
     def farm_profitability(self, request):
         """Revenue, expense and profit per farm."""
         year = request.query_params.get("year")
+        user_param = request.query_params.get("user")
         farms = self._scope(Farm.objects.all(), "id")
         rows = []
         for farm in farms:
@@ -439,6 +456,13 @@ class FinanceReportViewSet(viewsets.ViewSet):
             sale = Sale.objects.filter(farm=farm)
             exp = Expense.objects.filter(farm=farm, status=Expense.Status.APPROVED)
             pur = Purchase.objects.filter(farm=farm, status=Purchase.Status.APPROVED)
+            if user_param:
+                rev, sale, exp, pur = (
+                    rev.filter(created_by_id=user_param),
+                    sale.filter(created_by_id=user_param),
+                    exp.filter(created_by_id=user_param),
+                    pur.filter(created_by_id=user_param),
+                )
             if year:
                 rev, sale, exp, pur = (
                     rev.filter(date__year=year),
@@ -464,11 +488,15 @@ class FinanceReportViewSet(viewsets.ViewSet):
         from apps.agronomy.models import Crop
 
         year = request.query_params.get("year")
+        user_param = request.query_params.get("user")
         crops = self._scope(Crop.objects.all())
         rows = []
         for crop in crops:
             sale = Sale.objects.filter(crop=crop)
             exp = Expense.objects.filter(crop=crop, status=Expense.Status.APPROVED)
+            if user_param:
+                sale = sale.filter(created_by_id=user_param)
+                exp = exp.filter(created_by_id=user_param)
             if year:
                 sale = sale.filter(date__year=year)
                 exp = exp.filter(date__year=year)

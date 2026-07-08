@@ -20,6 +20,7 @@ export default function FinanceSales() {
       canWrite={canWrite}
       canEdit={canEdit}
       showFarmFilter
+      showBuyerFilter
       defaultValues={{ buyer: userName }}
       footerColumns={["amount"]}
       columns={[

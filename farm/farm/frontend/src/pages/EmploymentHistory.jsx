@@ -44,7 +44,6 @@ export default function EmploymentHistory() {
       canWrite={canWrite}
       showFarmFilter
       showEmployeeFilter
-      showUserFilter
       extraToolbar={canDelete ? (
         <Button variant="danger" onClick={handleRemoveAll}>
           <Trash2 size={15} />

@@ -6,6 +6,8 @@ from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from rest_framework.generics import GenericAPIView
+
 from apps.accounts.models import Role
 from apps.core.mixins import BaseModelViewSet
 from apps.farms.views import FarmScopedQuerysetMixin
@@ -72,15 +74,18 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             serializer.save(created_by=user)
 
     def get_queryset(self):
-        qs = super().get_queryset()
         user = self.request.user
-        # Employees see only tasks assigned to them
+        # Employees see only tasks assigned to them — bypass farm scoping entirely
+        # so their own tasks are visible even when user.farms is out of sync.
         if user.role == Role.EMPLOYEE:
-            qs = qs.filter(
+            qs = GenericAPIView.get_queryset(self)
+            return qs.filter(
                 Q(assigned_to=user) | Q(assigned_employee__user=user)
             )
+        # For non-employees, apply farm scoping
+        qs = super().get_queryset()
         # Admin users can optionally filter to only their tasks via ?my_tasks=true
-        elif self.request.query_params.get("my_tasks") == "true":
+        if self.request.query_params.get("my_tasks") == "true":
             qs = qs.filter(
                 Q(assigned_to=user) | Q(assigned_employee__user=user)
             )

@@ -20,6 +20,8 @@ export default function FinanceBudgets() {
       subtitle={t("financeBudgets.subtitle")}
       path="finance/budgets"
       canWrite={canWrite}
+      showFarmFilter
+      showUserFilter
       columns={[
         { key: "farm_name", header: t("header.farm") },
         { key: "fiscal_year", header: t("header.year") },

@@ -4,6 +4,7 @@ import { Download, FileBarChart } from "lucide-react";
 import { resource } from "../lib/api";
 import { exportExcel, exportExcelMultiSheet } from "../lib/export";
 import { Button, Card, Input, PageHeader, Select, Table } from "../components/ui";
+import { useAuth } from "../context/AuthContext";
 
 const reports = resource("finance/reports");
 const MONTHS = [{ value: "", label: "All months" }].concat(
@@ -24,7 +25,11 @@ function totalRow(rows, keys) {
 
 export default function FinanceReports() {
   const { t } = useTranslation();
+  const { user, hasRole } = useAuth();
+  const isEmployee = user?.role === "EMPLOYEE";
   const [farms, setFarms] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [userFilter, setUserFilter] = useState("");
   const [year, setYear] = useState(new Date().getFullYear());
 
   const [pFarm, setPFarm] = useState("");
@@ -39,6 +44,12 @@ export default function FinanceReports() {
 
   useEffect(() => {
     resource("farms").list({ page_size: 200 }).then((d) => setFarms(d.results || d));
+    if (!isEmployee) {
+      resource("auth/users").list({ page_size: 200 }).then((d) => {
+        const all = Array.isArray(d) ? d : d.results || [];
+        setUsers(all);
+      }).catch(() => {});
+    }
     runPnl(); runCash(); runFarm(); runCrop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -47,11 +58,24 @@ export default function FinanceReports() {
     const params = { year };
     if (pFarm) params.farm = pFarm;
     if (pMonth) params.month = pMonth;
+    if (userFilter) params.user = userFilter;
     setPnl(await reports.collectionAction("pnl", params));
   };
-  const runCash = async () => setCash(await reports.collectionAction("cash_flow", { group, year }));
-  const runFarm = async () => setFarmProf(await reports.collectionAction("farm_profitability", { year }));
-  const runCrop = async () => setCropProf(await reports.collectionAction("crop_profitability", { year }));
+  const runCash = async () => {
+    const params = { group, year };
+    if (userFilter) params.user = userFilter;
+    setCash(await reports.collectionAction("cash_flow", params));
+  };
+  const runFarm = async () => {
+    const params = { year };
+    if (userFilter) params.user = userFilter;
+    setFarmProf(await reports.collectionAction("farm_profitability", params));
+  };
+  const runCrop = async () => {
+    const params = { year };
+    if (userFilter) params.user = userFilter;
+    setCropProf(await reports.collectionAction("crop_profitability", params));
+  };
 
   const exportAll = () => {
     const wbData = [];
@@ -113,8 +137,22 @@ export default function FinanceReports() {
         }
       />
 
-      <div className="mb-5 flex items-end gap-3">
+      <div className="mb-5 flex flex-wrap items-end gap-3">
         <div className="w-32"><Input label="Year" type="number" value={year} onChange={(e) => setYear(e.target.value)} /></div>
+        {!isEmployee && users.length > 0 && (
+          <div className="min-w-[180px]">
+            <select
+              value={userFilter}
+              onChange={(e) => setUserFilter(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs outline-none focus:border-brand-500"
+            >
+              <option value="">{t("common.allUsers")}</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>{u.full_name || u.username}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <Button variant="secondary" onClick={() => { runPnl(); runCash(); runFarm(); runCrop(); }}>
           <FileBarChart size={15} /> Refresh all
         </Button>
