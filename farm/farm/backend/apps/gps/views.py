@@ -101,19 +101,32 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
         task = serializer.validated_data.get("task")
         activity = serializer.validated_data.get("activity")
         if task:
-            # Before Work and Completed Work are one-shot per task.
-            if activity == LocationPing.Activity.CHECKIN and task.location_pings.filter(
-                activity=LocationPing.Activity.CHECKIN
-            ).exists():
+            existing = set(task.location_pings.values_list("activity", flat=True))
+            # Enforce the Before → During → Completed state machine and lock
+            # the task once completed.
+            if LocationPing.Activity.CHECKOUT in existing:
                 raise serializers.ValidationError(
-                    {"detail": "Before Work is already recorded for this task."}
+                    {"detail": "This task is already completed and locked."}
                 )
-            if activity == LocationPing.Activity.CHECKOUT and task.location_pings.filter(
-                activity=LocationPing.Activity.CHECKOUT
-            ).exists():
-                raise serializers.ValidationError(
-                    {"detail": "Completed Work is already recorded for this task."}
-                )
+            if activity == LocationPing.Activity.CHECKIN:
+                if LocationPing.Activity.CHECKIN in existing:
+                    raise serializers.ValidationError(
+                        {"detail": "Before Work is already recorded for this task."}
+                    )
+            elif activity == LocationPing.Activity.DURING_WORK:
+                if LocationPing.Activity.CHECKIN not in existing:
+                    raise serializers.ValidationError(
+                        {"detail": "Record Before Work first."}
+                    )
+            elif activity == LocationPing.Activity.CHECKOUT:
+                if LocationPing.Activity.CHECKIN not in existing:
+                    raise serializers.ValidationError(
+                        {"detail": "Record Before Work first."}
+                    )
+                if LocationPing.Activity.DURING_WORK not in existing:
+                    raise serializers.ValidationError(
+                        {"detail": "Add a During Work update before completing."}
+                    )
         extra = {}
         if task and not serializer.validated_data.get("farm"):
             extra["farm"] = task.farm

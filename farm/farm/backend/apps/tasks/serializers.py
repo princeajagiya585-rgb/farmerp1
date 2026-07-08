@@ -62,6 +62,7 @@ class TaskSerializer(serializers.ModelSerializer):
     active_session = serializers.SerializerMethodField()
     total_tracked_minutes = serializers.SerializerMethodField()
     work_phase = serializers.SerializerMethodField()
+    during_work_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -72,7 +73,8 @@ class TaskSerializer(serializers.ModelSerializer):
         """Which work-proof step comes next for this task.
 
         BEFORE    → no work pings yet; show the "Before Work" button.
-        DURING    → before-work ping exists; show "During Work" + "Completed Work".
+        DURING    → before-work ping exists; show "During Work" (and "Completed
+                    Work" once at least one during-work entry exists).
         COMPLETED → completed-work ping exists; the flow is finished.
         (CHECKIN/CHECKOUT ping activities are labelled Before/Completed Work in the UI.)
         """
@@ -82,6 +84,10 @@ class TaskSerializer(serializers.ModelSerializer):
         if "CHECKIN" in activities:
             return "DURING"
         return "BEFORE"
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_during_work_count(self, obj):
+        return obj.location_pings.filter(activity="DURING_WORK").count()
 
     @extend_schema_field(TaskWorkSessionSerializer(allow_null=True))
     def get_active_session(self, obj):

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Camera, Check, CheckCheck, CheckCircle, Loader2, MapPin, Send, User, X } from "lucide-react";
 import CrudResource from "../components/CrudResource";
-import { Badge, Button } from "../components/ui";
+import { Badge, Button, ToastContainer, useToast } from "../components/ui";
 import { resource, toFormData } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
@@ -84,6 +84,9 @@ export default function Tasks() {
     reload();
   };
 
+  // Success/error toasts for the work-proof flow
+  const [toasts, addToast, removeToast] = useToast();
+
   // ── Work-proof modal (Before / During / Completed Work) ──────────────
   const [workModal, setWorkModal] = useState(null); // { row, phase, reload }
   const [workPhoto, setWorkPhoto] = useState(null);
@@ -148,9 +151,16 @@ export default function Tasks() {
         task: workModal.row.id,
       };
       await pingsRepo.create(workPhoto ? toFormData({ ...data, photo: workPhoto }) : data);
+      const phase = workModal.phase;
       const reload = workModal.reload;
       setWorkModal(null);
       reload();
+      const successKey = {
+        BEFORE: "tasks.beforeWorkSaved",
+        DURING: "tasks.duringWorkSaved",
+        COMPLETED: "tasks.workCompleted",
+      }[phase];
+      addToast(t(successKey), "success");
     } catch (err) {
       setWorkError(err.response?.data?.detail || err.message);
     } finally {
@@ -277,8 +287,11 @@ export default function Tasks() {
       ]}
       rowActions={(row, reload) => (
         <>
-          {/* Work-proof flow (all users): Before Work → During Work + Completed Work.
-              Each step records location + photo and shows on the Location Map.
+          {/* Work-proof state machine (all users):
+              BEFORE   → only the Before Work button.
+              DURING   → only the During Work button; Completed Work appears
+                         once at least one During Work update exists.
+              COMPLETED→ locked; show only the Completed badge.
               A row without work_phase (e.g. cached API data) defaults to BEFORE. */}
           {!["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status) && (row.work_phase || "BEFORE") === "BEFORE" && (
             <button
@@ -300,15 +313,24 @@ export default function Tasks() {
                 <Camera size={14} />
                 {t("gps.duringWork")}
               </button>
-              <button
-                onClick={() => openWorkModal(row, "COMPLETED", reload)}
-                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
-                title={t("gps.completedWork")}
-              >
-                <CheckCircle size={14} />
-                {t("gps.completedWork")}
-              </button>
+              {(row.during_work_count || 0) > 0 && (
+                <button
+                  onClick={() => openWorkModal(row, "COMPLETED", reload)}
+                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
+                  title={t("gps.completedWork")}
+                >
+                  <CheckCircle size={14} />
+                  {t("gps.completedWork")}
+                </button>
+              )}
             </>
+          )}
+          {row.work_phase === "COMPLETED" && (
+            <Badge color="green">
+              <span className="inline-flex items-center gap-1">
+                <CheckCircle size={12} /> {t("tasks.statusCompleted")}
+              </span>
+            </Badge>
           )}
           {/* Admin workflow: submit / verify / complete */}
           {canManage && ["TODO", "IN_PROGRESS"].includes(row.status) && (
@@ -424,19 +446,22 @@ export default function Tasks() {
                   </button>
                 </div>
               ) : (
-                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <Camera size={24} className="text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-500">{t("gps.clickPhoto")}</p>
-                  </div>
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handleWorkPhotoChange}
-                  />
-                </label>
+                <>
+                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                      <Camera size={24} className="text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-500">{t("gps.clickPhoto")}</p>
+                    </div>
+                    <input
+                      type="file"
+                      className="hidden"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleWorkPhotoChange}
+                    />
+                  </label>
+                  <p className="text-xs font-medium text-red-500">{t("tasks.photoRequired")}</p>
+                </>
               )}
             </div>
           </div>
@@ -461,6 +486,8 @@ export default function Tasks() {
         </div>
       </div>
     )}
+
+    <ToastContainer toasts={toasts} onClose={removeToast} />
     </>
   );
 }
