@@ -4,7 +4,8 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts";
 import { Download } from "lucide-react";
-import { api } from "../lib/api";
+import { api, resource } from "../lib/api";
+import { useAuth } from "../context/AuthContext";
 import { exportExcel } from "../lib/export";
 import { Button, Card, PageHeader, Table } from "../components/ui";
 
@@ -24,13 +25,30 @@ export default function Reports() {
   const [inventory, setInventory] = useState(null);
   const [crops, setCrops] = useState(null);
   const [attendance, setAttendance] = useState(null);
+  const { hasRole, user } = useAuth();
+  const [users, setUsers] = useState([]);
+  const [userFilter, setUserFilter] = useState("");
+  const [appliedUserFilter, setAppliedUserFilter] = useState("");
 
   useEffect(() => {
-    api.get("/reporting/finance/").then((r) => setFinance(r.data)).catch(() => {});
+    if (hasRole("SUPER_ADMIN", "FARM_MANAGER")) {
+      resource("auth/users").list({ page_size: 200 }).then((d) => {
+        const all = Array.isArray(d) ? d : d.results || [];
+        setUsers(all);
+      }).catch(() => {});
+    }
+  }, [hasRole]);
+
+  useEffect(() => {
+    const params = {};
+    if (appliedUserFilter) {
+      params.user = appliedUserFilter;
+    }
+    api.get("/reporting/finance/", { params }).then((r) => setFinance(r.data)).catch(() => {});
     api.get("/reporting/inventory/").then((r) => setInventory(r.data)).catch(() => {});
     api.get("/reporting/crops/").then((r) => setCrops(r.data)).catch(() => {});
     api.get("/reporting/attendance/").then((r) => setAttendance(r.data)).catch(() => {});
-  }, []);
+  }, [appliedUserFilter]);
 
   const expenseData = toArray(
     finance?.expense_by_category || finance?.expenses_by_category || finance?.by_category
@@ -59,6 +77,36 @@ export default function Reports() {
       <PageHeader
         title={t("reports.titlePg")}
         subtitle={t("reports.subtitlePg")}
+        extraActions={
+          (hasRole("SUPER_ADMIN", "FARM_MANAGER")) && (
+            <div className="flex items-center gap-2">
+              <select
+                value={userFilter}
+                onChange={(e) => setUserFilter(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs outline-none focus:border-brand-500"
+              >
+                <option value="">{t("common.allUsers")}</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>{u.full_name || u.username}</option>
+                ))}
+              </select>
+              <Button
+                onClick={() => setAppliedUserFilter(userFilter)}
+                variant="secondary"
+              >
+                {t("common.apply")}
+              </Button>
+              {appliedUserFilter && (
+                <Button
+                  onClick={() => { setUserFilter(""); setAppliedUserFilter(""); }}
+                  variant="secondary"
+                >
+                  {t("common.reset")}
+                </Button>
+              )}
+            </div>
+          )
+        }
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

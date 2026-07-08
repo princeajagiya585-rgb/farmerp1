@@ -119,7 +119,7 @@ export default function CrudResource({
     if (showFarmFilter && !isEmployee) {
       resource("farms").list({ page_size: 200 }).then((d) => setFarms(d.results || d)).catch(() => {});
     }
-    if (showEmployeeFilter && !isEmployee) {
+    if (showEmployeeFilter) {
       resource("workforce/employees").list({ page_size: 200 }).then((d) => setEmployees(d.results || d)).catch(() => {});
     }
     if (showUserFilter && !isEmployee) {
@@ -138,7 +138,7 @@ export default function CrudResource({
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;
       if (appliedFarmFilter && !isEmployee) params.farm = appliedFarmFilter;
-      if (appliedEmpFilter && !isEmployee) params.employee = appliedEmpFilter;
+      if (appliedEmpFilter) params.employee = appliedEmpFilter;
       if (appliedUserFilter && !isEmployee) params.user = appliedUserFilter;
       if (appliedBuyerFilter && !isEmployee) params.buyer = appliedBuyerFilter;
       const data = await repo.list(params);
@@ -488,7 +488,7 @@ export default function CrudResource({
             </div>
           )}
           {/* Farm, Employee, User & Buyer Filters with Apply button */}
-          {(showFarmFilter || showEmployeeFilter || showUserFilter || showBuyerFilter) && !isEmployee && (
+          {(showFarmFilter || showEmployeeFilter || showUserFilter || showBuyerFilter) && (
             <div className="flex flex-wrap items-end gap-2 rounded-lg bg-gray-50 p-2 border border-gray-200">
               {showFarmFilter && (
                 <div className="min-w-[150px]">

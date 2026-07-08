@@ -39,14 +39,26 @@ from .serializers import (
 
 class ExpenseViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = Expense.objects.select_related(
-        "farm", "approved_by"
+        "farm", "approved_by", "created_by"
     ).all()
     serializer_class = ExpenseSerializer
     farm_lookup = "farm_id"
-    allowed_roles = [Role.FARM_MANAGER]
+    allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = []
-    filterset_fields = ["farm", "category", "status", "is_paid"]
+    filterset_fields = ["farm", "category", "status", "is_paid", "created_by"]
     search_fields = ["description"]
+
+    EMPLOYEE_ROLES = {Role.EMPLOYEE}
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.role in self.EMPLOYEE_ROLES:
+            return qs.filter(created_by=user)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
@@ -203,13 +215,22 @@ class PaymentViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
 
 class RevenueEntryViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
-    queryset = RevenueEntry.objects.select_related("farm").all()
+    queryset = RevenueEntry.objects.select_related("farm", "created_by").all()
     serializer_class = RevenueEntrySerializer
     farm_lookup = "farm_id"
-    allowed_roles = [Role.FARM_MANAGER]
+    allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = []
-    filterset_fields = ["farm", "source"]
+    filterset_fields = ["farm", "source", "created_by"]
     search_fields = ["description"]
+
+    EMPLOYEE_ROLES = {Role.EMPLOYEE}
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.role in self.EMPLOYEE_ROLES:
+            return qs.filter(created_by=user)
+        return qs
 
     def perform_create(self, serializer):
         revenue = serializer.save(created_by=self.request.user)

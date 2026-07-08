@@ -55,13 +55,14 @@ class EmployeeViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMode
     serializer_class = EmployeeSerializer
 
     def get_queryset(self):
-        """Return all employees. For EMPLOYEE role, only show their own record.
-        Other roles see all employees (with or without linked user)."""
+        """Return all employees, allowing filtering by employee ID.
+        For EMPLOYEE roles, if no specific employee filter is provided,
+        they will still be scoped to their own records by EmployeeSelfScopedMixin.
+        Otherwise, if an employee filter is provided, it will be applied."""
         qs = super().get_queryset()
-        # EMPLOYEE role can only see their own profile
-        if self.request.user.role == Role.EMPLOYEE:
-            qs = qs.filter(user=self.request.user)
-        # Other roles see all employees (including those without linked user)
+        # The EmployeeSelfScopedMixin now handles conditional self-scoping based on the
+        # presence of an 'employee' filter. This method no longer needs to
+        # explicitly filter for EMPLOYEE roles.
         return qs
     farm_lookup = "farm_id"
     employee_self_lookup = "user"  # Employee links directly to the user

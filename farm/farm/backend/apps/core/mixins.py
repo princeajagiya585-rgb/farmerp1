@@ -44,8 +44,12 @@ class EmployeeSelfScopedMixin:
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_authenticated and user.role == Role.EMPLOYEE:
-            # Skip FarmScopedQuerysetMixin (next in MRO) and scope to self only.
+        # If an employee, and an employee filter is provided, let the filter be applied.
+        # Otherwise, if no employee filter is provided, still restrict to self.
+        # This modification allows employees to use the employee filter to view
+        # data for other employees, while still maintaining self-scoping if no
+        # specific employee filter is chosen.
+        if user.is_authenticated and user.role == Role.EMPLOYEE and not self.request.query_params.get("employee"):
             qs = GenericAPIView.get_queryset(self)
             return qs.filter(**{self.employee_self_lookup: user})
         return super().get_queryset()
