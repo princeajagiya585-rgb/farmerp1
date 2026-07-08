@@ -15,13 +15,10 @@ initPWA();
 
 applyStoredTheme();
 
-/** PWA update notification root — orchestrates the Service Worker lifecycle */
+/** PWA root — registers the auto-updating Service Worker */
 function PwaUpdateRoot() {
-  const {
-    needRefresh: [needRefresh],
-    updateServiceWorker,
-  } = useRegisterSW({
-    onRegistered(r) {
+  useRegisterSW({
+    onRegistered() {
       if (process.env.NODE_ENV !== "production") {
         console.log("ServiceWorker registered");
       }
@@ -31,12 +28,7 @@ function PwaUpdateRoot() {
     },
   });
 
-  return (
-    <>
-
-      <App />
-    </>
-  );
+  return <App />;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(

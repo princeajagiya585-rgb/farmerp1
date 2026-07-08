@@ -75,9 +75,9 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      // "prompt" enables manual update control via useRegisterSW() hook.
-      // The SW waits for user confirmation before activating — no silent reloads.
-      registerType: "prompt",
+      // "autoUpdate": a new deploy activates immediately on the next visit —
+      // no waiting SW stuck behind a prompt users never see.
+      registerType: "autoUpdate",
 
       includeAssets: [
         "icons/*.png",
@@ -91,10 +91,10 @@ export default defineConfig({
       workbox: {
         cacheId: `farmerp-${SW_VERSION}`,
         globPatterns: ["**/*.{js,css,html,png,ico,woff,woff2,ttf,eot}"],
-        // skipWaiting/clientsClaim controlled by useRegisterSW prompt flow
-        // (not auto) to allow user to choose when to activate the new version.
-        skipWaiting: false,
-        clientsClaim: false,
+        // Activate the new SW and take over open tabs immediately so every
+        // deploy reaches users on their next load.
+        skipWaiting: true,
+        clientsClaim: true,
         // Runtime caching rules
         runtimeCaching: [
           {
