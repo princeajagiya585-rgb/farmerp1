@@ -9,6 +9,12 @@ import { useAuth } from "../context/AuthContext";
 const repo = resource("tasks");
 const pingsRepo = resource("gps/pings");
 
+// Stable listParams identities — CrudResource reloads whenever the listParams
+// object identity changes, so inline literals here would refetch the list on
+// every render (the 30s timer tick, every modal keystroke, ...).
+const MY_TASKS_PARAMS = { my_tasks: "true" };
+const ALL_TASKS_PARAMS = {};
+
 // Work-proof flow: each phase posts a geo-tagged (optionally photographed)
 // LocationPing tied to the task. CHECKIN/CHECKOUT activities are labelled
 // "Before Work"/"Completed Work" throughout the UI.
@@ -203,7 +209,7 @@ export default function Tasks() {
       canEdit={canManage}
       showFarmFilter
       showUserFilter
-      listParams={myTasksOnly ? { my_tasks: "true" } : {}}
+      listParams={myTasksOnly ? MY_TASKS_PARAMS : ALL_TASKS_PARAMS}
       extraToolbar={
         canManage && (
           <Button
