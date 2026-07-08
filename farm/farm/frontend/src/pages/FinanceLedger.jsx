@@ -170,6 +170,7 @@ export default function FinanceLedger() {
       canWrite={canWrite}
       showFarmFilter
       showEmployeeFilter
+      showUserFilter
       sortRows={sortRows}
       columns={columns}
       renderFooter={renderFooter}

@@ -620,7 +620,7 @@
   "gpsMonitor.next": "अगला",
   "gpsMonitor.recordsPage": "{{count}} रिकॉर्ड{{plural}} · पृष्ठ {{page}} का {{total}}",
   "geofences.polygonPoints": "{{count}} बिंदु",
-  "gpsActivities.geofencedIn": "जियोफेंस में",
+  "gpsActivities.geofencedIn": "इन फेंस डन",
   "gpsActivities.geofencedOut": "बाहर",
   "gpsActivities.geofencedNone": "कोई फेंस नहीं",
   "gpsActivities.fieldFarm": "फार्म",

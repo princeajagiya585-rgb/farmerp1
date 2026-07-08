@@ -233,13 +233,13 @@ export default function DailyTaskReport() {
                 const totalMin = todaySessions.reduce((s, t) => s + (t.duration_minutes || 0), 0);
                 const sessionRows = [
                   ...todaySessions.map((r) => ({
-                    [t("header.worker")]: r.user_name || r.username || "—",
+                    [t("header.employee")]: r.user_name || r.username || "—",
                     [t("header.started")]: r.start_time ? new Date(r.start_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
                     [t("header.ended")]: r.end_time ? new Date(r.end_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Active",
                     [t("header.duration")]: formatDuration(r.duration_minutes),
                   })),
                   {
-                    [t("header.worker")]: t("common.total"),
+                    [t("header.employee")]: t("common.total"),
                     [t("header.started")]: "",
                     [t("header.ended")]: "",
                     [t("header.duration")]: formatDuration(totalMin),
@@ -448,7 +448,7 @@ export default function DailyTaskReport() {
             <Table
               empty={t("common.noSessionsToday")}
               columns={[
-                { key: "user_name", header: t("header.worker"), render: (r) => r.user_name || r.username || "—" },
+                { key: "user_name", header: t("header.employee"), render: (r) => r.user_name || r.username || "—" },
                 {
                   key: "start_time",
                   header: t("header.started"),

@@ -41,6 +41,7 @@ export default function AgronomyObservations() {
       canWrite={canWrite}
       showFarmFilter
       showEmployeeFilter
+      showUserFilter
       columns={[
         { key: "title", header: t("header.title") },
         { key: "farm_name", header: t("header.farm") },

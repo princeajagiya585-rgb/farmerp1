@@ -104,6 +104,9 @@ export default function Workforce() {
         subtitle={t("workforce.subtitle")}
         path="workforce/employees"
         canWrite={canWrite}
+        showEmployeeFilter
+        showFarmFilter
+        showUserFilter
         listParams={listParams}
         defaultValues={{ employee_code: `EMP-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}` }}
         rowActions={(row) =>
@@ -119,7 +122,7 @@ export default function Workforce() {
         }
         footerColumns={["daily_wage", "monthly_salary"]}
         columns={[
-            { key: "name", header: t("header.name") },
+            { key: "name", header: t("header.employee") },
             { key: "assigned_farms", header: t("users.assignedFarm"), render: (r) => r.assigned_farms?.length ? r.assigned_farms.join(", ") : "—" },
             { key: "category", header: t("header.category"), render: (r) => {
                 const categoryLabels = {

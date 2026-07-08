@@ -38,6 +38,7 @@ export default function PayrollDeductions() {
       title={t("payrollDeductions.title")}
       subtitle={t("payrollDeductions.subtitle")}
       path="payroll/deductions"
+      showUserFilter
       canWrite={canWrite}
       fieldDependencies={[
         { watch: "employee", target: "farm", mapField: "farm" },

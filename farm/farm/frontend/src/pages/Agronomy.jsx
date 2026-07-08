@@ -27,6 +27,7 @@ export default function Agronomy() {
       canWrite={canWrite}
       showFarmFilter
       showEmployeeFilter
+      showUserFilter
       rowActions={(row) => (
         <Link
           to={`/agronomy/${row.id}`}

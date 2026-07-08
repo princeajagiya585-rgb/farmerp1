@@ -16,6 +16,7 @@ export default function Inventory() {
       canWrite={canWrite}
       showFarmFilter
       showEmployeeFilter
+      showUserFilter
       footerColumns={["current_stock", "stock_value"]}
       columns={[
         { key: "name", header: t("header.item") },

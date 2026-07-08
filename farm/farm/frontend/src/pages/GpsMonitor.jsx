@@ -160,7 +160,7 @@ export default function GpsMonitor() {
             )}
             {allRecords.length > 0 && (
               <Button variant="secondary" onClick={() => exportExcel(allRecords, [
-                {key:"recorded_at",header:t("header.when")},{key:"user_name",header:t("header.worker")},{key:"description",header:t("header.activities")},
+                {key:"recorded_at",header:t("header.when")},{key:"user_name",header:t("header.employee")},{key:"description",header:t("header.activities")},
                 {key:"latitude",header:t("header.latitude")},{key:"longitude",header:t("header.longitude")},
                 {key:"field_name",header:t("header.field")},{key:"task_title",header:t("header.task")},
                 {key:"location_verified",header:t("header.geofence")},{key:"status",header:t("header.status")}
@@ -205,7 +205,7 @@ export default function GpsMonitor() {
           empty={t("gpsMonitor.noRecentActivity")}
           columns={[
             { key: "recorded_at", header: t("header.when"), render: (r) => (r.recorded_at ? new Date(r.recorded_at).toLocaleString() : (r.created_at ? new Date(r.created_at).toLocaleString() : "—")) },
-            { key: "user_name", header: t("header.worker"), render: (r) => r.user_name || r.user },
+            { key: "user_name", header: t("header.employee"), render: (r) => r.user_name || r.user },
             { key: "description", header: t("header.activities") },
             {
               key: "photos",
@@ -249,7 +249,7 @@ export default function GpsMonitor() {
             empty={t("gpsMonitor.noActivityRecords")}
             columns={[
               { key: "recorded_at", header: t("header.when"), render: (r) => (r.recorded_at ? new Date(r.recorded_at).toLocaleString() : "—") },
-              { key: "user_name", header: t("header.worker"), render: (r) => r.user_name || r.user },
+              { key: "user_name", header: t("header.employee"), render: (r) => r.user_name || r.user },
               { key: "description", header: t("header.activities") },
               { key: "field_name", header: t("header.field"), render: (r) => r.field_name || "—" },
               { key: "task_title", header: t("header.task"), render: (r) => r.task_title || "—" },

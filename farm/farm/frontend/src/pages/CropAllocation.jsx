@@ -60,6 +60,8 @@ export default function CropAllocation() {
       subtitle={t("cropAllocation.subtitlePg")}
       path="agronomy/crops"
       canWrite={canWrite}
+      showFarmFilter
+      showUserFilter
       columns={[
         { key: "name", header: t("header.crop") },
         { key: "variety", header: t("header.variety") },

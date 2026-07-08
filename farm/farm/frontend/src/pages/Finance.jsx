@@ -46,6 +46,7 @@ export default function Finance() {
           canWrite={canWrite}
           showFarmFilter
           showEmployeeFilter
+          showUserFilter
           footerColumns={["amount"]}
           columns={[
             { key: "description", header: t("header.description") },
@@ -112,6 +113,7 @@ export default function Finance() {
           canWrite={canWrite}
           showFarmFilter
           showEmployeeFilter
+          showUserFilter
           footerColumns={["amount"]}
           columns={[
             { key: "source", header: t("header.source") },

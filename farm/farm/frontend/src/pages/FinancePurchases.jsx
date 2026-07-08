@@ -20,6 +20,7 @@ export default function FinancePurchases() {
       canEdit={canEdit}
       showFarmFilter
       showEmployeeFilter
+      showUserFilter
       footerColumns={["total_amount"]}
       columns={[
         { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },

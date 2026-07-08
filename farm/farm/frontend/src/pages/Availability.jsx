@@ -23,6 +23,9 @@ export default function Availability() {
       subtitle={t("availability.subtitlePg")}
       path="workforce/availability"
       canWrite={canWrite}
+      showFarmFilter
+      showEmployeeFilter
+      showUserFilter
       columns={[
         { key: "employee_name", header: t("header.employee") },
         { key: "farm_name", header: t("header.farm") },

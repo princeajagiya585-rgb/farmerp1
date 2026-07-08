@@ -20,6 +20,8 @@ export default function InventoryAlerts() {
       subtitle={t("inventoryAlerts.subtitle")}
       path="inventory/items"
       canWrite={canWrite}
+      showFarmFilter
+      showUserFilter
       footerColumns={["current_stock", "reorder_level"]}
       rowClassName={(r) =>
         Number(r.current_stock) <= Number(r.reorder_level)

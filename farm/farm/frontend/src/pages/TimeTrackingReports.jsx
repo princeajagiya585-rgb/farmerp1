@@ -46,7 +46,7 @@ export default function TimeTrackingReports() {
 
   const tableColumns = [
     { key: "_idx", header: t("header.srNo") },
-    { key: "full_name", header: t("header.worker"), render: (r) => r.full_name || r.username },
+    { key: "full_name", header: t("header.employee"), render: (r) => r.full_name || r.username },
     { key: "total_time", header: t("header.totalTime"), render: (r) => <span className="font-semibold text-brand-600">{r.total_hours || 0} h, {r.total_minutes || 0} m</span> },
     {
       key: "_expand",
@@ -92,7 +92,7 @@ export default function TimeTrackingReports() {
 
   // Build columns for CSV export (flat key-value pairs)
   const exportColumns = [
-    { key: "Worker", header: t("header.worker") },
+    { key: "Employee", header: t("header.employee") },
     { key: "Username", header: t("header.username") },
     { key: "Task", header: t("header.task") },
     { key: "Task Hours", header: t("header.taskHours") },

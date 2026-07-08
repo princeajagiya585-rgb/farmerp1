@@ -17,6 +17,7 @@ export default function AgronomyHarvest() {
       canWrite={canWrite}
       showFarmFilter
       showEmployeeFilter
+      showUserFilter
       footerColumns={["revenue"]}
       columns={[
         { key: "crop_name", header: t("header.crop") },

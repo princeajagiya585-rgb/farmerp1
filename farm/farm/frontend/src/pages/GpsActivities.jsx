@@ -47,7 +47,7 @@ export default function GpsActivities() {
         ) : null
       }
       columns={[
-        { key: "user_name", header: t("header.worker"), render: (r) => r.user_name || r.user },
+        { key: "user_name", header: t("header.employee"), render: (r) => r.user_name || r.user },
         { key: "farm_name", header: t("header.farm"), render: (r) => r.farm_name || "—" },
         { key: "description", header: t("header.activities"), render: (r) => r.description || "—" },
         { key: "task_title", header: t("header.task"), render: (r) => r.task_title || "—" },

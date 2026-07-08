@@ -13,6 +13,9 @@ export default function LabourAllocation() {
       subtitle={t("labourAllocation.subtitlePg")}
       path="workforce/allocations"
       canWrite={canWrite}
+      showFarmFilter
+      showEmployeeFilter
+      showUserFilter
       columns={[
         { key: "employee_name", header: t("header.employee") },
         { key: "farm_name", header: t("header.farm") },

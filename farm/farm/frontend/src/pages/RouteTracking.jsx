@@ -61,7 +61,7 @@ export default function RouteTracking() {
       <Card className="mb-5">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[220px]">
-            <Select label="Worker" value={user} onChange={(e) => setUser(e.target.value)}>
+            <Select label={t("header.employee")} value={user} onChange={(e) => setUser(e.target.value)}>
               <option value="">All workers</option>
               {users.map((u) => <option key={u.id} value={u.id}>{u.full_name || u.username}</option>)}
             </Select>

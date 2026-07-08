@@ -26,6 +26,7 @@ export default function AssetMaintenance() {
       canWrite={canWrite}
       showFarmFilter
       showEmployeeFilter
+      showUserFilter
       footerColumns={["cost"]}
       columns={[
         { key: "asset_name", header: t("header.asset") },

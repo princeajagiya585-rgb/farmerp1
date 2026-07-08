@@ -57,6 +57,7 @@ export default function Breakdowns() {
       canWrite={canWrite}
       showFarmFilter
       showEmployeeFilter
+      showUserFilter
       rowActions={(row, load) =>
         canAct ? (
           <div className="flex gap-1">

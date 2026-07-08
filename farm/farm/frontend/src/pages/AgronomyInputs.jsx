@@ -34,6 +34,7 @@ export default function AgronomyInputs() {
       canWrite={canWrite}
       showFarmFilter
       showEmployeeFilter
+      showUserFilter
       footerColumns={["quantity", "cost"]}
       columns={[
         { key: "product_name", header: t("header.product") },
