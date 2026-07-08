@@ -87,16 +87,12 @@ export default function Tasks() {
   const [workSaving, setWorkSaving] = useState(false);
   const [workError, setWorkError] = useState(null);
 
-  const openWorkModal = (row, phase, reload) => {
-    setWorkModal({ row, phase, reload });
-    setWorkPhoto(null);
-    setWorkPhotoPreview(null);
-    setWorkError(null);
-    setWorkPos(null);
+  const fetchWorkLocation = () => {
     if (!navigator.geolocation) {
       setWorkError(t("gps.noLocation"));
       return;
     }
+    setWorkError(null);
     setWorkPosLoading(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
@@ -113,6 +109,15 @@ export default function Tasks() {
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );
+  };
+
+  const openWorkModal = (row, phase, reload) => {
+    setWorkModal({ row, phase, reload });
+    setWorkPhoto(null);
+    setWorkPhotoPreview(null);
+    setWorkError(null);
+    setWorkPos(null);
+    fetchWorkLocation();
   };
 
   const handleWorkPhotoChange = (e) => {
@@ -388,8 +393,11 @@ export default function Tasks() {
                 </div>
               </div>
             ) : (
-              <div className="text-sm text-gray-500 bg-red-50 p-3 rounded-lg ring-1 ring-red-200">
-                {t("common.couldNotGetLocation")}
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-red-50 p-3 ring-1 ring-red-200">
+                <span className="text-sm text-gray-600">{t("common.couldNotGetLocation")}</span>
+                <Button variant="secondary" onClick={fetchWorkLocation}>
+                  <MapPin size={14} /> {t("common.retry", "Retry")}
+                </Button>
               </div>
             )}
 

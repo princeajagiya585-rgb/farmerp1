@@ -3,6 +3,7 @@
   "common.load": "Loading…",
   "common.save": "Save",
   "common.saving": "Saving…",
+  "common.retry": "Retry",
   "common.cancel": "Cancel",
   "common.delete": "Delete",
   "common.edit": "Edit",

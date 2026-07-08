@@ -75,8 +75,12 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      // "autoUpdate": a new deploy activates immediately on the next visit —
-      // no waiting SW stuck behind a prompt users never see.
+      // The service worker caused stale versions and reload loops in the
+      // field. selfDestroying ships a SW that unregisters itself and wipes
+      // all caches on every user's device — the app then always loads fresh
+      // from the network (hashed assets are still cached by normal HTTP
+      // caching). Home-screen install via the manifest keeps working.
+      selfDestroying: true,
       registerType: "autoUpdate",
 
       includeAssets: [
@@ -146,7 +150,6 @@ export default defineConfig({
           },
         ],
       },
-      selfDestroying: false,
     }),
   ],
   server: {
