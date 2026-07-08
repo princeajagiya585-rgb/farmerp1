@@ -1,6 +1,31 @@
 from rest_framework.filters import BaseFilterBackend
 
 
+class UserFilterBackend(BaseFilterBackend):
+    """Generic ``?user=<id>`` filtering by ``created_by``.
+
+    Applied to every viewset so the "All Users" dropdown on the frontend
+    works on every page automatically.  Filters on ``created_by_id`` which
+    is present on every model via ``OwnedModel``.
+
+    A view can opt out by setting ``user_filter_field = None`` (e.g. when
+    the ``user`` query param means something else in that viewset).
+    """
+
+    def filter_queryset(self, request, queryset, view):
+        field = getattr(view, "user_filter_field", "created_by_id")
+        if not field:
+            return queryset
+        user_param = request.query_params.get("user")
+        if user_param:
+            try:
+                queryset = queryset.filter(**{field: user_param})
+            except Exception:
+                # Bad UUID or field — ignore rather than 500.
+                return queryset
+        return queryset
+
+
 class DateRangeFilterBackend(BaseFilterBackend):
     """Generic ``?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`` filtering.
 

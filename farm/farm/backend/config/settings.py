@@ -227,6 +227,7 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
         "apps.core.filters.DateRangeFilterBackend",
+        "apps.core.filters.UserFilterBackend",
     ),
     "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.StandardPagination",
     "PAGE_SIZE": 25,

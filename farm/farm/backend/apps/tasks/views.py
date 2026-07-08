@@ -55,6 +55,9 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         "assigned_employee",
     ]
     search_fields = ["title", "description", "category"]
+    # The "All Users" filter on the Tasks page should filter by assigned_to
+    # (matching the "User" column in the table), not by created_by.
+    user_filter_field = "assigned_to_id"
 
     def get_permissions(self):
         # Any authenticated user (incl. EMPLOYEE/LABOUR) may create their own

@@ -37,17 +37,7 @@ from .serializers import (
 )
 
 
-class UserFilterMixin:
-    """Add ?user=<id> filtering by created_by field to any viewset."""
-    def filter_queryset(self, request, queryset, view):
-        qs = super().filter_queryset(request, queryset, view)
-        user_param = request.query_params.get("user")
-        if user_param:
-            qs = qs.filter(created_by_id=user_param)
-        return qs
-
-
-class ExpenseViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
+class ExpenseViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = Expense.objects.select_related(
         "farm", "approved_by"
     ).all()
@@ -98,7 +88,7 @@ class ExpenseViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet)
         return Response(self.get_serializer(expense).data)
 
 
-class PurchaseViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
+class PurchaseViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = Purchase.objects.select_related(
         "farm", "approved_by", "created_by"
     ).prefetch_related("items").all()
@@ -164,7 +154,7 @@ class PurchaseItemViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     search_fields = ["name", "purchase__invoice_no"]
 
 
-class LedgerEntryViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
+class LedgerEntryViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = LedgerEntry.objects.select_related(
         "farm", "created_by"
     ).all()
@@ -176,7 +166,7 @@ class LedgerEntryViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelView
     search_fields = ["reference", "description", "account"]
 
 
-class PaymentViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
+class PaymentViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = Payment.objects.select_related(
         "farm", "expense", "purchase", "created_by"
     ).all()
@@ -212,7 +202,7 @@ class PaymentViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet)
         )
 
 
-class RevenueEntryViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
+class RevenueEntryViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = RevenueEntry.objects.select_related("farm").all()
     serializer_class = RevenueEntrySerializer
     farm_lookup = "farm_id"
@@ -247,7 +237,7 @@ class CostCenterViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     search_fields = ["name", "code", "description"]
 
 
-class BudgetViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
+class BudgetViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = Budget.objects.select_related("farm", "cost_center").all()
     serializer_class = BudgetSerializer
     farm_lookup = "farm_id"
@@ -257,7 +247,7 @@ class BudgetViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
     search_fields = ["notes", "cost_center__name"]
 
 
-class SaleViewSet(UserFilterMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
+class SaleViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = Sale.objects.select_related("farm", "crop").all()
     serializer_class = SaleSerializer
     farm_lookup = "farm_id"
