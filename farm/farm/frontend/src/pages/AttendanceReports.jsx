@@ -11,7 +11,7 @@ const empRepo = resource("workforce/employees");
 
 export default function AttendanceReports() {
   const { t } = useTranslation();
-  const { user, hasRole } = useAuth();
+  const { user } = useAuth();
   const isEmployee = user?.role === "EMPLOYEE";
   const [farms, setFarms] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -50,9 +50,10 @@ export default function AttendanceReports() {
     const filename = `attendance_report_${farmName}_${monthLabel}_${year}.xlsx`;
     
     exportExcel(
-      report.rows, 
+      report.rows,
       [
         { key: "employee", header: t("header.employee") },
+        { key: "farm_name", header: t("header.farm") },
         { key: "present", header: t("header.present") },
         { key: "half_day", header: t("header.halfDay") },
         { key: "absent", header: t("header.absent") },
@@ -80,7 +81,7 @@ export default function AttendanceReports() {
       />
       <Card>
         <div className="mb-4 flex flex-wrap items-end gap-3">
-          {!isEmployee && employees.length > 0 && (
+          {!isEmployee && (
             <div className="min-w-[180px]">
               <Select label={t("header.employee")} value={employee} onChange={(e) => setEmployee(e.target.value)}>
                 <option value="">{t("common.allEmployees")}</option>
@@ -102,6 +103,7 @@ export default function AttendanceReports() {
           empty={t("attendanceReports.noAttendance")}
           columns={[
             { key: "employee", header: t("header.employee") },
+            { key: "farm_name", header: t("header.farm"), render: (r) => r.farm_name || "—" },
             { key: "present", header: t("header.present") },
             { key: "half_day", header: t("header.halfDay") },
             { key: "absent", header: t("header.absent") },

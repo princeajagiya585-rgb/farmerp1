@@ -525,6 +525,7 @@ export default function Attendance() {
         <Table
           columns={[
             { key: "employee_name", header: t("attendance.employeeName"), render: (r) => r.employee_name || r.employee },
+            { key: "farm_name", header: t("header.farm"), render: (r) => r.farm_name || "—" },
             { key: "date", header: t("attendance.date") },
             { key: "check_in_time", header: t("attendance.in"), render: (r) => fmt(r.check_in_time) },
             { key: "check_out_time", header: t("attendance.out"), render: (r) => fmt(r.check_out_time) },

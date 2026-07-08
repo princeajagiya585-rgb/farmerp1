@@ -537,12 +537,12 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         # All employees on farms the user can access (optionally filtered by farm)
         user = self.request.user
         if user.role == Role.EMPLOYEE:
-            employees = Employee.objects.filter(user=user)
+            employees = Employee.objects.select_related("farm").filter(user=user)
         elif user.role == Role.SUPER_ADMIN:
-            employees = Employee.objects.all()
+            employees = Employee.objects.select_related("farm").all()
         else:
             farm_ids = list(user.farms.values_list("id", flat=True))
-            employees = Employee.objects.filter(farm_id__in=farm_ids) if farm_ids else Employee.objects.none()
+            employees = Employee.objects.select_related("farm").filter(farm_id__in=farm_ids) if farm_ids else Employee.objects.none()
         if farm:
             employees = employees.filter(farm_id=farm)
         if employee:
@@ -578,7 +578,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
 
         # Build per-employee summary from actual records
         summary = {}
-        for att in att_qs.select_related("employee"):
+        for att in att_qs.select_related("employee", "employee__farm"):
             row = summary.setdefault(
                 att.employee_id,
                 {
@@ -588,6 +588,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
                     "leave": 0,
                     "overtime_hours": 0,
                     "marked": 0,
+                    "farm_name": att.employee.farm.name if att.employee.farm else "",
                 },
             )
             row["marked"] += 1
@@ -618,8 +619,12 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
                     "leave": 0,
                     "overtime_hours": 0,
                     "marked": total_days,
+                    "farm_name": emp.farm.name if emp.farm else "",
                 }
             row["employee"] = emp.name
+            # Ensure farm_name is always set
+            if "farm_name" not in row:
+                row["farm_name"] = emp.farm.name if emp.farm else ""
             effective = row["present"] + 0.5 * row["half_day"]
             row["attendance_pct"] = (
                 round(100 * effective / row["marked"], 1) if row["marked"] else 0
