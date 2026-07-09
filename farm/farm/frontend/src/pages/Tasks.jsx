@@ -119,6 +119,9 @@ export default function Tasks() {
 
   // Complete confirmation
   const [completeConfirm, setCompleteConfirm] = useState(false);
+  // Track direct-action saving state per task id
+  const [savingBreak, setSavingBreak] = useState(null);
+  const [savingResume, setSavingResume] = useState(null);
 
   const fetchWorkLocation = () => {
     if (!navigator.geolocation) {
@@ -164,8 +167,47 @@ export default function Tasks() {
     reader.readAsDataURL(file);
   };
 
+  // Direct action for Break/Resume — one-click, no modal form
+  const handleDirectAction = async (row, phase, reload) => {
+    const activity = workPhaseConfig[phase]?.activity;
+    if (!activity) return;
+
+    const setSaving = phase === "BREAK" ? setSavingBreak : setSavingResume;
+    setSaving(row.id);
+
+    try {
+      // Try to get location (optional for break/resume)
+      const loc = await getLocation();
+
+      const data = {
+        latitude: loc ? Number(Number(loc.lat).toFixed(6)) : null,
+        longitude: loc ? Number(Number(loc.lng).toFixed(6)) : null,
+        accuracy: loc?.accuracy != null ? Math.round(loc.accuracy) : null,
+        activity: activity,
+        task: row.id,
+        notes: "",
+      };
+
+      await pingsRepo.create(data);
+      reload();
+
+      const successKey = phase === "BREAK" ? "tasks.breakStarted" : "tasks.resumedSuccess";
+      addToast(t(successKey), "success");
+    } catch (err) {
+      addToast(err.response?.data?.detail || err.message, "error");
+    } finally {
+      setSaving(null);
+    }
+  };
+
   const submitWork = async () => {
     if (!workModal) return;
+
+    // Safety guard: BREAK/RESUME should never reach the modal
+    if (["BREAK", "RESUME"].includes(workModal.phase)) {
+      setWorkModal(null);
+      return;
+    }
 
     // For COMPLETED phase, require confirmation
     if (workModal.phase === "COMPLETED" && !completeConfirm) {
@@ -204,8 +246,6 @@ export default function Tasks() {
       const successKey = {
         BEFORE: "tasks.beforeWorkSaved",
         DURING_WORK: "tasks.duringWorkSaved",
-        BREAK: "tasks.breakStarted",
-        RESUME: "tasks.resumedSuccess",
         COMPLETED: "tasks.workCompleted",
       }[phase];
 
@@ -337,7 +377,7 @@ export default function Tasks() {
         );
 
       case "IN_PROGRESS":
-        // Show 3 buttons: During Work (optional), Break, Complete Work
+        // Show 3 buttons: During Work (photo+notes via modal), Break (one-click), Complete Work (modal with confirmation)
         return (
           <>
             <button
@@ -349,12 +389,13 @@ export default function Tasks() {
               {t("gps.duringWork")}
             </button>
             <button
-              onClick={() => openWorkModal(row, "BREAK", reload)}
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600"
+              onClick={() => handleDirectAction(row, "BREAK", reload)}
+              disabled={savingBreak === row.id}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600 disabled:opacity-50"
               title={t("tasks.break")}
             >
-              <Pause size={14} />
-              {t("tasks.break")}
+              {savingBreak === row.id ? <Loader2 size={14} className="animate-spin" /> : <Pause size={14} />}
+              {savingBreak === row.id ? t("common.saving") : t("tasks.break")}
             </button>
             <button
               onClick={() => openWorkModal(row, "COMPLETED", reload)}
@@ -368,7 +409,7 @@ export default function Tasks() {
         );
 
       case "ON_BREAK":
-        // Show During Work (optional), Start (resume), and Complete Work
+        // Show During Work (photo+notes via modal), Resume (one-click), Complete Work (modal with confirmation)
         return (
           <>
             <button
@@ -380,12 +421,13 @@ export default function Tasks() {
               {t("gps.duringWork")}
             </button>
             <button
-              onClick={() => openWorkModal(row, "RESUME", reload)}
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700"
+              onClick={() => handleDirectAction(row, "RESUME", reload)}
+              disabled={savingResume === row.id}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50"
               title={t("tasks.resumeWork")}
             >
-              <Play size={14} />
-              {t("tasks.resumeWork")}
+              {savingResume === row.id ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+              {savingResume === row.id ? t("common.saving") : t("tasks.resumeWork")}
             </button>
             <button
               onClick={() => openWorkModal(row, "COMPLETED", reload)}
@@ -573,7 +615,7 @@ export default function Tasks() {
               )}
 
               {/* Notes - for work phases */}
-              {["DURING_WORK", "BREAK", "RESUME", "COMPLETED"].includes(workModal.phase) && (
+              {["DURING_WORK", "COMPLETED"].includes(workModal.phase) && (
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700">
                     {t("tasks.notes")} <span className="text-gray-400">({t("common.optional")})</span>
@@ -647,8 +689,6 @@ export default function Tasks() {
                   <span className="flex items-center gap-2">
                     {workModal.phase === "BEFORE" && <><Camera size={16} />{t("gps.beforeWork")}</>}
                     {workModal.phase === "DURING_WORK" && <><Camera size={16} />{t("gps.duringWork")}</>}
-                    {workModal.phase === "BREAK" && <><Pause size={16} />{t("tasks.break")}</>}
-                    {workModal.phase === "RESUME" && <><Play size={16} />{t("tasks.resumeWork")}</>}
                     {workModal.phase === "COMPLETED" && (completeConfirm ? <><CheckCircle size={16} />{t("common.yes")}</> : <><CheckCircle size={16} />{t("gps.completedWork")}</>)}
                   </span>
                 )}
