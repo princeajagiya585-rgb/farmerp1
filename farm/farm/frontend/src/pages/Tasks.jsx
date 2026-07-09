@@ -21,6 +21,7 @@ const ALL_TASKS_PARAMS = {};
 const workPhaseConfig = {
   BEFORE: { activity: "CHECKIN", labelKey: "gps.beforeWork" },
   DURING: { activity: "DURING_WORK", labelKey: "gps.duringWork" },
+  ON_BREAK: { activity: "DURING_WORK", labelKey: "tasks.onBreak" },
   COMPLETED: { activity: "CHECKOUT", labelKey: "gps.completedWork" },
 };
 const prioColor = { LOW: "gray", MEDIUM: "blue", HIGH: "yellow", URGENT: "red" };
@@ -188,8 +189,23 @@ export default function Tasks() {
 
   const TaskTimer = ({ row }) => {
     const session = row.active_session;
+    const onBreak = row.work_phase === "ON_BREAK";
+    const tracked = row.total_tracked_minutes;
+    
+    if (onBreak && tracked) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <span className="relative flex h-2 w-2">
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400" />
+          </span>
+          <span className="text-xs font-medium text-amber-700" title={t("tasks.onBreak")}>
+            {formatDuration(tracked)} ⏸
+          </span>
+        </div>
+      );
+    }
+    
     if (!session) {
-      const tracked = row.total_tracked_minutes;
       return tracked ? (
         <span className="text-xs text-gray-500" title={t("tasks.totalTracked")}>
           {formatDuration(tracked)}
@@ -223,7 +239,6 @@ export default function Tasks() {
       canEdit={canManage}
       showFarmFilter
       showUserFilter
-      showEmployeeFilter
       listParams={myTasksOnly ? MY_TASKS_PARAMS : ALL_TASKS_PARAMS}
       extraToolbar={
         canManage && (
@@ -292,10 +307,10 @@ export default function Tasks() {
       rowActions={(row, reload) => (
         <>
           {/* Work-proof state machine (all users):
-              BEFORE   → only the Before Work button.
-              DURING   → only the During Work button; Completed Work appears
-                         once at least one During Work update exists.
-              COMPLETED→ locked; show only the Completed badge.
+              BEFORE    → Before Work button.
+              DURING    → During Work + Break + Completed Work (if during_work_count > 0).
+              ON_BREAK  → Resume Work + During Work + Completed Work (if during_work_count > 0).
+              COMPLETED → locked; show only the Completed badge.
               A row without work_phase (e.g. cached API data) defaults to BEFORE. */}
           {!["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status) && (row.work_phase || "BEFORE") === "BEFORE" && (
             <button
@@ -309,6 +324,44 @@ export default function Tasks() {
           )}
           {!["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status) && row.work_phase === "DURING" && (
             <>
+              <button
+                onClick={() => openWorkModal(row, "DURING", reload)}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                title={t("gps.duringWork")}
+              >
+                <Camera size={14} />
+                {t("gps.duringWork")}
+              </button>
+              <button
+                onClick={async () => { await repo.action(row.id, "stop_work"); reload(); }}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600"
+                title={t("tasks.break")}
+              >
+                <span>☕</span>
+                {t("tasks.break")}
+              </button>
+              {(row.during_work_count || 0) > 0 && (
+                <button
+                  onClick={() => openWorkModal(row, "COMPLETED", reload)}
+                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
+                  title={t("gps.completedWork")}
+                >
+                  <CheckCircle size={14} />
+                  {t("gps.completedWork")}
+                </button>
+              )}
+            </>
+          )}
+          {!["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status) && row.work_phase === "ON_BREAK" && (
+            <>
+              <button
+                onClick={async () => { await repo.action(row.id, "start_work"); reload(); }}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-700"
+                title={t("tasks.resumeTask")}
+              >
+                <span>▶</span>
+                {t("tasks.resumeTask")}
+              </button>
               <button
                 onClick={() => openWorkModal(row, "DURING", reload)}
                 className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"

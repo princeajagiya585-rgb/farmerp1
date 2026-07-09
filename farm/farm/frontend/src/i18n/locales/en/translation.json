@@ -1710,6 +1710,7 @@
   "audit.actionAPPROVE": "APPROVE",
   "audit.actionREJECT": "REJECT",
   "tasks.break": "Break",
-  "tasks.breakTask": "Break (pause) task",
-  "tasks.resumeTask": "Resume task"
+  "tasks.breakTask": "Pause timer (break)",
+  "tasks.resumeTask": "Resume Work",
+  "tasks.onBreak": "On Break"
 }

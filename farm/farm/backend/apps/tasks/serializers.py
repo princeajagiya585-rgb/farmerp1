@@ -72,17 +72,24 @@ class TaskSerializer(serializers.ModelSerializer):
     def get_work_phase(self, obj):
         """Which work-proof step comes next for this task.
 
-        BEFORE    → no work pings yet; show the "Before Work" button.
-        DURING    → before-work ping exists; show "During Work" (and "Completed
-                    Work" once at least one during-work entry exists).
-        COMPLETED → completed-work ping exists; the flow is finished.
-        (CHECKIN/CHECKOUT ping activities are labelled Before/Completed Work in the UI.)
+        BEFORE     → no work pings yet; show the "Before Work" button.
+        DURING     → before-work ping exists + timer is running.
+                    Show "During Work" (and "Completed Work" once at least
+                    one during-work entry exists).
+        ON_BREAK   → during-work ping exists but timer is stopped
+                    (paused by the user). Show "Resume Work" + "During
+                    Work" + "Completed Work".
+        COMPLETED  → completed-work ping exists; the flow is finished.
         """
         activities = set(obj.location_pings.values_list("activity", flat=True))
         if "CHECKOUT" in activities:
             return "COMPLETED"
         if "CHECKIN" in activities:
-            return "DURING"
+            has_active = obj.work_sessions.filter(end_time__isnull=True).exists()
+            if "DURING_WORK" in activities:
+                return "DURING" if has_active else "ON_BREAK"
+            # CHECKIN without DURING_WORK — timer is running from _advance_task_phase
+            return "DURING" if has_active else "ON_BREAK"
         return "BEFORE"
 
     @extend_schema_field(serializers.IntegerField())
