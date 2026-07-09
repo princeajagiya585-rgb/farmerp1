@@ -1,7 +1,88 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from .models import Task, TaskUpdate, TaskWorkSession
+from apps.core.utils import build_absolute_photo_url
+
+from .models import Task, TaskUpdate, TaskWorkSession, TaskExecution, TaskBreakLog, TaskProgressLog
+
+
+class TaskBreakLogSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
+
+    class Meta:
+        model = TaskBreakLog
+        fields = "__all__"
+
+
+class TaskProgressLogSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
+    photo_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskProgressLog
+        fields = "__all__"
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_photo_url(self, obj):
+        return build_absolute_photo_url(obj.photo, self.context.get('request'))
+
+
+class TaskExecutionSerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source="employee.name", read_only=True)
+    task_title = serializers.CharField(source="task.title", read_only=True)
+    approved_by_name = serializers.CharField(source="approved_by.get_full_name", read_only=True, default=None)
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
+
+    # Computed fields
+    current_duration_seconds = serializers.SerializerMethodField()
+    current_timer_display = serializers.SerializerMethodField()
+    total_break_duration_seconds = serializers.SerializerMethodField()
+    break_logs_data = serializers.SerializerMethodField()
+    progress_logs_data = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskExecution
+        fields = "__all__"
+        read_only_fields = [
+            "id", "created_at", "updated_at", "task", "employee", "status",
+            "confirmed_at", "started_at", "completed_at", "approved_at", "returned_at",
+            "working_seconds", "break_seconds", "created_by", "approved_by"
+        ]
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_current_duration_seconds(self, obj):
+        """Calculate current working duration in seconds."""
+        return obj.calculate_current_duration()
+
+    @extend_schema_field(serializers.CharField())
+    def get_current_timer_display(self, obj):
+        """Get formatted timer display (HH:MM:SS)."""
+        seconds = obj.calculate_current_duration()
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_total_break_duration_seconds(self, obj):
+        """Get total break duration in seconds."""
+        total = 0
+        for log in obj.break_logs.all():
+            if log.break_ended_at:
+                total += log.break_duration_seconds
+            elif obj.status == obj.Status.ON_BREAK and log.break_started_at:
+                # Currently on break
+                from django.utils import timezone
+                total += int((timezone.now() - log.break_started_at).total_seconds())
+        return total
+
+    @extend_schema_field(serializers.ListField())
+    def get_break_logs_data(self, obj):
+        return TaskBreakLogSerializer(obj.break_logs.all(), many=True).data
+
+    @extend_schema_field(serializers.ListField())
+    def get_progress_logs_data(self, obj):
+        return TaskProgressLogSerializer(obj.progress_logs.all(), many=True).data
 
 
 class TaskWorkSessionSerializer(serializers.ModelSerializer):
@@ -64,9 +145,28 @@ class TaskSerializer(serializers.ModelSerializer):
     work_phase = serializers.SerializerMethodField()
     during_work_count = serializers.SerializerMethodField()
 
+    # Execution data for workflow
+    my_execution = serializers.SerializerMethodField()
+
     class Meta:
         model = Task
         fields = "__all__"
+
+    @extend_schema_field(TaskExecutionSerializer(allow_null=True))
+    def get_my_execution(self, obj):
+        """Get the current user's execution for this task."""
+        user = self.context.get('request').user if self.context.get('request') else None
+        if not user or not user.is_authenticated:
+            return None
+
+        # Try to find execution by assigned_employee.user
+        execution = None
+        if obj.assigned_employee and obj.assigned_employee.user_id == user.id:
+            execution = obj.executions.filter(employee=obj.assigned_employee).first()
+
+        if execution:
+            return TaskExecutionSerializer(execution, context=self.context).data
+        return None
 
     @extend_schema_field(serializers.CharField())
     def get_work_phase(self, obj):

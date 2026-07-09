@@ -14,10 +14,15 @@ class Task(OwnedModel):
 
     class Status(models.TextChoices):
         TODO = "TODO", "To Do"
+        ASSIGNED = "ASSIGNED", "Assigned"
+        CONFIRMED = "CONFIRMED", "Confirmed"
         IN_PROGRESS = "IN_PROGRESS", "In Progress"
-        SUBMITTED = "SUBMITTED", "Submitted"
-        VERIFIED = "VERIFIED", "Verified"
+        ON_BREAK = "ON_BREAK", "On Break"
+        WAITING_APPROVAL = "WAITING_APPROVAL", "Waiting Approval"
         COMPLETED = "COMPLETED", "Completed"
+        APPROVED = "APPROVED", "Approved"
+        REJECTED = "REJECTED", "Rejected"
+        RETURNED = "RETURNED", "Returned"
         CANCELLED = "CANCELLED", "Cancelled"
 
     class ScheduleType(models.TextChoices):
@@ -64,7 +69,7 @@ class Task(OwnedModel):
         max_length=10, choices=Priority.choices, default=Priority.MEDIUM
     )
     status = models.CharField(
-        max_length=15, choices=Status.choices, default=Status.TODO
+        max_length=20, choices=Status.choices, default=Status.TODO
     )
     schedule_type = models.CharField(
         max_length=10, choices=ScheduleType.choices, default=ScheduleType.ADHOC
@@ -104,7 +109,7 @@ class Task(OwnedModel):
             return False
         if self.status in (
             self.Status.COMPLETED,
-            self.Status.VERIFIED,
+            self.Status.APPROVED,
             self.Status.CANCELLED,
         ):
             return False
@@ -163,3 +168,168 @@ class TaskWorkSession(OwnedModel):
     @property
     def is_active(self):
         return self.end_time is None
+
+
+class TaskExecution(OwnedModel):
+    """Tracks the execution workflow of a task by an employee."""
+
+    class Status(models.TextChoices):
+        ASSIGNED = "ASSIGNED", "Assigned"
+        CONFIRMED = "CONFIRMED", "Confirmed"
+        IN_PROGRESS = "IN_PROGRESS", "In Progress"
+        ON_BREAK = "ON_BREAK", "On Break"
+        WAITING_APPROVAL = "WAITING_APPROVAL", "Waiting Approval"
+        COMPLETED = "COMPLETED", "Completed"
+        APPROVED = "APPROVED", "Approved"
+        REJECTED = "REJECTED", "Rejected"
+        RETURNED = "RETURNED", "Returned"
+
+    task = models.ForeignKey(
+        Task, on_delete=models.CASCADE, related_name="executions"
+    )
+    employee = models.ForeignKey(
+        "workforce.Employee",
+        on_delete=models.CASCADE,
+        related_name="task_executions",
+    )
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.ASSIGNED
+    )
+
+    # Timestamps for workflow
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    returned_at = models.DateTimeField(null=True, blank=True)
+
+    # Timer tracking (in seconds)
+    working_seconds = models.IntegerField(default=0)
+    break_seconds = models.IntegerField(default=0)
+
+    # Current timer state
+    current_timer_started_at = models.DateTimeField(null=True, blank=True)
+    current_break_started_at = models.DateTimeField(null=True, blank=True)
+
+    # Progress
+    progress_percentage = models.IntegerField(default=0)
+
+    # GPS tracking
+    gps_start_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    gps_start_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    gps_break_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    gps_break_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    gps_complete_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    gps_complete_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+
+    # Completion details
+    completion_photo = models.ImageField(upload_to="tasks/completion/", null=True, blank=True)
+    completion_notes = models.TextField(blank=True)
+
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_task_executions",
+    )
+
+    class Meta:
+        unique_together = ("task", "employee")
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.task.title} - {self.employee.name} ({self.status})"
+
+    @property
+    def is_completed(self):
+        return self.status in [self.Status.COMPLETED, self.Status.APPROVED, self.Status.REJECTED]
+
+    @property
+    def is_approved(self):
+        return self.status == self.Status.APPROVED
+
+    def calculate_current_duration(self):
+        """Calculate current working duration in seconds (excluding breaks)."""
+        if not self.started_at:
+            return 0
+
+        now = timezone.now()
+        total_seconds = (now - self.started_at).total_seconds()
+
+        # Subtract break time
+        break_logs = self.break_logs.all()
+        for log in break_logs:
+            if log.break_ended_at:
+                duration = (log.break_ended_at - log.break_started_at).total_seconds()
+                total_seconds -= duration
+            elif self.status == self.Status.ON_BREAK:
+                # Currently on break
+                duration = (now - log.break_started_at).total_seconds()
+                total_seconds -= duration
+
+        return max(0, int(total_seconds))
+
+
+class TaskBreakLog(OwnedModel):
+    """Logs each break taken during task execution."""
+
+    task_execution = models.ForeignKey(
+        TaskExecution,
+        on_delete=models.CASCADE,
+        related_name="break_logs",
+    )
+    break_started_at = models.DateTimeField()
+    break_ended_at = models.DateTimeField(null=True, blank=True)
+    break_duration_seconds = models.IntegerField(default=0)
+
+    gps_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    gps_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+
+    def __str__(self):
+        return f"Break on {self.task_execution.task.title} at {self.break_started_at}"
+
+    def save(self, *args, **kwargs):
+        if self.break_ended_at and self.break_started_at:
+            delta = self.break_ended_at - self.break_started_at
+            self.break_duration_seconds = int(delta.total_seconds())
+        super().save(*args, **kwargs)
+
+
+class TaskProgressLog(OwnedModel):
+    """Logs progress updates during task execution (During Work button)."""
+
+    task_execution = models.ForeignKey(
+        TaskExecution,
+        on_delete=models.CASCADE,
+        related_name="progress_logs",
+    )
+    progress_percentage = models.IntegerField(default=0)
+    remarks = models.TextField(blank=True)
+    photo = models.ImageField(upload_to="tasks/progress/", null=True, blank=True)
+
+    gps_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    gps_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+
+    def __str__(self):
+        return f"Progress {self.progress_percentage}% on {self.task_execution.task.title}"

@@ -105,9 +105,9 @@ export default function Attendance() {
 
   useEffect(() => {
     if (!myProfile) return;
-    repo.list({ employee: myProfile.id, date: TODAY, page_size: 1 }).then((d) => {
-      const list = Array.isArray(d) ? d : d.results || [];
-      setTodayAttendance(list[0] || null);
+    // Use dedicated endpoint that returns attendance even without check-in
+    api.get(`/workforce/attendance/today_status/?employee=${myProfile.id}`).then((d) => {
+      setTodayAttendance(d.data?.has_attendance ? d.data : null);
     }).catch(() => {});
   }, [myProfile, rows]);
 
@@ -124,9 +124,9 @@ export default function Attendance() {
       if (!profile) return;
       setMyProfile(profile);
       setEmpId(String(profile.id));
-      const ad = await repo.list({ employee: profile.id, date: TODAY, page_size: 1 });
-      const list = Array.isArray(ad) ? ad : ad.results || [];
-      setTodayAttendance(list[0] || null);
+      // Use dedicated endpoint for today's status
+      const ad = await api.get(`/workforce/attendance/today_status/?employee=${profile.id}`);
+      setTodayAttendance(ad.data?.has_attendance ? ad.data : null);
     } catch {
       /* ignore */
     }
@@ -576,11 +576,12 @@ export default function Attendance() {
               },
             },
             {
-              key: "geofence_verified",
+              key: "geofence_status",
               header: t("header.geofence"),
               render: (r) => {
-                if (r.geofence_verified === true) return <Badge color="green">{t("gps.inFence")}</Badge>;
-                if (r.geofence_verified === false) return <Badge color="red">{t("gps.outside")}</Badge>;
+                const geoStatus = r.geofence_status_display || r.geofence_status;
+                if (geoStatus === "YES" || geoStatus === true) return <Badge color="green">{t("gps.inFence")}</Badge>;
+                if (geoStatus === "NO" || geoStatus === false) return <Badge color="red">{t("gps.outside")}</Badge>;
                 return <span className="text-gray-400">—</span>;
               },
             },

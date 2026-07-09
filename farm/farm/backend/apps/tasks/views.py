@@ -1,5 +1,6 @@
 import calendar
 from datetime import date, timedelta
+import uuid
 
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -12,8 +13,11 @@ from apps.accounts.models import Role
 from apps.core.mixins import BaseModelViewSet
 from apps.farms.views import FarmScopedQuerysetMixin
 
-from .models import Task, TaskUpdate, TaskWorkSession
-from .serializers import TaskSerializer, TaskUpdateSerializer, TaskWorkSessionSerializer
+from .models import Task, TaskUpdate, TaskWorkSession, TaskExecution, TaskBreakLog, TaskProgressLog
+from .serializers import (
+    TaskSerializer, TaskUpdateSerializer, TaskWorkSessionSerializer,
+    TaskExecutionSerializer, TaskBreakLogSerializer, TaskProgressLogSerializer
+)
 
 
 def _add_period(d, recurrence):
@@ -343,3 +347,353 @@ class TaskUpdateViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     readonly_roles = []
     filterset_fields = ["task"]
     search_fields = ["note", "task__title"]
+
+
+class TaskExecutionViewSet(BaseModelViewSet):
+    """ViewSet for managing task execution workflow."""
+
+    queryset = TaskExecution.objects.select_related(
+        "task", "task__farm", "employee", "employee__user", "approved_by"
+    ).prefetch_related(
+        "break_logs", "progress_logs"
+    ).all()
+    serializer_class = TaskExecutionSerializer
+    allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
+    readonly_roles = []
+    filterset_fields = ["task", "employee", "status"]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset()
+
+        # Employees see only their own executions
+        if user.role == Role.EMPLOYEE:
+            from apps.workforce.models import Employee
+            employee = Employee.objects.filter(user=user).first()
+            if employee:
+                qs = qs.filter(employee=employee)
+            else:
+                qs = qs.none()
+
+        # Filter by task
+        task_id = self.request.query_params.get("task")
+        if task_id:
+            qs = qs.filter(task_id=task_id)
+
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def _get_execution(self, pk):
+        """Get execution object and verify permissions."""
+        return self.get_object()
+
+    def _get_or_create_execution(self, task, employee, user):
+        """Get existing execution or create new one."""
+        execution = TaskExecution.objects.filter(task=task, employee=employee).first()
+        if not execution:
+            execution = TaskExecution.objects.create(
+                task=task,
+                employee=employee,
+                created_by=user,
+                status=TaskExecution.Status.ASSIGNED,
+            )
+        return execution
+
+    @action(detail=True, methods=["post"])
+    def confirm(self, request, pk=None):
+        """Employee confirms the task (moves from ASSIGNED to CONFIRMED)."""
+        execution = self.get_object()
+
+        # Verify the user is the assigned employee
+        if execution.employee.user_id != request.user.id:
+            return Response({"detail": "You are not assigned to this task."}, status=403)
+
+        if execution.status != TaskExecution.Status.ASSIGNED:
+            return Response(
+                {"detail": f"Task is already {execution.status}. Cannot confirm."},
+                status=400
+            )
+
+        execution.status = TaskExecution.Status.CONFIRMED
+        execution.confirmed_at = timezone.now()
+        execution.save(update_fields=["status", "confirmed_at", "updated_at"])
+
+        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"])
+    def start(self, request, pk=None):
+        """Employee starts working on the task (moves from CONFIRMED to IN_PROGRESS)."""
+        execution = self.get_object()
+
+        # Verify the user is the assigned employee
+        if execution.employee.user_id != request.user.id:
+            return Response({"detail": "You are not assigned to this task."}, status=403)
+
+        if execution.status != TaskExecution.Status.CONFIRMED:
+            return Response(
+                {"detail": f"Cannot start. Task must be CONFIRMED first (current: {execution.status})."},
+                status=400
+            )
+
+        # Start the timer
+        execution.status = TaskExecution.Status.IN_PROGRESS
+        execution.started_at = timezone.now()
+        execution.current_timer_started_at = timezone.now()
+
+        # Save GPS if provided
+        lat = request.data.get("gps_lat")
+        lng = request.data.get("gps_lng")
+        if lat and lng:
+            execution.gps_start_lat = lat
+            execution.gps_start_lng = lng
+
+        execution.save(update_fields=[
+            "status", "started_at", "current_timer_started_at",
+            "gps_start_lat", "gps_start_lng", "updated_at"
+        ])
+
+        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"])
+    def break_work(self, request, pk=None):
+        """Employee takes a break (pauses timer)."""
+        execution = self.get_object()
+
+        # Verify the user is the assigned employee
+        if execution.employee.user_id != request.user.id:
+            return Response({"detail": "You are not assigned to this task."}, status=403)
+
+        if execution.status != TaskExecution.Status.IN_PROGRESS:
+            return Response(
+                {"detail": f"Cannot take break. Task must be IN_PROGRESS (current: {execution.status})."},
+                status=400
+            )
+
+        # Calculate working seconds so far
+        if execution.started_at:
+            elapsed = (timezone.now() - execution.started_at).total_seconds()
+            execution.working_seconds = int(elapsed)
+
+        # Create break log
+        lat = request.data.get("gps_lat")
+        lng = request.data.get("gps_lng")
+        break_log = TaskBreakLog.objects.create(
+            task_execution=execution,
+            break_started_at=timezone.now(),
+            created_by=request.user,
+            gps_lat=lat,
+            gps_lng=lng,
+        )
+
+        execution.status = TaskExecution.Status.ON_BREAK
+        execution.current_break_started_at = timezone.now()
+        execution.save(update_fields=["status", "current_break_started_at", "working_seconds", "updated_at"])
+
+        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"])
+    def resume(self, request, pk=None):
+        """Employee resumes work after break (continues timer)."""
+        execution = self.get_object()
+
+        # Verify the user is the assigned employee
+        if execution.employee.user_id != request.user.id:
+            return Response({"detail": "You are not assigned to this task."}, status=403)
+
+        if execution.status != TaskExecution.Status.ON_BREAK:
+            return Response(
+                {"detail": f"Cannot resume. Task must be ON_BREAK (current: {execution.status})."},
+                status=400
+            )
+
+        # End the current break
+        break_log = execution.break_logs.filter(break_ended_at__isnull=True).first()
+        if break_log:
+            break_log.break_ended_at = timezone.now()
+            break_log.save()
+
+            # Add break duration to total
+            execution.break_seconds += break_log.break_duration_seconds
+
+        execution.status = TaskExecution.Status.IN_PROGRESS
+        execution.current_break_started_at = None
+
+        # Continue timer from where it left off
+        # working_seconds already has time before break
+        # Timer continues from current moment
+
+        execution.save(update_fields=["status", "current_break_started_at", "break_seconds", "updated_at"])
+
+        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"])
+    def progress(self, request, pk=None):
+        """Employee updates progress during work (During Work button)."""
+        execution = self.get_object()
+
+        # Verify the user is the assigned employee
+        if execution.employee.user_id != request.user.id:
+            return Response({"detail": "You are not assigned to this task."}, status=403)
+
+        if execution.status not in [TaskExecution.Status.IN_PROGRESS, TaskExecution.Status.ON_BREAK]:
+            return Response(
+                {"detail": f"Cannot update progress. Task must be IN_PROGRESS or ON_BREAK (current: {execution.status})."},
+                status=400
+            )
+
+        # Get progress data
+        progress_percentage = request.data.get("progress_percentage")
+        remarks = request.data.get("remarks", "")
+        lat = request.data.get("gps_lat")
+        lng = request.data.get("gps_lng")
+
+        if progress_percentage is not None:
+            try:
+                progress_percentage = int(progress_percentage)
+                progress_percentage = max(0, min(100, progress_percentage))
+                execution.progress_percentage = progress_percentage
+            except (ValueError, TypeError):
+                pass
+
+        # Create progress log
+        progress_log = TaskProgressLog.objects.create(
+            task_execution=execution,
+            progress_percentage=progress_percentage or execution.progress_percentage,
+            remarks=remarks,
+            created_by=request.user,
+            gps_lat=lat,
+            gps_lng=lng,
+        )
+
+        # Handle photo upload
+        photo = request.FILES.get("photo")
+        if photo:
+            progress_log.photo = photo
+            progress_log.save()
+
+        execution.save(update_fields=["progress_percentage", "updated_at"])
+
+        return Response(TaskProgressLogSerializer(progress_log, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"])
+    def complete(self, request, pk=None):
+        """Employee completes the task (moves to WAITING_APPROVAL)."""
+        execution = self.get_object()
+
+        # Verify the user is the assigned employee
+        if execution.employee.user_id != request.user.id:
+            return Response({"detail": "You are not assigned to this task."}, status=403)
+
+        if execution.status not in [TaskExecution.Status.IN_PROGRESS, TaskExecution.Status.ON_BREAK]:
+            return Response(
+                {"detail": f"Cannot complete. Task must be IN_PROGRESS or ON_BREAK (current: {execution.status})."},
+                status=400
+            )
+
+        # If on break, end the break first
+        if execution.status == TaskExecution.Status.ON_BREAK:
+            break_log = execution.break_logs.filter(break_ended_at__isnull=True).first()
+            if break_log:
+                break_log.break_ended_at = timezone.now()
+                break_log.save()
+                execution.break_seconds += break_log.break_duration_seconds
+
+        # Calculate final working seconds
+        if execution.started_at:
+            elapsed = (timezone.now() - execution.started_at).total_seconds()
+            execution.working_seconds = int(elapsed) - execution.break_seconds
+
+        # Save completion details
+        execution.status = TaskExecution.Status.WAITING_APPROVAL
+        execution.completed_at = timezone.now()
+
+        lat = request.data.get("gps_lat")
+        lng = request.data.get("gps_lng")
+        if lat and lng:
+            execution.gps_complete_lat = lat
+            execution.gps_complete_lng = lng
+
+        execution.completion_notes = request.data.get("completion_notes", "")
+
+        # Handle completion photo
+        photo = request.FILES.get("completion_photo")
+        if photo:
+            execution.completion_photo = photo
+
+        execution.save(update_fields=[
+            "status", "completed_at", "working_seconds", "break_seconds",
+            "gps_complete_lat", "gps_complete_lng", "completion_notes",
+            "completion_photo", "updated_at"
+        ])
+
+        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        """Manager approves the completed task."""
+        if request.user.role not in [Role.SUPER_ADMIN, Role.FARM_MANAGER]:
+            return Response({"detail": "Only managers can approve tasks."}, status=403)
+
+        execution = self.get_object()
+
+        if execution.status != TaskExecution.Status.WAITING_APPROVAL:
+            return Response(
+                {"detail": f"Cannot approve. Task must be WAITING_APPROVAL (current: {execution.status})."},
+                status=400
+            )
+
+        execution.status = TaskExecution.Status.APPROVED
+        execution.approved_at = timezone.now()
+        execution.approved_by = request.user
+        execution.save(update_fields=["status", "approved_at", "approved_by", "updated_at"])
+
+        # Also update the main Task status
+        execution.task.status = Task.Status.APPROVED
+        execution.task.progress = 100
+        execution.task.verified_by = request.user
+        execution.task.verified_at = timezone.now()
+        execution.task.save(update_fields=["status", "progress", "verified_by", "verified_at", "updated_at"])
+
+        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"])
+    def return_task(self, request, pk=None):
+        """Manager returns the task for revision."""
+        if request.user.role not in [Role.SUPER_ADMIN, Role.FARM_MANAGER]:
+            return Response({"detail": "Only managers can return tasks."}, status=403)
+
+        execution = self.get_object()
+
+        if execution.status != TaskExecution.Status.WAITING_APPROVAL:
+            return Response(
+                {"detail": f"Cannot return. Task must be WAITING_APPROVAL (current: {execution.status})."},
+                status=400
+            )
+
+        execution.status = TaskExecution.Status.RETURNED
+        execution.returned_at = timezone.now()
+        execution.save(update_fields=["status", "returned_at", "updated_at"])
+
+        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"])
+    def reject_work(self, request, pk=None):
+        """Employee rejects the assigned task."""
+        execution = self.get_object()
+
+        # Verify the user is the assigned employee
+        if execution.employee.user_id != request.user.id:
+            return Response({"detail": "You are not assigned to this task."}, status=403)
+
+        if execution.status != TaskExecution.Status.ASSIGNED:
+            return Response(
+                {"detail": f"Cannot reject. Task must be ASSIGNED (current: {execution.status})."},
+                status=400
+            )
+
+        execution.status = TaskExecution.Status.REJECTED
+        execution.save(update_fields=["status", "updated_at"])
+
+        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)

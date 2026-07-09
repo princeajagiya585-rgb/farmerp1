@@ -1,49 +1,48 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Camera, Check, CheckCheck, CheckCircle, Loader2, MapPin, Send, User, X } from "lucide-react";
+import {
+  Camera, Check, CheckCheck, CheckCircle, Loader2, MapPin, Play,
+  Pause, StopCircle, X, Send, RotateCcw, User, Clock, Navigation,
+  FileText, AlertCircle
+} from "lucide-react";
 import CrudResource from "../components/CrudResource";
-import { Badge, Button, ToastContainer, useToast } from "../components/ui";
-import { resource, toFormData } from "../lib/api";
+import { Badge, Button, ToastContainer, useToast, PhotoThumb } from "../components/ui";
+import { resource, api, toFormData } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
 const repo = resource("tasks");
-const pingsRepo = resource("gps/pings");
+const execRepo = resource("tasks/executions");
 
-// Stable listParams identities — CrudResource reloads whenever the listParams
-// object identity changes, so inline literals here would refetch the list on
-// every render (the 30s timer tick, every modal keystroke, ...).
-const MY_TASKS_PARAMS = { my_tasks: "true" };
-const ALL_TASKS_PARAMS = {};
-
-// Work-proof flow: each phase posts a geo-tagged (optionally photographed)
-// LocationPing tied to the task. CHECKIN/CHECKOUT activities are labelled
-// "Before Work"/"Completed Work" throughout the UI.
-//
-// Flow:
-//   BEFORE     → Before Work button (creates CHECKIN ping).
-//   CONFIRMED  → Submit button (changes task status to SUBMITTED).
-//   SUBMITTED  → During Work / Break / Complete Work buttons.
-//   DURING     → Break (stop timer) + Complete Work buttons.
-//   COMPLETED  → Done — shows completed badge.
-const workPhaseConfig = {
-  BEFORE: { activity: "CHECKIN", labelKey: "gps.beforeWork" },
-  CONFIRMED: { activity: "CHECKIN", labelKey: "tasks.confirmed" },
-  SUBMITTED: { activity: "DURING_WORK", labelKey: "gps.duringWork" },
-  DURING: { activity: "DURING_WORK", labelKey: "gps.duringWork" },
-  COMPLETED: { activity: "CHECKOUT", labelKey: "gps.completedWork" },
-};
-const prioColor = { LOW: "gray", MEDIUM: "blue", HIGH: "yellow", URGENT: "red" };
+// Status colors for the new workflow
 const statusColor = {
-  TODO: "gray", IN_PROGRESS: "blue", SUBMITTED: "purple", VERIFIED: "green", COMPLETED: "green", CANCELLED: "red",
+  TODO: "gray",
+  ASSIGNED: "yellow",
+  CONFIRMED: "blue",
+  IN_PROGRESS: "blue",
+  ON_BREAK: "amber",
+  WAITING_APPROVAL: "purple",
+  COMPLETED: "green",
+  APPROVED: "green",
+  REJECTED: "red",
+  RETURNED: "orange",
+  CANCELLED: "red",
 };
+
 const statusLabelMap = {
   TODO: "tasks.statusTodo",
+  ASSIGNED: "tasks.statusAssigned",
+  CONFIRMED: "tasks.statusConfirmed",
   IN_PROGRESS: "tasks.statusInProgress",
-  SUBMITTED: "tasks.statusSubmitted",
-  VERIFIED: "tasks.statusVerified",
+  ON_BREAK: "tasks.statusOnBreak",
+  WAITING_APPROVAL: "tasks.statusWaitingApproval",
   COMPLETED: "tasks.statusCompleted",
+  APPROVED: "tasks.statusApproved",
+  REJECTED: "tasks.statusRejected",
+  RETURNED: "tasks.statusReturned",
   CANCELLED: "tasks.statusCancelled",
 };
+
+const prioColor = { LOW: "gray", MEDIUM: "blue", HIGH: "yellow", URGENT: "red" };
 const prioLabelMap = {
   LOW: "tasks.priorityLow",
   MEDIUM: "tasks.priorityMedium",
@@ -57,24 +56,55 @@ const scheduleLabelMap = {
   ANNUAL: "tasks.scheduleAnnual",
   ADHOC: "tasks.scheduleAdhoc",
 };
-const recurrenceLabelMap = {
-  NONE: "tasks.recurrenceNone",
-  DAILY: "tasks.recurrenceDaily",
-  WEEKLY: "tasks.recurrenceWeekly",
-  MONTHLY: "tasks.recurrenceMonthly",
-  ANNUAL: "tasks.recurrenceAnnual",
+
+const MY_TASKS_PARAMS = { my_tasks: "true" };
+const ALL_TASKS_PARAMS = {};
+
+// Helper to get current GPS location
+const getLocation = () =>
+  new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
+  });
+
+// Format seconds to HH:MM:SS
+const formatDuration = (seconds) => {
+  if (!seconds && seconds !== 0) return "00:00:00";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+};
+
+// Format time for display
+const formatTime = (iso) => {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
 export default function Tasks() {
   const { t } = useTranslation();
-  const { hasRole } = useAuth();
+  const { hasRole, user: currentUser } = useAuth();
   const canManage = hasRole("SUPER_ADMIN", "FARM_MANAGER");
   const isEmployee = hasRole("EMPLOYEE");
   const [now, setNow] = useState(Date.now());
   const [myTasksOnly, setMyTasksOnly] = useState(false);
+  const [toasts, addToast, removeToast] = useToast();
+  const timerRef = useRef(null);
 
-  // Employees can only create tasks for themselves — hide the "assign to others"
-  // fields. Managers/admins can assign to any user or worker.
+  // Tick every second for live timer
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Auto-refresh task list to get latest execution status
+  const [refreshKey, setRefreshKey] = useState(0);
+
   const assignFields = isEmployee
     ? []
     : [
@@ -82,517 +112,608 @@ export default function Tasks() {
         { name: "assigned_employee", label: t("tasks.assignToWorker"), optionsFrom: { path: "workforce/employees", label: (e) => e.name } },
       ];
 
-  // Tick every 30s to refresh elapsed times
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 30000);
-    return () => clearInterval(id);
-  }, []);
+  // ── Workflow Action Modal State ──
+  const [actionModal, setActionModal] = useState(null); // { type, task, execution, onSuccess }
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState(null);
+  const [actionPos, setActionPos] = useState(null);
+  const [actionPhoto, setActionPhoto] = useState(null);
+  const [actionPhotoPreview, setActionPhotoPreview] = useState(null);
+  const [actionNotes, setActionNotes] = useState("");
+  const [actionProgress, setActionProgress] = useState(0);
 
-  const act = async (id, verb, reload) => {
-    await repo.action(id, verb);
-    reload();
+  // ── Complete Confirmation Modal ──
+  const [completeConfirm, setCompleteConfirm] = useState(false);
+
+  // Open action modal with GPS
+  const openActionModal = async (type, task, execution, onSuccess) => {
+    setActionModal({ type, task, execution, onSuccess });
+    setActionError(null);
+    setActionNotes("");
+    setActionProgress(execution?.progress_percentage || 0);
+    setActionPhoto(null);
+    setActionPhotoPreview(null);
+    setCompleteConfirm(false);
+
+    const loc = await getLocation();
+    setActionPos(loc);
   };
 
-  // Success/error toasts for the work-proof flow
-  const [toasts, addToast, removeToast] = useToast();
-
-  // ── Work-proof modal (Before / During / Completed Work) ──────────────
-  const [workModal, setWorkModal] = useState(null); // { row, phase, reload }
-  const [workPhoto, setWorkPhoto] = useState(null);
-  const [workPhotoPreview, setWorkPhotoPreview] = useState(null);
-  const [workPos, setWorkPos] = useState(null);
-  const [workPosLoading, setWorkPosLoading] = useState(false);
-  const [workSaving, setWorkSaving] = useState(false);
-  const [workError, setWorkError] = useState(null);
-  const [workNotes, setWorkNotes] = useState("");
-
-  const fetchWorkLocation = () => {
-    if (!navigator.geolocation) {
-      setWorkError(t("gps.noLocation"));
-      return;
-    }
-    setWorkError(null);
-    setWorkPosLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setWorkPos({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-        });
-        setWorkPosLoading(false);
-      },
-      () => {
-        setWorkPosLoading(false);
-        setWorkError(t("gps.noLocation"));
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
-    );
-  };
-
-  const openWorkModal = (row, phase, reload) => {
-    setWorkModal({ row, phase, reload });
-    setWorkPhoto(null);
-    setWorkPhotoPreview(null);
-    setWorkError(null);
-    setWorkNotes("");
-    setWorkPos(null);
-    fetchWorkLocation();
-  };
-
-  const handleWorkPhotoChange = (e) => {
+  // Handle photo selection
+  const handlePhotoChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setWorkPhoto(file);
+    setActionPhoto(file);
     const reader = new FileReader();
-    reader.onloadend = () => setWorkPhotoPreview(reader.result);
+    reader.onloadend = () => setActionPhotoPreview(reader.result);
     reader.readAsDataURL(file);
   };
 
-  const submitWork = async () => {
-    if (!workModal || !workPos) return;
-    setWorkSaving(true);
-    setWorkError(null);
+  // Submit workflow action
+  const submitAction = async () => {
+    if (!actionModal) return;
+    setActionLoading(true);
+    setActionError(null);
+
     try {
-      const data = {
-        latitude: Number(workPos.lat.toFixed(6)),
-        longitude: Number(workPos.lng.toFixed(6)),
-        accuracy: workPos.accuracy != null ? Math.round(workPos.accuracy) : null,
-        activity: workPhaseConfig[workModal.phase].activity,
-        task: workModal.row.id,
-        notes: workNotes.trim() || "",
+      const { type, task, execution, onSuccess } = actionModal;
+      let result;
+
+      const gpsData = {
+        gps_lat: actionPos?.lat ? Number(actionPos.lat.toFixed(6)) : null,
+        gps_lng: actionPos?.lng ? Number(actionPos.lng.toFixed(6)) : null,
       };
-      await pingsRepo.create(workPhoto ? toFormData({ ...data, photo: workPhoto }) : data);
-      const phase = workModal.phase;
-      const reload = workModal.reload;
-      setWorkModal(null);
-      reload();
-      const successKey = {
-        BEFORE: "tasks.beforeWorkSaved",
-        SUBMITTED: "tasks.duringWorkSaved",  // During Work from SUBMITTED phase
-        DURING: "tasks.duringWorkSaved",
-        COMPLETED: "tasks.workCompleted",
-      }[phase];
-      addToast(t(successKey), "success");
+
+      switch (type) {
+        case "CONFIRM":
+          result = await execRepo.action(execution.id, "confirm");
+          addToast(t("tasks.confirmedSuccess"), "success");
+          break;
+
+        case "START":
+          result = await execRepo.action(execution.id, "start", gpsData);
+          addToast(t("tasks.startedSuccess"), "success");
+          break;
+
+        case "BREAK":
+          result = await execRepo.action(execution.id, "break_work", gpsData);
+          addToast(t("tasks.breakStarted"), "success");
+          break;
+
+        case "RESUME":
+          result = await execRepo.action(execution.id, "resume", {});
+          addToast(t("tasks.resumedSuccess"), "success");
+          break;
+
+        case "PROGRESS":
+          const progressData = {
+            ...gpsData,
+            progress_percentage: actionProgress,
+            remarks: actionNotes,
+          };
+          if (actionPhoto) {
+            result = await api.post(`/tasks/executions/${execution.id}/progress/`,
+              toFormData({ ...progressData, photo: actionPhoto })
+            );
+          } else {
+            result = await execRepo.action(execution.id, "progress", progressData);
+          }
+          addToast(t("tasks.progressSaved"), "success");
+          break;
+
+        case "COMPLETE":
+          // Show confirmation first
+          if (!completeConfirm) {
+            setCompleteConfirm(true);
+            setActionLoading(false);
+            return;
+          }
+          const completeData = {
+            ...gpsData,
+            completion_notes: actionNotes,
+          };
+          if (actionPhoto) {
+            result = await api.post(`/tasks/executions/${execution.id}/complete/`,
+              toFormData({ ...completeData, completion_photo: actionPhoto })
+            );
+          } else {
+            result = await execRepo.action(execution.id, "complete", completeData);
+          }
+          addToast(t("tasks.completedSuccess"), "success");
+          break;
+
+        case "APPROVE":
+          result = await execRepo.action(execution.id, "approve");
+          addToast(t("tasks.approvedSuccess"), "success");
+          break;
+
+        case "RETURN":
+          result = await execRepo.action(execution.id, "return_task");
+          addToast(t("tasks.returnedSuccess"), "success");
+          break;
+
+        default:
+          throw new Error("Unknown action");
+      }
+
+      setActionModal(null);
+      if (onSuccess) onSuccess();
+      setRefreshKey(k => k + 1);
     } catch (err) {
-      setWorkError(err.response?.data?.detail || err.message);
+      setActionError(err.response?.data?.detail || err.message);
     } finally {
-      setWorkSaving(false);
+      setActionLoading(false);
     }
   };
 
-  const formatDuration = (minutes) => {
-    if (!minutes && minutes !== 0) return "—";
-    const totalSeconds = Math.round(minutes * 60);
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const s = totalSeconds % 60;
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  };
+  // Timer display component
+  const TaskTimer = ({ execution }) => {
+    if (!execution) return <span className="text-xs text-gray-300">—</span>;
 
-  const formatTime = (iso) => {
-    if (!iso) return "—";
-    const d = new Date(iso);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  };
+    const status = execution.status;
+    const startedAt = execution.started_at;
 
-  const TaskTimer = ({ row }) => {
-    const session = row.active_session;
-    const phase = row.work_phase || "BEFORE";
-    const onBreak = phase === "SUBMITTED";
-    const tracked = row.total_tracked_minutes;
-    
-    if (onBreak && tracked) {
-      return (
-        <div className="flex items-center gap-1.5">
+    if (!startedAt) return <span className="text-xs text-gray-300">00:00:00</span>;
+
+    // Calculate current duration from backend
+    const currentDuration = execution.current_duration_seconds ||
+      (execution.working_seconds || 0);
+
+    // Live timer calculation
+    let liveSeconds = currentDuration;
+    if (status === "IN_PROGRESS" && execution.started_at) {
+      const startTime = new Date(execution.started_at).getTime();
+      const elapsed = Math.floor((now - startTime) / 1000);
+      // Subtract break time if on break
+      const breakSeconds = execution.break_seconds || 0;
+      liveSeconds = Math.max(0, elapsed - breakSeconds);
+    }
+
+    const isOnBreak = status === "ON_BREAK";
+
+    return (
+      <div className="flex items-center gap-1.5">
+        {isOnBreak ? (
           <span className="relative flex h-2 w-2">
             <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400" />
           </span>
-          <span className="text-xs font-medium text-amber-700" title={t("tasks.onBreak")}>
-            {formatDuration(tracked)} ⏸
+        ) : status === "IN_PROGRESS" ? (
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
           </span>
-        </div>
-      );
-    }
-    
-    if (!session) {
-      return tracked ? (
-        <span className="text-xs text-gray-500" title={t("tasks.totalTracked")}>
-          {formatDuration(tracked)}
-        </span>
-      ) : (
-        <span className="text-xs text-gray-300">—</span>
-      );
-    }
-    const start = new Date(session.start_time);
-    const elapsed = Math.floor((Date.now() - start.getTime()) / 60000);
-    return (
-      <div className="flex items-center gap-1.5">
-        <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
-        </span>
-        <span className="text-xs font-medium text-green-700" title={t("tasks.startedAt", { time: formatTime(session.start_time) })}>
-          {formatDuration(elapsed)}
+        ) : null}
+        <span className={`text-xs font-mono font-medium ${
+          isOnBreak ? "text-amber-700" : status === "IN_PROGRESS" ? "text-green-700" : "text-gray-700"
+        }`}>
+          {formatDuration(liveSeconds)}
+          {isOnBreak && " ⏸"}
         </span>
       </div>
     );
+  };
+
+  // Get execution status display
+  const getExecutionStatus = (execution) => {
+    if (!execution) return null;
+    return (
+      <div className="flex flex-col gap-1">
+        <Badge color={statusColor[execution.status]}>
+          {t(statusLabelMap[execution.status] || execution.status)}
+        </Badge>
+        {execution.progress_percentage > 0 && (
+          <span className="text-xs text-gray-500">{execution.progress_percentage}%</span>
+        )}
+      </div>
+    );
+  };
+
+  // Get action buttons based on execution status
+  const getActionButtons = (task, execution, reload) => {
+    if (!execution) {
+      // No execution yet - show ASSIGNED buttons
+      return (
+        <>
+          <button
+            onClick={() => openActionModal("CONFIRM", task, execution, reload)}
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+            title={t("tasks.confirmWork")}
+          >
+            <Check size={14} />
+            {t("tasks.confirmWork")}
+          </button>
+        </>
+      );
+    }
+
+    const status = execution.status;
+    const isClosed = ["COMPLETED", "APPROVED", "REJECTED", "RETURNED"].includes(status);
+
+    if (isClosed) {
+      return (
+        <Badge color={statusColor[status]}>
+          {t(statusLabelMap[status] || status)}
+        </Badge>
+      );
+    }
+
+    switch (status) {
+      case "ASSIGNED":
+        return (
+          <>
+            <button
+              onClick={() => openActionModal("CONFIRM", task, execution, reload)}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+              title={t("tasks.confirmWork")}
+            >
+              <Check size={14} />
+              {t("tasks.confirmWork")}
+            </button>
+          </>
+        );
+
+      case "CONFIRMED":
+        return (
+          <>
+            <button
+              onClick={() => openActionModal("START", task, execution, reload)}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700"
+              title={t("tasks.startWork")}
+            >
+              <Play size={14} />
+              {t("tasks.startWork")}
+            </button>
+          </>
+        );
+
+      case "IN_PROGRESS":
+        return (
+          <>
+            <button
+              onClick={() => openActionModal("PROGRESS", task, execution, reload)}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
+              title={t("tasks.duringWork")}
+            >
+              <Camera size={14} />
+              {t("tasks.duringWork")}
+            </button>
+            <button
+              onClick={() => openActionModal("BREAK", task, execution, reload)}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600"
+              title={t("tasks.break")}
+            >
+              <Pause size={14} />
+              {t("tasks.break")}
+            </button>
+            <button
+              onClick={() => openActionModal("COMPLETE", task, execution, reload)}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
+              title={t("tasks.completeWork")}
+            >
+              <CheckCircle size={14} />
+              {t("tasks.completeWork")}
+            </button>
+          </>
+        );
+
+      case "ON_BREAK":
+        return (
+          <>
+            <button
+              onClick={() => openActionModal("RESUME", task, execution, reload)}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700"
+              title={t("tasks.resumeWork")}
+            >
+              <Play size={14} />
+              {t("tasks.resumeWork")}
+            </button>
+            <button
+              onClick={() => openActionModal("COMPLETE", task, execution, reload)}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
+              title={t("tasks.completeWork")}
+            >
+              <CheckCircle size={14} />
+              {t("tasks.completeWork")}
+            </button>
+          </>
+        );
+
+      case "WAITING_APPROVAL":
+        if (canManage) {
+          return (
+            <>
+              <button
+                onClick={() => openActionModal("APPROVE", task, execution, reload)}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700"
+                title={t("tasks.approve")}
+              >
+                <Check size={14} />
+                {t("tasks.approve")}
+              </button>
+              <button
+                onClick={() => openActionModal("RETURN", task, execution, reload)}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-orange-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-orange-600"
+                title={t("tasks.return")}
+              >
+                <RotateCcw size={14} />
+                {t("tasks.return")}
+              </button>
+            </>
+          );
+        }
+        return (
+          <Badge color="purple">
+            {t("tasks.waitingApproval")}
+          </Badge>
+        );
+
+      default:
+        return null;
+    }
   };
 
   return (
     <>
-    <CrudResource
-      title={t("tasks.titlePg")}
-      subtitle={t("tasks.subtitlePg")}
-      path="tasks"
-      canWrite
-      canEdit={canManage}
-      showFarmFilter
-      showUserFilter
-      listParams={myTasksOnly ? MY_TASKS_PARAMS : ALL_TASKS_PARAMS}
-      extraToolbar={
-        canManage && (
-          <Button
-            variant={myTasksOnly ? "primary" : "secondary"}
-            onClick={() => setMyTasksOnly((p) => !p)}
-            className="whitespace-nowrap"
-          >
-            <User size={15} />
-            {myTasksOnly ? t("tasks.myTasks") : t("tasks.allTasksBtn")}
-          </Button>
-        )
-      }
-      columns={(() => {
-        const cols = [
-          { key: "title", header: t("header.work") },
-          { key: "start_date", header: t("tasks.fieldStartDate") },
-          { key: "farm_name", header: t("header.farm") },
-          {
-            key: "priority",
-            header: t("header.priority"),
-            render: (r) => <Badge color={prioColor[r.priority]}>{t(prioLabelMap[r.priority] || r.priority)}</Badge>,
-          },
-          {
-            key: "schedule_type",
-            header: t("header.schedule"),
-            render: (r) => t(scheduleLabelMap[r.schedule_type] || r.schedule_type),
-          },
-          // Assign To User — hidden from employees
-          ...(isEmployee ? [] : [{
-            key: "assigned_to_name",
-            header: t("tasks.assignToUser"),
-            render: (r) => r.assigned_to_name || r.active_session?.user_name || r.active_session?.username || "—",
-          }]),
-          // Assign To Worker — hidden from employees
-          ...(isEmployee ? [] : [{
-            key: "assigned_employee_name",
-            header: t("tasks.assignToWorker"),
-            render: (r) => r.assigned_employee_name || "—",
-          }]),
-          {
-            key: "due_date",
-            header: t("header.dueDate"),
-            render: (r) =>
-              r.due_date ? (
-                <span className={r.is_overdue ? "font-semibold text-red-600" : ""}>
-                  {r.due_date}{r.is_overdue ? " ⚠" : ""}
-                </span>
-              ) : "—",
-          },
-          {
-            key: "progress",
-            header: t("header.progress"),
-            render: (r) => (
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-20 rounded-full bg-gray-200">
-                  <div className="h-2 rounded-full bg-brand-500" style={{ width: `${r.progress || 0}%` }} />
-                </div>
-                <span className="text-xs text-gray-500">{r.progress || 0}%</span>
-              </div>
-            ),
-          },
-          {
-            key: "status",
-            header: t("header.status"),
-            render: (r) => <Badge color={statusColor[r.status]}>{t(statusLabelMap[r.status] || r.status)}</Badge>,
-          },
-          {
-            key: "timer",
-            header: t("header.timer"),
-            render: (r) => <TaskTimer row={r} />,
-          },
-        ];
-        return cols;
-      })()}
-      rowActions={(row, reload) => {
-        const phase = row.work_phase || "BEFORE";
-        const isClosed = ["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status);
-        return (
-        <>
-          {/* =======================================================
-               Work-proof state machine (all users):
-               BEFORE     → Before Work (CHECKIN) — no timer, status stays.
-               CONFIRMED  → Submit (advances status to SUBMITTED).
-               SUBMITTED  → During Work / Break / Complete Work.
-               DURING     → Break (stop timer) / Complete Work.
-               COMPLETED  → Locked; show completed badge.
-               ======================================================= */}
-
-          {/* ── BEFORE: No CHECKIN yet — show "Before Work" button ── */}
-          {!isClosed && phase === "BEFORE" && (
-            <button
-              onClick={() => openWorkModal(row, "BEFORE", reload)}
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
-              title={t("gps.beforeWork")}
+      <CrudResource
+        key={refreshKey}
+        title={t("tasks.titlePg")}
+        subtitle={t("tasks.subtitlePg")}
+        path="tasks"
+        canWrite
+        canEdit={canManage}
+        showFarmFilter
+        showUserFilter
+        listParams={myTasksOnly ? MY_TASKS_PARAMS : ALL_TASKS_PARAMS}
+        extraToolbar={
+          canManage && (
+            <Button
+              variant={myTasksOnly ? "primary" : "secondary"}
+              onClick={() => setMyTasksOnly((p) => !p)}
+              className="whitespace-nowrap"
             >
-              <Camera size={14} />
-              {t("gps.beforeWork")}
-            </button>
-          )}
+              <User size={15} />
+              {myTasksOnly ? t("tasks.myTasks") : t("tasks.allTasksBtn")}
+            </Button>
+          )
+        }
+        columns={(() => {
+          const cols = [
+            { key: "title", header: t("header.work") },
+            { key: "start_date", header: t("tasks.fieldStartDate") },
+            { key: "farm_name", header: t("header.farm") },
+            {
+              key: "priority",
+              header: t("header.priority"),
+              render: (r) => <Badge color={prioColor[r.priority]}>{t(prioLabelMap[r.priority] || r.priority)}</Badge>,
+            },
+            {
+              key: "schedule_type",
+              header: t("header.schedule"),
+              render: (r) => t(scheduleLabelMap[r.schedule_type] || r.schedule_type),
+            },
+            ...(isEmployee ? [] : [{
+              key: "assigned_to_name",
+              header: t("tasks.assignToUser"),
+              render: (r) => r.assigned_to_name || "—",
+            }]),
+            ...(isEmployee ? [] : [{
+              key: "assigned_employee_name",
+              header: t("tasks.assignToWorker"),
+              render: (r) => r.assigned_employee_name || "—",
+            }]),
+            {
+              key: "due_date",
+              header: t("header.dueDate"),
+              render: (r) =>
+                r.due_date ? (
+                  <span className={r.is_overdue ? "font-semibold text-red-600" : ""}>
+                    {r.due_date}{r.is_overdue ? " ⚠" : ""}
+                  </span>
+                ) : "—",
+            },
+            {
+              key: "execution_status",
+              header: t("header.status"),
+              render: (r) => getExecutionStatus(r.my_execution),
+            },
+            {
+              key: "timer",
+              header: t("header.timer"),
+              render: (r) => <TaskTimer execution={r.my_execution} />,
+            },
+          ];
+          return cols;
+        })()}
+        rowActions={(row, reload) => {
+          const execution = row.my_execution;
+          return getActionButtons(row, execution, reload);
+        }}
+        fieldDependencies={[
+          { watch: "assigned_employee", target: "farm", mapField: "farm" }
+        ]}
+        fields={[
+          { name: "title", label: t("tasks.fieldWork"), required: true },
+          { name: "description", label: t("tasks.fieldDescription"), type: "textarea" },
+          { name: "farm", label: t("tasks.fieldFarm"), optionsFrom: { path: "farms", label: (f) => f.name }, required: true },
+          {
+            name: "priority",
+            label: t("tasks.fieldPriority"),
+            type: "select",
+            options: ["LOW", "MEDIUM", "HIGH", "URGENT"],
+          },
+          {
+            name: "schedule_type",
+            label: t("tasks.scheduleType"),
+            type: "select",
+            options: ["DAILY", "WEEKLY", "MONTHLY", "ANNUAL", "ADHOC"],
+          },
+          {
+            name: "recurrence",
+            label: t("tasks.fieldRecurrence"),
+            type: "select",
+            options: ["NONE", "DAILY", "WEEKLY", "MONTHLY", "ANNUAL"],
+          },
+          ...assignFields,
+          { name: "field", label: t("tasks.fieldField"), optionsFrom: { path: "farms/fields", label: (f) => f.name } },
+          { name: "category", label: t("tasks.fieldCategory") },
+          { name: "start_date", label: t("tasks.fieldStartDate"), type: "date" },
+          { name: "due_date", label: t("tasks.fieldDueDate"), type: "date" },
+        ]}
+      />
 
-          {/* ── CONFIRMED: CHECKIN done, waiting for Submit ── */}
-          {!isClosed && phase === "CONFIRMED" && (
-            <button
-              onClick={async () => {
-                await repo.action(row.id, "submit");
-                addToast(t("tasks.submittedSuccess"), "success");
-                reload();
-              }}
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700"
-              title={t("tasks.submit")}
-            >
-              <Send size={14} />
-              {t("tasks.submit")}
-            </button>
-          )}
-
-          {/* ── SUBMITTED: Timer stopped — show During Work, Break (start), Complete ── */}
-          {!isClosed && phase === "SUBMITTED" && (
-            <>
-              <button
-                onClick={() => openWorkModal(row, "SUBMITTED", reload)}
-                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                title={t("gps.duringWork")}
-              >
-                <Camera size={14} />
-                {t("gps.duringWork")}
+      {/* ── Workflow Action Modal ── */}
+      {actionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000] p-4">
+          <div className="bg-white rounded-xl w-full max-w-md shadow-xl relative z-[1001]">
+            <div className="p-6 border-b flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-800">
+                {actionModal.type === "CONFIRM" && t("tasks.confirmWork")}
+                {actionModal.type === "START" && t("tasks.startWork")}
+                {actionModal.type === "BREAK" && t("tasks.break")}
+                {actionModal.type === "RESUME" && t("tasks.resumeWork")}
+                {actionModal.type === "PROGRESS" && t("tasks.duringWork")}
+                {actionModal.type === "COMPLETE" && (completeConfirm ? t("tasks.confirmComplete") : t("tasks.completeWork"))}
+                {actionModal.type === "APPROVE" && t("tasks.approve")}
+                {actionModal.type === "RETURN" && t("tasks.return")}
+                {' — '}{actionModal.task.title}
+              </h3>
+              <button onClick={() => setActionModal(null)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
               </button>
-              <button
-                onClick={async () => { await repo.action(row.id, "start_work"); addToast(t("tasks.workResumed"), "success"); reload(); }}
-                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-700"
-                title={t("tasks.resumeTask")}
-              >
-                <span>▶</span>
-                {t("tasks.resumeTask")}
-              </button>
-              <button
-                onClick={() => openWorkModal(row, "COMPLETED", reload)}
-                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
-                title={t("gps.completedWork")}
-              >
-                <CheckCircle size={14} />
-                {t("gps.completedWork")}
-              </button>
-            </>
-          )}
-
-          {/* ── DURING: Timer running — show Break (stop timer) + Complete ── */}
-          {!isClosed && phase === "DURING" && (
-            <>
-              <button
-                onClick={async () => { await repo.action(row.id, "stop_work"); addToast(t("tasks.workPaused"), "success"); reload(); }}
-                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600"
-                title={t("tasks.break")}
-              >
-                <span>☕</span>
-                {t("tasks.break")}
-              </button>
-              <button
-                onClick={() => openWorkModal(row, "COMPLETED", reload)}
-                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
-                title={t("gps.completedWork")}
-              >
-                <CheckCircle size={14} />
-                {t("gps.completedWork")}
-              </button>
-            </>
-          )}
-
-          {/* ── COMPLETED: Done — show badge ── */}
-          {phase === "COMPLETED" && (
-            <Badge color="green">
-              <span className="inline-flex items-center gap-1">
-                <CheckCircle size={12} /> {t("tasks.statusCompleted")}
-              </span>
-            </Badge>
-          )}
-
-          {/* Admin workflow: verify / complete (only for statuses after SUBMITTED) */}
-          {canManage && row.status === "SUBMITTED" && (
-            <button onClick={() => act(row.id, "verify", reload)} className="rounded p-1.5 text-green-600 hover:bg-green-50" title={t("tasks.verify")}>
-              <Check size={15} />
-            </button>
-          )}
-          {canManage && row.status === "VERIFIED" && (
-            <button onClick={() => act(row.id, "complete", reload)} className="rounded p-1.5 text-green-700 hover:bg-green-50" title={t("tasks.complete")}>
-              <CheckCheck size={15} />
-            </button>
-          )}
-        </>
-        );
-      }}
-      fieldDependencies={[
-        { watch: "assigned_employee", target: "farm", mapField: "farm" }
-      ]}
-      fields={[
-        { name: "title", label: t("tasks.fieldWork"), required: true },
-        { name: "description", label: t("tasks.fieldDescription"), type: "textarea" },
-        { name: "farm", label: t("tasks.fieldFarm"), optionsFrom: { path: "farms", label: (f) => f.name }, required: true },
-        {
-          name: "priority",
-          label: t("tasks.fieldPriority"),
-          type: "select",
-          options: ["LOW", "MEDIUM", "HIGH", "URGENT"],
-        },
-        {
-          name: "schedule_type",
-          label: t("tasks.scheduleType"),
-          type: "select",
-          options: ["DAILY", "WEEKLY", "MONTHLY", "ANNUAL", "ADHOC"],
-        },
-        {
-          name: "recurrence",
-          label: t("tasks.fieldRecurrence"),
-          type: "select",
-          options: ["NONE", "DAILY", "WEEKLY", "MONTHLY", "ANNUAL"],
-        },
-        ...assignFields,
-        { name: "field", label: t("tasks.fieldField"), optionsFrom: { path: "farms/fields", label: (f) => f.name } },
-        { name: "category", label: t("tasks.fieldCategory") },
-        { name: "start_date", label: t("tasks.fieldStartDate"), type: "date" },
-        { name: "due_date", label: t("tasks.fieldDueDate"), type: "date" },
-      ]}
-    />
-
-    {/* Work-proof modal: location + photo for the selected task & phase */}
-    {workModal && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000] p-4">
-        <div className="bg-white rounded-xl w-full max-w-md shadow-xl relative z-[1001]">
-          <div className="p-6 border-b flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-800">
-              {t(workPhaseConfig[workModal.phase].labelKey)} — {workModal.row.title}
-            </h3>
-            <button
-              onClick={() => setWorkModal(null)}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <X size={20} />
-            </button>
-          </div>
-          <div className="p-6 space-y-4">
-            {workError && (
-              <div className="p-3 rounded-lg text-sm font-medium bg-red-50 text-red-700 ring-1 ring-red-200">
-                {workError}
-              </div>
-            )}
-
-            {/* Current location */}
-            {workPosLoading ? (
-              <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
-                <Loader2 size={16} className="animate-spin text-brand-600 mt-1" />
-                <p className="text-sm font-semibold text-gray-800">{t("common.gettingLocation")}</p>
-              </div>
-            ) : workPos ? (
-              <div className="flex items-start gap-3 rounded-lg bg-brand-50 p-3">
-                <MapPin size={16} className="text-brand-600 mt-1" />
-                <div>
-                  <p className="text-sm font-semibold text-gray-800">{t("gps.currentLocation")}</p>
-                  <p className="text-xs text-gray-600">
-                    {workPos.lat.toFixed(6)}, {workPos.lng.toFixed(6)}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between gap-3 rounded-lg bg-red-50 p-3 ring-1 ring-red-200">
-                <span className="text-sm text-gray-600">{t("common.couldNotGetLocation")}</span>
-                <Button variant="secondary" onClick={fetchWorkLocation}>
-                  <MapPin size={14} /> {t("common.retry", "Retry")}
-                </Button>
-              </div>
-            )}
-
-            {/* Optional notes */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">
-                {t("tasks.notes", "Notes")} <span className="text-gray-400">({t("common.optional")})</span>
-              </label>
-              <textarea
-                value={workNotes}
-                onChange={(e) => setWorkNotes(e.target.value)}
-                rows={2}
-                placeholder={t("tasks.notesPlaceholder", "Add notes about this work stage…")}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
-              />
             </div>
 
-            {/* Photo capture (required — work proof needs a photo) */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">
-                {t("common.workPhoto")} <span className="text-red-500">*</span>
-              </label>
-              {workPhotoPreview ? (
-                <div className="relative">
-                  <img src={workPhotoPreview} alt="Preview" className="w-full h-40 object-cover rounded-lg" />
-                  <button
-                    onClick={() => { setWorkPhoto(null); setWorkPhotoPreview(null); }}
-                    className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-70"
-                  >
-                    <X size={16} />
-                  </button>
+            <div className="p-6 space-y-4">
+              {actionError && (
+                <div className="p-3 rounded-lg text-sm font-medium bg-red-50 text-red-700 ring-1 ring-red-200">
+                  {actionError}
                 </div>
-              ) : (
-                <>
-                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+              )}
+
+              {/* GPS Location */}
+              {["START", "BREAK", "RESUME", "PROGRESS", "COMPLETE"].includes(actionModal.type) && (
+                actionPos ? (
+                  <div className="flex items-start gap-3 rounded-lg bg-brand-50 p-3">
+                    <MapPin size={16} className="text-brand-600 mt-1" />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{t("gps.currentLocation")}</p>
+                      <p className="text-xs text-gray-600">
+                        {actionPos.lat.toFixed(6)}, {actionPos.lng.toFixed(6)}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3 rounded-lg bg-red-50 p-3 ring-1 ring-red-200">
+                    <span className="text-sm text-gray-600">{t("common.couldNotGetLocation")}</span>
+                  </div>
+                )
+              )}
+
+              {/* Progress slider for DURING WORK */}
+              {actionModal.type === "PROGRESS" && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    {t("tasks.progress")}: {actionProgress}%
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={actionProgress}
+                    onChange={(e) => setActionProgress(Number(e.target.value))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                </div>
+              )}
+
+              {/* Notes */}
+              {["PROGRESS", "COMPLETE"].includes(actionModal.type) && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    {t("tasks.notes")} <span className="text-gray-400">({t("common.optional")})</span>
+                  </label>
+                  <textarea
+                    value={actionNotes}
+                    onChange={(e) => setActionNotes(e.target.value)}
+                    rows={3}
+                    placeholder={t("tasks.notesPlaceholder")}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+                  />
+                </div>
+              )}
+
+              {/* Photo */}
+              {["PROGRESS", "COMPLETE"].includes(actionModal.type) && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    {t("common.photo")} <span className="text-gray-400">({t("common.optional")})</span>
+                  </label>
+                  {actionPhotoPreview ? (
+                    <div className="relative">
+                      <img src={actionPhotoPreview} alt="Preview" className="w-full h-40 object-cover rounded-lg" />
+                      <button
+                        onClick={() => { setActionPhoto(null); setActionPhotoPreview(null); }}
+                        className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-70"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
                       <Camera size={24} className="text-gray-400 mb-2" />
                       <p className="text-sm text-gray-500">{t("gps.clickPhoto")}</p>
+                      <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handlePhotoChange} />
+                    </label>
+                  )}
+                </div>
+              )}
+
+              {/* Completion confirmation */}
+              {completeConfirm && actionModal.type === "COMPLETE" && (
+                <div className="p-4 rounded-lg bg-amber-50 border border-amber-200">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle size={20} className="text-amber-600 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-amber-800">{t("tasks.confirmComplete")}</p>
+                      <p className="text-sm text-amber-700 mt-1">{t("tasks.cannotUndo")}</p>
                     </div>
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept="image/*"
-                      capture="environment"
-                      onChange={handleWorkPhotoChange}
-                    />
-                  </label>
-                  <p className="text-xs font-medium text-red-500">{t("tasks.photoRequired")}</p>
-                </>
+                  </div>
+                </div>
               )}
             </div>
-          </div>
-          <div className="p-6 border-t flex gap-3 justify-end">
-            <Button variant="secondary" onClick={() => setWorkModal(null)} disabled={workSaving}>
-              {t("gps.cancel")}
-            </Button>
-            <Button onClick={submitWork} disabled={workSaving || !workPos || !workPhoto}>
-              {workSaving ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 size={16} className="animate-spin" />
-                  {t("common.saving")}
-                </span>
-              ) : (
-                <span className="flex items-center gap-2">
-                  <Check size={16} />
-                  {t("common.submit")}
-                </span>
-              )}
-            </Button>
+
+            <div className="p-6 border-t flex gap-3 justify-end">
+              <Button variant="secondary" onClick={() => setActionModal(null)} disabled={actionLoading}>
+                {t("common.cancel")}
+              </Button>
+              <Button
+                onClick={submitAction}
+                disabled={actionLoading}
+                variant={actionModal.type === "COMPLETE" ? "primary" : "primary"}
+              >
+                {actionLoading ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 size={16} className="animate-spin" />
+                    {t("common.saving")}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    {actionModal.type === "CONFIRM" && <><Check size={16} />{t("tasks.confirmWork")}</>}
+                    {actionModal.type === "START" && <><Play size={16} />{t("tasks.startWork")}</>}
+                    {actionModal.type === "BREAK" && <><Pause size={16} />{t("tasks.break")}</>}
+                    {actionModal.type === "RESUME" && <><Play size={16} />{t("tasks.resumeWork")}</>}
+                    {actionModal.type === "PROGRESS" && <><Camera size={16} />{t("tasks.saveProgress")}</>}
+                    {actionModal.type === "COMPLETE" && (completeConfirm ? <><CheckCircle size={16} />{t("common.yes")}</> : <><CheckCircle size={16} />{t("tasks.completeWork")}</>)}
+                    {actionModal.type === "APPROVE" && <><Check size={16} />{t("tasks.approve")}</>}
+                    {actionModal.type === "RETURN" && <><RotateCcw size={16} />{t("tasks.return")}</>}
+                  </span>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
-    )}
+      )}
 
-    <ToastContainer toasts={toasts} onClose={removeToast} />
+      <ToastContainer toasts={toasts} onClose={removeToast} />
     </>
   );
 }

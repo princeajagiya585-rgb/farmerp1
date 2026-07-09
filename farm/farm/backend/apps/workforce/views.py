@@ -161,6 +161,8 @@ class WorkforceAllocationViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixi
 class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = Attendance.objects.select_related(
         "employee", "farm", "approved_by"
+    ).filter(
+        check_in_time__isnull=False
     ).all()
     serializer_class = AttendanceSerializer
     farm_lookup = "farm_id"
@@ -169,9 +171,6 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
     readonly_roles = []
     filterset_fields = ["employee", "farm", "date", "status", "approval_status"]
     search_fields = ["remarks"]
-
-    # How many past days get an automatic ABSENT record when missing.
-    ABSENT_BACKFILL_DAYS = 30
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -183,48 +182,6 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         if date_before:
             qs = qs.filter(date__lte=date_before)
         return qs
-
-    def list(self, request, *args, **kwargs):
-        self._backfill_absent_days()
-        return super().list(request, *args, **kwargs)
-
-    def _backfill_absent_days(self):
-        """Ensure every active employee has an attendance row per PAST day.
-
-        Today's row is deliberately NOT created here — it only appears when the
-        employee actually checks in (see ``_do_check_in``). Past days with no
-        check-in stay ABSENT automatically. Managers/admins can edit any row
-        manually. Idempotent and cheap: only missing (employee, date) pairs
-        inside the window are created.
-        """
-        today = timezone.localdate()
-        window_start = today - timedelta(days=self.ABSENT_BACKFILL_DAYS)
-        employees = list(Employee.objects.filter(is_active=True).select_related("farm"))
-        if not employees:
-            return
-        existing = set(
-            Attendance.objects.filter(date__gte=window_start, date__lt=today)
-            .values_list("employee_id", "date")
-        )
-        missing = []
-        for emp in employees:
-            start = window_start
-            if emp.created_at:
-                start = max(window_start, timezone.localtime(emp.created_at).date())
-            d = start
-            while d < today:
-                if (emp.id, d) not in existing:
-                    missing.append(
-                        Attendance(
-                            employee=emp,
-                            farm=emp.farm,
-                            date=d,
-                            status=Attendance.Status.ABSENT,
-                        )
-                    )
-                d += timedelta(days=1)
-        if missing:
-            Attendance.objects.bulk_create(missing, ignore_conflicts=True)
 
     @action(detail=False, methods=["post"])
     def check_in(self, request):
@@ -334,16 +291,28 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
 
         Sets GPS coordinates, computes distance from the farm centre, and uses
         geofence rules to auto-approve or fail the check-in.
+        Creates attendance record ONLY on successful check-in.
         """
         att_date, check_in_dt = self._resolve_attendance_datetime(request)
-        attendance, _created = Attendance.objects.get_or_create(
-            employee=employee,
-            date=att_date,
-            defaults={"farm": employee.farm, "created_by": request.user},
-        )
-        # Don't silently overwrite an existing check-in for that date.
-        if not _created and attendance.check_in_time is not None:
-            return attendance
+
+        # Check if attendance already exists for this date
+        existing = Attendance.objects.filter(employee=employee, date=att_date).first()
+        if existing and existing.check_in_time is not None:
+            # Already checked in - return existing record
+            return existing
+
+        # Create or get attendance record
+        if existing:
+            attendance = existing
+            attendance.farm = employee.farm
+            attendance.created_by = request.user
+        else:
+            attendance = Attendance.objects.create(
+                employee=employee,
+                farm=employee.farm,
+                date=att_date,
+                created_by=request.user,
+            )
 
         attendance.check_in_time = check_in_dt
         attendance.status = Attendance.Status.PRESENT
@@ -370,20 +339,24 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
                 )
                 attendance.check_in_distance = round(distance, 2)
 
-            # Try all configured geofences first (polygon + radius)
-            inside = location_inside_farm(farm, lat, lng)
-
-            if inside is True:
-                attendance.approval_status = Attendance.ApprovalStatus.APPROVED
-            elif inside is False:
-                attendance.approval_status = Attendance.ApprovalStatus.FAILED
-            elif distance is not None:
-                # No geofence configured — fall back to farm centre + radius
-                radius = getattr(farm, "check_in_radius", 100) or 100
+            # Determine geofence_status: YES if inside, NO if outside
+            # Use farm's check_in_radius as the geofence boundary
+            radius = getattr(farm, "check_in_radius", 100) or 100
+            if distance is not None:
                 if distance <= radius:
+                    attendance.geofence_status = True
                     attendance.approval_status = Attendance.ApprovalStatus.APPROVED
                 else:
+                    attendance.geofence_status = False
                     attendance.approval_status = Attendance.ApprovalStatus.FAILED
+            else:
+                # No farm coordinates - cannot determine geofence status
+                attendance.geofence_status = None
+                attendance.approval_status = Attendance.ApprovalStatus.PENDING
+        else:
+            # No GPS coordinates provided
+            attendance.geofence_status = None
+            attendance.approval_status = Attendance.ApprovalStatus.PENDING
 
         attendance.save()
         return attendance
@@ -412,6 +385,21 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         check_out_photo = request.FILES.get("check_out_photo")
         if check_out_photo:
             attendance.check_out_photo = check_out_photo
+
+        # Calculate geofence status based on check-out GPS
+        out_lat = request.data.get("check_out_lat")
+        out_lng = request.data.get("check_out_lng")
+        if out_lat is not None and out_lng is not None:
+            farm = attendance.employee.farm
+            if farm.latitude is not None and farm.longitude is not None:
+                distance = haversine_m(
+                    float(farm.latitude), float(farm.longitude),
+                    float(out_lat), float(out_lng)
+                )
+                radius = getattr(farm, "check_in_radius", 100) or 100
+                # Update geofence_status based on check-out location
+                # This overrides check-in status if check-out is provided
+                attendance.geofence_status = distance <= radius
 
         attendance.save()
 
@@ -570,6 +558,81 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
 
         rows.sort(key=lambda r: r["employee"])
         return Response({"count": len(rows), "rows": rows})
+
+    @action(detail=False, methods=["post"])
+    def mark_absent(self, request):
+        """Mark all employees without attendance for a given date as ABSENT.
+
+        This should be run at end of day to mark employees who didn't check in as Absent.
+        Only creates ABSENT records for employees who have NO attendance for the date.
+        """
+        if request.user.role not in (Role.SUPER_ADMIN, Role.FARM_MANAGER):
+            return Response({"detail": "Not authorized."}, status=403)
+
+        target_date = request.data.get("date")
+        if target_date:
+            from django.utils.dateparse import parse_date
+            target_date = parse_date(target_date)
+        else:
+            target_date = timezone.localdate()
+
+        if not target_date:
+            return Response({"detail": "Invalid date."}, status=400)
+
+        # Get all employees
+        user = request.user
+        if user.role == Role.SUPER_ADMIN:
+            employees = Employee.objects.select_related("farm").all()
+        else:
+            farm_ids = list(user.farms.values_list("id", flat=True))
+            employees = Employee.objects.select_related("farm").filter(farm_id__in=farm_ids) if farm_ids else Employee.objects.none()
+
+        marked_count = 0
+        for employee in employees:
+            # Check if attendance exists for this date
+            existing = Attendance.objects.filter(employee=employee, date=target_date).first()
+            if not existing:
+                # Create absent attendance record
+                Attendance.objects.create(
+                    employee=employee,
+                    farm=employee.farm,
+                    date=target_date,
+                    status=Attendance.Status.ABSENT,
+                    approval_status=Attendance.ApprovalStatus.APPROVED,
+                    created_by=request.user,
+                )
+                marked_count += 1
+
+        return Response({
+            "date": str(target_date),
+            "marked_absent": marked_count,
+            "message": f"Marked {marked_count} employees as absent for {target_date}"
+        })
+
+    @action(detail=False, methods=["get"])
+    def today_status(self, request):
+        """Get today's attendance status for a specific employee.
+
+        Returns attendance record if exists (including no check-in yet),
+        used by frontend to show current status card.
+        """
+        employee_id = request.query_params.get("employee")
+        if not employee_id:
+            return Response({"detail": "employee parameter required."}, status=400)
+
+        today = timezone.localdate()
+        attendance = Attendance.objects.filter(
+            employee_id=employee_id,
+            date=today
+        ).select_related("employee", "farm").first()
+
+        if not attendance:
+            return Response({"has_attendance": False})
+
+        serializer = self.get_serializer(attendance, context={'request': request})
+        data = serializer.data
+        data["has_attendance"] = True
+        return Response(data)
 
 
 class DepartmentViewSet(BaseModelViewSet):

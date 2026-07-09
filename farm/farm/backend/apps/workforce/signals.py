@@ -6,7 +6,7 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 from apps.accounts.models import User, Role
-from .models import Employee, EmploymentHistory, Attendance, Availability
+from .models import Employee, EmploymentHistory, Availability
 
 
 @receiver(post_save, sender=Employee)
@@ -16,7 +16,9 @@ def employee_created(sender, instance, created, **kwargs):
     """When Employee/Labour is created:
     1. Create EmploymentHistory entry with JOINED event
     2. Create Availability record as AVAILABLE from joining date
-    3. Create Attendance record for joining date with PRESENT status
+
+    NOTE: Attendance records are NOT auto-created.
+    Attendance is created ONLY when employee performs Check In.
     """
     if created:
         effective_date = instance.date_of_joining or timezone.now().date()
@@ -38,24 +40,6 @@ def employee_created(sender, instance, created, **kwargs):
             status=Availability.Status.AVAILABLE,
             reason="New employee / labour joined"
         )
-
-        # Create attendance for the joining date only when they join TODAY, so a
-        # back-dated employee doesn't get a phantom paid work-day injected into a
-        # past payroll period. Guard against a unique-constraint race (a check-in
-        # may already have created today's attendance) breaking the Employee save.
-        if effective_date == timezone.localdate():
-            from django.db import IntegrityError, transaction
-            try:
-                with transaction.atomic():
-                    Attendance.objects.create(
-                        employee=instance,
-                        farm=instance.farm,
-                        date=effective_date,
-                        status=Attendance.Status.PRESENT,
-                        approval_status=Attendance.ApprovalStatus.APPROVED,
-                    )
-            except IntegrityError:
-                pass
 
 
 @receiver(post_save, sender=User)

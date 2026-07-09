@@ -157,7 +157,7 @@ class Attendance(OwnedModel):
     check_in_photo = models.ImageField(upload_to="attendance/", null=True, blank=True)
     check_out_photo = models.ImageField(upload_to="attendance/", null=True, blank=True)
     status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.ABSENT
+        max_length=20, choices=Status.choices, default=None, null=True, blank=True
     )
     approval_status = models.CharField(
         max_length=20, choices=ApprovalStatus.choices, default=ApprovalStatus.PENDING
@@ -172,6 +172,10 @@ class Attendance(OwnedModel):
     check_in_distance = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
         help_text="Distance from farm center in metres at check-in"
+    )
+    geofence_status = models.BooleanField(
+        null=True, blank=True,
+        help_text="True if GPS is inside farm geofence, False if outside, null if no GPS"
     )
     overtime_hours = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     remarks = models.TextField(blank=True)

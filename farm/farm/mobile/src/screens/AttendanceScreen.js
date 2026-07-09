@@ -14,6 +14,13 @@ import { ScreenContainer, Card, PrimaryButton, theme } from '../components/ui';
 import client from '../api/client';
 import { useOffline } from '../context/OfflineContext';
 
+// Repo for attendance - now fetches only checked-in records
+const attendanceRepo = {
+  list: (params) => client.get('/workforce/attendance/', { params }),
+  get: (id) => client.get(`/workforce/attendance/${id}/`),
+  create: (data) => client.post('/workforce/attendance/', data),
+};
+
 export default function AttendanceScreen() {
   const { enqueue } = useOffline();
   const [employees, setEmployees] = useState([]);
