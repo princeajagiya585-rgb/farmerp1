@@ -527,6 +527,7 @@ export default function Payroll() {
             <Input label={t("header.days")} type="number" value={editSlipForm.days_worked || ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, days_worked: e.target.value })} />
             <Input label={t("header.gross")} type="number" value={editSlipForm.gross_wage || ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, gross_wage: e.target.value })} />
             <Input label={t("header.ot")} type="number" value={editSlipForm.overtime_amount || ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, overtime_amount: e.target.value })} />
+            <Input label="Incentive" type="number" value={editSlipForm.incentive_amount || ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, incentive_amount: e.target.value })} />
             <Input label={t("header.advances")} type="number" value={editSlipForm.advance_deduction || ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, advance_deduction: e.target.value })} />
             <Input label={t("header.deductions")} type="number" value={editSlipForm.other_deductions || ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, other_deductions: e.target.value })} />
             <div>

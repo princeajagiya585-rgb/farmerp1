@@ -350,6 +350,7 @@ export default function Tasks() {
   // Get action buttons based on phase
   const getActionButtons = (row, reload) => {
     const phase = getWorkPhase(row);
+    console.log("Task row:", row, "phase:", phase, "status:", row.status);
     const isClosed = ["COMPLETED", "VERIFIED", "APPROVED", "CANCELLED"].includes(row.status);
 
     if (isClosed) {
@@ -450,7 +451,15 @@ export default function Tasks() {
         );
 
       default:
-        return null;
+        return (
+          <button
+            onClick={() => openWorkModal(row, "BEFORE", reload)}
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+          >
+            <Camera size={14} />
+            {t("gps.beforeWork")}
+          </button>
+        );
     }
   };
 

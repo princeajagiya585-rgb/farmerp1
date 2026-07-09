@@ -210,6 +210,10 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
             TaskWorkSession.objects.filter(
                 task=task, user=ping.user, end_time__isnull=True
             ).update(end_time=timezone.now())
+            # Set task status to ON_BREAK
+            if task.status != Task.Status.ON_BREAK:
+                task.status = Task.Status.ON_BREAK
+                task.save(update_fields=["status", "updated_at"])
         elif ping.activity == LocationPing.Activity.RESUME:
             # Start a new work session after break (timer continues from paused value)
             has_active = TaskWorkSession.objects.filter(

@@ -267,7 +267,8 @@ export default function Attendance() {
       approval_status: row.approval_status,
       check_in_time: row.check_in_time,
       check_out_time: row.check_out_time,
-      remarks: row.remarks || ""
+      remarks: row.remarks || "",
+      overtime_hours: row.overtime_hours || 0
     });
     setEditModalOpen(true);
   };
@@ -362,16 +363,20 @@ export default function Attendance() {
                   ) : (
                     <Badge color="gray">{t("common.notCheckedIn")}</Badge>
                   )}
-                  <Badge color={statusColor[todayAttendance?.status] || "gray"}>
-                    {t(`attendance.${statusLabelMap[todayAttendance?.status] || todayAttendance?.status || "absent"}`)}
-                  </Badge>
-                  <Badge color={apprColor[todayAttendance?.approval_status] || "yellow"}>
-                    {t(`attendance.${apprLabelMap[todayAttendance?.approval_status] || todayAttendance?.approval_status || "pendingOption"}`)}
-                  </Badge>
-                  {todayAttendance?.geofence_status == true && (
+                  {todayAttendance?.status && (
+                    <Badge color={statusColor[todayAttendance.status]}>
+                      {t(`attendance.${statusLabelMap[todayAttendance.status] || todayAttendance.status}`)}
+                    </Badge>
+                  )}
+                  {todayAttendance?.approval_status && (
+                    <Badge color={apprColor[todayAttendance.approval_status]}>
+                      {t(`attendance.${apprLabelMap[todayAttendance.approval_status] || todayAttendance.approval_status}`)}
+                    </Badge>
+                  )}
+                  {todayAttendance?.geofence_status === true && (
                     <Badge color="green">{t("gps.inFence")}</Badge>
                   )}
-                  {todayAttendance?.geofence_status == false && (
+                  {todayAttendance?.geofence_status === false && (
                     <Badge color="red">{t("gps.outside")}</Badge>
                   )}
                   {todayAttendance?.check_in_distance != null && (
@@ -621,6 +626,11 @@ export default function Attendance() {
               render: (r) => <Badge color={apprColor[r.approval_status]}>{t(`attendance.${apprLabelMap[r.approval_status] || r.approval_status}`)}</Badge>,
             },
             {
+              key: "overtime_hours",
+              header: t("header.otHrs"),
+              render: (r) => r.overtime_hours || "0"
+            },
+            {
               key: "_a",
               header: t("common.actions"),
               render: (r) => (
@@ -867,6 +877,16 @@ export default function Attendance() {
                       : ""
                   }
                   onChange={(e) => setEditForm({ ...editForm, check_out_time: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t("header.otHrs")}</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={editForm.overtime_hours}
+                  onChange={(e) => setEditForm({ ...editForm, overtime_hours: Number(e.target.value) })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
                 />
               </div>

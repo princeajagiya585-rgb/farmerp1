@@ -104,7 +104,6 @@ export default function Workforce() {
         subtitle={t("workforce.subtitle")}
         path="workforce/employees"
         canWrite={canWrite}
-        showEmployeeFilter
         showFarmFilter
         listParams={listParams}
         defaultValues={{ employee_code: `EMP-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}` }}
