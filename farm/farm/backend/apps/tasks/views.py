@@ -40,6 +40,9 @@ def _add_period(d, recurrence):
 class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = Task.objects.select_related(
         "farm", "field", "assigned_to", "assigned_employee", "verified_by"
+    ).prefetch_related(
+        "location_pings",
+        "work_sessions",
     ).all()
     serializer_class = TaskSerializer
     farm_lookup = "farm_id"

@@ -10,7 +10,7 @@ import axios from "axios";
 // any stale VITE_API_URL in the Vercel env.) In dev, keep the Vite proxy.
 const API_ORIGIN = import.meta.env.DEV
   ? (import.meta.env.VITE_API_URL || "").replace(/\/$/, "")
-  : "https://farmerp-api-production-1c9b.up.railway.app";
+  : "https://farmerp-backend-production.up.railway.app";
 const API_BASE = `${API_ORIGIN}/api/v1`;
 
 export const api = axios.create({ baseURL: API_BASE });
