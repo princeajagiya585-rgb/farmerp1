@@ -165,11 +165,18 @@ export default function Tasks() {
   };
 
   const submitWork = async () => {
-    if (!workModal || !workPos) return;
+    if (!workModal) return;
 
     // For COMPLETED phase, require confirmation
     if (workModal.phase === "COMPLETED" && !completeConfirm) {
       setCompleteConfirm(true);
+      return;
+    }
+
+    // BEFORE phase requires location + photo
+    if (workModal.phase === "BEFORE" && (!workPos || !workPhoto)) {
+      if (!workPos) setWorkError(t("gps.noLocation"));
+      if (!workPhoto) setWorkError(t("tasks.photoRequired"));
       return;
     }
 
@@ -180,9 +187,9 @@ export default function Tasks() {
       const activity = workPhaseConfig[phase]?.activity || "DURING_WORK";
 
       const data = {
-        latitude: Number(workPos.lat.toFixed(6)),
-        longitude: Number(workPos.lng.toFixed(6)),
-        accuracy: workPos.accuracy != null ? Math.round(workPos.accuracy) : null,
+        latitude: workPos ? Number(workPos.lat.toFixed(6)) : null,
+        longitude: workPos ? Number(workPos.lng.toFixed(6)) : null,
+        accuracy: workPos?.accuracy != null ? Math.round(workPos.accuracy) : null,
         activity: activity,
         task: workModal.row.id,
         notes: workNotes.trim() || "",
@@ -260,17 +267,31 @@ export default function Tasks() {
       );
     }
 
-    if (phase === "IN_PROGRESS" && session) {
-      const start = new Date(session.start_time);
-      const elapsed = Math.floor((Date.now() - start.getTime()) / 60000);
+    if (phase === "IN_PROGRESS") {
+      // Total = completed sessions + current live session
+      let totalMin = tracked || 0;
+      if (session) {
+        const elapsed = (Date.now() - new Date(session.start_time).getTime()) / 60000;
+        totalMin += elapsed;
+      }
+      const totalSeconds = Math.round(totalMin * 60);
+      const h = Math.floor(totalSeconds / 3600);
+      const m = Math.floor((totalSeconds % 3600) / 60);
+      const s = totalSeconds % 60;
       return (
         <div className="flex items-center gap-1.5">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
-          </span>
-          <span className="text-xs font-medium text-green-700" title={t("tasks.startedAt", { time: formatTime(session.start_time) })}>
-            {formatDuration(elapsed)}
+          {session ? (
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+            </span>
+          ) : (
+            <span className="relative flex h-2 w-2">
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+            </span>
+          )}
+          <span className={`text-xs font-medium ${session ? "text-green-700" : "text-gray-600"}`}>
+            {`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`}
           </span>
         </div>
       );
@@ -615,7 +636,7 @@ export default function Tasks() {
               </Button>
               <Button
                 onClick={submitWork}
-                disabled={workSaving || !workPos || (workModal.phase === "BEFORE" && !workPhoto)}
+                disabled={workSaving || (workModal.phase === "BEFORE" && (!workPos || !workPhoto))}
               >
                 {workSaving ? (
                   <span className="flex items-center gap-2">
