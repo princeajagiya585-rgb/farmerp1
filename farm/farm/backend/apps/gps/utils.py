@@ -170,7 +170,14 @@ def _try_nominatim(lat, lng):
 
 def location_inside_farm(farm, lat, lng):
     """Return True/False if a point is inside the farm's geofences, or None
-    if the farm or coordinates are missing (verification not possible)."""
+    if the farm or coordinates are missing (verification not possible).
+
+    Checks (in order):
+    1. Geofence model polygon entries
+    2. Geofence model center+radius entries
+    3. Farm.geofence polygon
+    4. Fallback: farm center + check_in_radius
+    """
     if farm is None or lat is None or lng is None:
         return None
     lat, lng = float(lat), float(lng)
@@ -190,5 +197,11 @@ def location_inside_farm(farm, lat, lng):
         has_fence = True
         if point_in_polygon(lat, lng, farm.geofence):
             return True
+
+    # Fallback: use farm's center coordinates + check_in_radius as a simple fence
+    if farm.latitude is not None and farm.longitude is not None:
+        radius = getattr(farm, "check_in_radius", 100) or 100
+        distance = haversine_m(lat, lng, float(farm.latitude), float(farm.longitude))
+        return distance <= radius
 
     return False if has_fence else None

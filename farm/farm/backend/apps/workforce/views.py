@@ -378,33 +378,31 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         if check_in_photo:
             attendance.check_in_photo = check_in_photo
 
-        # ── GPS Geofence Validation ─────────────────────────────────────
+        # ── GPS Geofence Validation (uses location_inside_farm) ───────────
         lat = request.data.get("check_in_lat")
         lng = request.data.get("check_in_lng")
         if lat is not None and lng is not None:
             lat, lng = float(lat), float(lng)
             farm = employee.farm
 
-            # Calculate distance from farm centre (if farm has coordinates)
-            distance = None
+            # Calculate distance from farm centre for display
             if farm.latitude is not None and farm.longitude is not None:
                 distance = haversine_m(
                     float(farm.latitude), float(farm.longitude), lat, lng
                 )
                 attendance.check_in_distance = round(distance, 2)
 
-            # Determine geofence_status: YES if inside, NO if outside
-            # Use farm's check_in_radius as the geofence boundary
-            radius = getattr(farm, "check_in_radius", 100) or 100
-            if distance is not None:
-                if distance <= radius:
-                    attendance.geofence_status = True
-                    attendance.approval_status = Attendance.ApprovalStatus.APPROVED
-                else:
-                    attendance.geofence_status = False
-                    attendance.approval_status = Attendance.ApprovalStatus.FAILED
+            # Use location_inside_farm for accurate geofence validation
+            # Checks Geofence model polygons, center+radius, farm polygon, then farm center+radius
+            is_inside = location_inside_farm(farm, lat, lng)
+            if is_inside is True:
+                attendance.geofence_status = True
+                attendance.approval_status = Attendance.ApprovalStatus.APPROVED
+            elif is_inside is False:
+                attendance.geofence_status = False
+                attendance.approval_status = Attendance.ApprovalStatus.FAILED
             else:
-                # No farm coordinates - cannot determine geofence status
+                # None means no fence config — cannot determine status
                 attendance.geofence_status = None
                 attendance.approval_status = Attendance.ApprovalStatus.PENDING
         else:
@@ -440,7 +438,8 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         if check_out_photo:
             attendance.check_out_photo = check_out_photo
 
-        # Calculate geofence status based on check-out GPS
+        # Calculate check-out location but do NOT overwrite geofence_status
+        # (geofence_status reflects check-in location; check-out just records position)
         out_lat = request.data.get("check_out_lat")
         out_lng = request.data.get("check_out_lng")
         if out_lat is not None and out_lng is not None:
@@ -450,10 +449,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
                     float(farm.latitude), float(farm.longitude),
                     float(out_lat), float(out_lng)
                 )
-                radius = getattr(farm, "check_in_radius", 100) or 100
-                # Update geofence_status based on check-out location
-                # This overrides check-in status if check-out is provided
-                attendance.geofence_status = distance <= radius
+                # Only save distance — do NOT update geofence_status (that stays as check-in result)
 
         attendance.save()
 

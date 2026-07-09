@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Camera, Check, CheckCircle, Loader2, MapPin, Pause, Play,
-  StopCircle, X, FileText, AlertCircle, Send
+  Camera, CheckCircle, Loader2, MapPin, Pause, Play,
+  X, AlertCircle
 } from "lucide-react";
 import CrudResource from "../components/CrudResource";
 import { Badge, Button, ToastContainer, useToast } from "../components/ui";
@@ -210,6 +210,23 @@ export default function Tasks() {
     }
   };
 
+  // Get work phase — uses backend-computed work_phase field, with
+  // fallback to local computation from location_pings for older backends.
+  const getWorkPhase = (row) => {
+    // Backend already computes work_phase — use it directly
+    if (row.work_phase) return row.work_phase;
+
+    // Fallback: compute from location_pings (legacy)
+    const pings = row.location_pings || [];
+    if (!pings.length) return "BEFORE";
+    const sorted = [...pings].sort((a, b) => new Date(b.recorded_at) - new Date(a.recorded_at));
+    const latest = sorted[0]?.activity;
+    if (latest === "CHECKOUT") return "COMPLETED";
+    if (latest === "BREAK") return "ON_BREAK";
+    if (["CHECKIN", "DURING_WORK", "RESUME"].includes(latest)) return "IN_PROGRESS";
+    return "BEFORE";
+  };
+
   // Timer component
   const TaskTimer = ({ row }) => {
     const session = row.active_session;
@@ -267,21 +284,6 @@ export default function Tasks() {
     ) : (
       <span className="text-xs text-gray-300">—</span>
     );
-  };
-
-  // Get work phase from location pings — based on LATEST activity
-  const getWorkPhase = (row) => {
-    const pings = row.location_pings || [];
-    if (!pings.length) return "BEFORE";
-
-    // Sort by recorded_at descending and check the latest activity
-    const sorted = [...pings].sort((a, b) => new Date(b.recorded_at) - new Date(a.recorded_at));
-    const latest = sorted[0]?.activity;
-
-    if (latest === "CHECKOUT") return "COMPLETED";
-    if (latest === "BREAK") return "ON_BREAK";
-    if (["CHECKIN", "DURING_WORK", "RESUME"].includes(latest)) return "IN_PROGRESS";
-    return "BEFORE";
   };
 
   // Get action buttons based on phase

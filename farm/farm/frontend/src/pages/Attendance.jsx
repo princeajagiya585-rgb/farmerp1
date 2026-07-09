@@ -368,6 +368,12 @@ export default function Attendance() {
                   <Badge color={apprColor[todayAttendance?.approval_status] || "yellow"}>
                     {t(`attendance.${apprLabelMap[todayAttendance?.approval_status] || todayAttendance?.approval_status || "pendingOption"}`)}
                   </Badge>
+                  {todayAttendance?.geofence_status == true && (
+                    <Badge color="green">{t("gps.inFence")}</Badge>
+                  )}
+                  {todayAttendance?.geofence_status == false && (
+                    <Badge color="red">{t("gps.outside")}</Badge>
+                  )}
                   {todayAttendance?.check_in_distance != null && (
                     <span className="flex items-center gap-1 text-xs text-gray-500">
                       <MapPin size={12} /> {todayAttendance.check_in_distance}m
