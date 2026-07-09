@@ -347,9 +347,17 @@ export default function Tasks() {
         );
 
       case "ON_BREAK":
-        // Show Resume Work and Complete Work
+        // Show During Work (optional), Start (resume), and Complete Work
         return (
           <>
+            <button
+              onClick={() => openWorkModal(row, "DURING_WORK", reload)}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
+              title={t("gps.duringWork")}
+            >
+              <Camera size={14} />
+              {t("gps.duringWork")}
+            </button>
             <button
               onClick={() => openWorkModal(row, "RESUME", reload)}
               className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700"
@@ -543,8 +551,8 @@ export default function Tasks() {
                 </div>
               )}
 
-              {/* Notes - for all phases */}
-              {["DURING_WORK", "COMPLETED"].includes(workModal.phase) && (
+              {/* Notes - for work phases */}
+              {["DURING_WORK", "BREAK", "RESUME", "COMPLETED"].includes(workModal.phase) && (
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700">
                     {t("tasks.notes")} <span className="text-gray-400">({t("common.optional")})</span>

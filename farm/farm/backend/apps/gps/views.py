@@ -166,8 +166,7 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
     def _advance_task_phase(ping):
         """Move the linked task through its work flow.
 
-        A Before-Work ping (CHECKIN) just records the confirmation — no timer
-        starts and status stays unchanged.
+        A Before-Work ping (CHECKIN) sets status to IN_PROGRESS and starts timer.
         A During-Work ping (DURING_WORK) starts the work timer if needed.
         A Break ping (BREAK) stops any active timer.
         A Resume ping (RESUME) starts the timer again.
@@ -178,7 +177,23 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
         task = ping.task
         if not task:
             return
-        if ping.activity == LocationPing.Activity.DURING_WORK:
+        if ping.activity == LocationPing.Activity.CHECKIN:
+            # Before Work: set task status to IN_PROGRESS and start the timer
+            if task.status in (Task.Status.TODO, Task.Status.ASSIGNED, ""):
+                task.status = Task.Status.IN_PROGRESS
+                task.save(update_fields=["status", "updated_at"])
+            # Start the work timer if the worker doesn't have one running.
+            has_active = TaskWorkSession.objects.filter(
+                task=task, user=ping.user, end_time__isnull=True
+            ).exists()
+            if not has_active:
+                TaskWorkSession.objects.create(
+                    task=task,
+                    user=ping.user,
+                    created_by=ping.user,
+                    start_time=timezone.now(),
+                )
+        elif ping.activity == LocationPing.Activity.DURING_WORK:
             # Start the work timer if the worker doesn't have one running.
             has_active = TaskWorkSession.objects.filter(
                 task=task, user=ping.user, end_time__isnull=True
@@ -196,7 +211,7 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
                 task=task, user=ping.user, end_time__isnull=True
             ).update(end_time=timezone.now())
         elif ping.activity == LocationPing.Activity.RESUME:
-            # Start a new work session after break
+            # Start a new work session after break (timer continues from paused value)
             has_active = TaskWorkSession.objects.filter(
                 task=task, user=ping.user, end_time__isnull=True
             ).exists()
@@ -207,6 +222,10 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
                     created_by=ping.user,
                     start_time=timezone.now(),
                 )
+            # Ensure task status is back to IN_PROGRESS
+            if task.status == Task.Status.ON_BREAK:
+                task.status = Task.Status.IN_PROGRESS
+                task.save(update_fields=["status", "updated_at"])
         elif ping.activity == LocationPing.Activity.CHECKOUT:
             # Stop every running timer on the task, then close it.
             TaskWorkSession.objects.filter(

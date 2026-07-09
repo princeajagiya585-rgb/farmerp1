@@ -5,9 +5,22 @@ from .models import Farm, Field, FarmDocument, FarmHistory
 
 @admin.register(Farm)
 class FarmAdmin(admin.ModelAdmin):
-    list_display = ("name", "code", "location", "total_area", "manager", "field_count")
+    list_display = ("name", "code", "location", "latitude", "longitude", "check_in_radius", "total_area", "manager", "field_count")
     search_fields = ("name", "code", "location")
     list_filter = ("is_active", "soil_type", "irrigation_type")
+    fieldsets = (
+        (None, {
+            "fields": ("name", "code", "location", "manager", "notes")
+        }),
+        ("Geofence / GPS Settings", {
+            "fields": ("latitude", "longitude", "check_in_radius", "geofence"),
+            "description": "Set farm center coordinates and check-in radius (in meters). Employees must be within this radius for geofence approval.",
+            "classes": ("wide", "collapse"),
+        }),
+        ("Area & Climate", {
+            "fields": ("total_area", "soil_type", "climate_zone", "irrigation_type", "established_date"),
+        }),
+    )
 
 
 @admin.register(Field)
