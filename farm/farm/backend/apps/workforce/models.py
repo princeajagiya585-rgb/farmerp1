@@ -125,11 +125,13 @@ class Attendance(OwnedModel):
         ABSENT = "ABSENT", "Absent"
         HALF_DAY = "HALF_DAY", "Half Day"
         LEAVE = "LEAVE", "Leave"
+        PRESENT_DONE = "PRESENT_DONE", "Present Done"
 
     class ApprovalStatus(models.TextChoices):
         PENDING = "PENDING", "Pending"
         APPROVED = "APPROVED", "Approved"
         REJECTED = "REJECTED", "Rejected"
+        FAILED = "FAILED", "Failed"
 
     employee = models.ForeignKey(
         Employee, on_delete=models.CASCADE, related_name="attendances"
@@ -166,6 +168,10 @@ class Attendance(OwnedModel):
         null=True,
         blank=True,
         related_name="approved_attendances",
+    )
+    check_in_distance = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Distance from farm center in metres at check-in"
     )
     overtime_hours = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     remarks = models.TextField(blank=True)

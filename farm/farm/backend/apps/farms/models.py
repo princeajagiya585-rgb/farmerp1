@@ -23,6 +23,7 @@ class Farm(TimeStampedModel):
     soil_type = models.CharField(max_length=100, blank=True)
     climate_zone = models.CharField(max_length=100, blank=True)
     irrigation_type = models.CharField(max_length=100, blank=True)
+    check_in_radius = models.IntegerField(default=100, help_text="Radius in meters for GPS check-in validation. Default 100m")
     notes = models.TextField(blank=True)
 
     class Meta:

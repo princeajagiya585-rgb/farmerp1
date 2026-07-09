@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from apps.core.mixins import BaseModelViewSet, EmployeeSelfScopedMixin
 from apps.accounts.models import Role
 from apps.farms.views import FarmScopedQuerysetMixin
+from apps.gps.utils import haversine_m, location_inside_farm
 
 from .models import (
     Employee,
@@ -328,7 +329,11 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         return att_date, check_in_dt
 
     def _do_check_in(self, employee, request):
-        """Shared check-in logic used by both `check_in` and `check_in_by_code`."""
+        """Shared check-in logic used by both `check_in` and `check_in_by_code`.
+
+        Sets GPS coordinates, computes distance from the farm centre, and uses
+        geofence rules to auto-approve or fail the check-in.
+        """
         att_date, check_in_dt = self._resolve_attendance_datetime(request)
         attendance, _created = Attendance.objects.get_or_create(
             employee=employee,
@@ -348,8 +353,38 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         check_in_photo = request.FILES.get("check_in_photo")
         if check_in_photo:
             attendance.check_in_photo = check_in_photo
-        attendance.save()
 
+        # ── GPS Geofence Validation ─────────────────────────────────────
+        lat = request.data.get("check_in_lat")
+        lng = request.data.get("check_in_lng")
+        if lat is not None and lng is not None:
+            lat, lng = float(lat), float(lng)
+            farm = employee.farm
+
+            # Calculate distance from farm centre (if farm has coordinates)
+            distance = None
+            if farm.latitude is not None and farm.longitude is not None:
+                distance = haversine_m(
+                    float(farm.latitude), float(farm.longitude), lat, lng
+                )
+                attendance.check_in_distance = round(distance, 2)
+
+            # Try all configured geofences first (polygon + radius)
+            inside = location_inside_farm(farm, lat, lng)
+
+            if inside is True:
+                attendance.approval_status = Attendance.ApprovalStatus.APPROVED
+            elif inside is False:
+                attendance.approval_status = Attendance.ApprovalStatus.FAILED
+            elif distance is not None:
+                # No geofence configured — fall back to farm centre + radius
+                radius = getattr(farm, "check_in_radius", 100) or 100
+                if distance <= radius:
+                    attendance.approval_status = Attendance.ApprovalStatus.APPROVED
+                else:
+                    attendance.approval_status = Attendance.ApprovalStatus.FAILED
+
+        attendance.save()
         return attendance
 
     @action(detail=True, methods=["post"])
@@ -362,6 +397,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         if attendance.check_out_time is not None:
             return Response({"detail": "Already checked out today."}, status=400)
         attendance.check_out_time = timezone.now()
+        attendance.status = Attendance.Status.PRESENT_DONE
         if request.data.get("overtime_hours") is not None:
             attendance.overtime_hours = request.data.get("overtime_hours")
         if request.data.get("check_out_lat") is not None:
@@ -488,7 +524,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             )
             row["marked"] += 1
             row["overtime_hours"] += float(att.overtime_hours or 0)
-            if att.status == Attendance.Status.PRESENT:
+            if att.status == Attendance.Status.PRESENT or att.status == Attendance.Status.PRESENT_DONE:
                 row["present"] += 1
             elif att.status == Attendance.Status.HALF_DAY:
                 row["half_day"] += 1

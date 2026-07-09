@@ -20,10 +20,10 @@ const getLocation = () =>
     );
   });
 
-const statusColor = { PRESENT: "green", ABSENT: "red", HALF_DAY: "yellow", LEAVE: "blue" };
-const apprColor = { PENDING: "yellow", APPROVED: "green", REJECTED: "red" };
-const statusLabelMap = { PRESENT: "present", ABSENT: "absent", HALF_DAY: "halfDay", LEAVE: "leave" };
-const apprLabelMap = { PENDING: "pendingOption", APPROVED: "approvedOption", REJECTED: "rejectedOption" };
+const statusColor = { PRESENT: "green", ABSENT: "red", HALF_DAY: "yellow", LEAVE: "blue", PRESENT_DONE: "purple" };
+const apprColor = { PENDING: "yellow", APPROVED: "green", REJECTED: "red", FAILED: "red" };
+const statusLabelMap = { PRESENT: "present", ABSENT: "absent", HALF_DAY: "halfDay", LEAVE: "leave", PRESENT_DONE: "presentDone" };
+const apprLabelMap = { PENDING: "pendingOption", APPROVED: "approvedOption", REJECTED: "rejectedOption", FAILED: "failedOption" };
 
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -350,12 +350,21 @@ export default function Attendance() {
                         <span className="flex items-center gap-1 text-xs text-blue-600">
                           <LogOut size={12} /> {t("attendance.out")}: {fmt(todayAttendance.check_out_time)}
                         </span>
-                      ) : (
-                        <Badge color="green">{t("common.currentlyActive")}</Badge>
-                      )}
+                      ) : null}
                     </>
                   ) : (
                     <Badge color="gray">{t("common.notCheckedIn")}</Badge>
+                  )}
+                  <Badge color={statusColor[todayAttendance?.status] || "gray"}>
+                    {t(`attendance.${statusLabelMap[todayAttendance?.status] || todayAttendance?.status || "absent"}`)}
+                  </Badge>
+                  <Badge color={apprColor[todayAttendance?.approval_status] || "yellow"}>
+                    {t(`attendance.${apprLabelMap[todayAttendance?.approval_status] || todayAttendance?.approval_status || "pendingOption"}`)}
+                  </Badge>
+                  {todayAttendance?.check_in_distance != null && (
+                    <span className="flex items-center gap-1 text-xs text-gray-500">
+                      <MapPin size={12} /> {todayAttendance.check_in_distance}m
+                    </span>
                   )}
                 </div>
               </div>

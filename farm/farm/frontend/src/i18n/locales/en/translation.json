@@ -736,6 +736,8 @@
   "attendance.absentOption": "Absent",
   "attendance.halfDayOption": "Half Day",
   "attendance.leaveOption": "Leave",
+  "attendance.presentDone": "Present Done",
+  "attendance.failedOption": "Failed",
   "attendance.pendingOption": "Pending",
   "attendance.approvedOption": "Approved",
   "attendance.rejectedOption": "Rejected",

@@ -42,7 +42,8 @@ class DashboardView(APIView):
         emp_qs = Employee.objects.filter(farm_id__in=farm_ids)
         att_qs = Attendance.objects.filter(farm_id__in=farm_ids)
         present_today = att_qs.filter(
-            date=today, status=Attendance.Status.PRESENT
+            date=today,
+            status__in=[Attendance.Status.PRESENT, Attendance.Status.PRESENT_DONE],
         ).count()
         absent_today = att_qs.filter(
             date=today, status=Attendance.Status.ABSENT
@@ -279,11 +280,11 @@ class DashboardView(APIView):
         ).values("employee__farm_id").annotate(cnt=Count("id")).values("cnt")
 
         # Subquery: everyone who completed a successful check-in today
-        # (status=PRESENT + check_in_time IS NOT NULL)
+        # (status=PRESENT or PRESENT_DONE + check_in_time IS NOT NULL)
         checkin_today_subquery = Attendance.objects.filter(
             employee__farm_id=OuterRef("id"),
             date=today,
-            status=Attendance.Status.PRESENT,
+            status__in=[Attendance.Status.PRESENT, Attendance.Status.PRESENT_DONE],
             check_in_time__isnull=False,
         ).values("employee__farm_id").annotate(cnt=Count("id")).values("cnt")
 
@@ -393,7 +394,7 @@ class AttendanceReportView(APIView):
         rows = (
             qs.values("date")
             .annotate(
-                present=Count("id", filter=Q(status=Attendance.Status.PRESENT)),
+                present=Count("id", filter=Q(status__in=[Attendance.Status.PRESENT, Attendance.Status.PRESENT_DONE])),
                 absent=Count("id", filter=Q(status=Attendance.Status.ABSENT)),
                 leave=Count("id", filter=Q(status=Attendance.Status.LEAVE)),
             )
