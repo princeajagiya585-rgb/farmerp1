@@ -40,6 +40,7 @@ class LocationPingSerializer(serializers.ModelSerializer):
     recorded_at = serializers.DateTimeField(required=False)
     location_verified = serializers.SerializerMethodField()
     location_name = serializers.SerializerMethodField()
+    notes = serializers.CharField(required=False, allow_blank=True)
     # NOTE: 'photo' is intentionally NOT declared as a SerializerMethodField.
     # We let DRF auto-generate it as an ImageField from the model so it can
     # accept file uploads (multipart → request.FILES). The to_representation

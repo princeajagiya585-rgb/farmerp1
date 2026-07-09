@@ -340,7 +340,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             return attendance
 
         attendance.check_in_time = check_in_dt
-        attendance.status = request.data.get("status", Attendance.Status.PRESENT)
+        attendance.status = Attendance.Status.PRESENT
         if request.data.get("check_in_lat") is not None:
             attendance.check_in_lat = request.data.get("check_in_lat")
         if request.data.get("check_in_lng") is not None:

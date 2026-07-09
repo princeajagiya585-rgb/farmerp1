@@ -155,7 +155,7 @@ class Attendance(OwnedModel):
     check_in_photo = models.ImageField(upload_to="attendance/", null=True, blank=True)
     check_out_photo = models.ImageField(upload_to="attendance/", null=True, blank=True)
     status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.PRESENT
+        max_length=20, choices=Status.choices, default=Status.ABSENT
     )
     approval_status = models.CharField(
         max_length=20, choices=ApprovalStatus.choices, default=ApprovalStatus.PENDING

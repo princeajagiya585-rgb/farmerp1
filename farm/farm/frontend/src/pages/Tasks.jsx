@@ -95,6 +95,7 @@ export default function Tasks() {
   const [workPosLoading, setWorkPosLoading] = useState(false);
   const [workSaving, setWorkSaving] = useState(false);
   const [workError, setWorkError] = useState(null);
+  const [workNotes, setWorkNotes] = useState("");
 
   const fetchWorkLocation = () => {
     if (!navigator.geolocation) {
@@ -125,6 +126,7 @@ export default function Tasks() {
     setWorkPhoto(null);
     setWorkPhotoPreview(null);
     setWorkError(null);
+    setWorkNotes("");
     setWorkPos(null);
     fetchWorkLocation();
   };
@@ -149,6 +151,7 @@ export default function Tasks() {
         accuracy: workPos.accuracy != null ? Math.round(workPos.accuracy) : null,
         activity: workPhaseConfig[workModal.phase].activity,
         task: workModal.row.id,
+        notes: workNotes.trim() || "",
       };
       await pingsRepo.create(workPhoto ? toFormData({ ...data, photo: workPhoto }) : data);
       const phase = workModal.phase;
@@ -170,10 +173,11 @@ export default function Tasks() {
 
   const formatDuration = (minutes) => {
     if (!minutes && minutes !== 0) return "—";
-    const h = Math.floor(minutes / 60);
-    const m = Math.round(minutes % 60);
-    if (h > 0) return `${h}h ${m}m`;
-    return `${m}m`;
+    const totalSeconds = Math.round(minutes * 60);
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   };
 
   const formatTime = (iso) => {
@@ -429,6 +433,20 @@ export default function Tasks() {
                 </Button>
               </div>
             )}
+
+            {/* Optional notes */}
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
+                {t("tasks.notes", "Notes")} <span className="text-gray-400">({t("common.optional")})</span>
+              </label>
+              <textarea
+                value={workNotes}
+                onChange={(e) => setWorkNotes(e.target.value)}
+                rows={2}
+                placeholder={t("tasks.notesPlaceholder", "Add notes about this work stage…")}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+              />
+            </div>
 
             {/* Photo capture (required — work proof needs a photo) */}
             <div className="space-y-2">

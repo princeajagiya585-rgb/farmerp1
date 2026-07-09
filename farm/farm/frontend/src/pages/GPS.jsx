@@ -904,6 +904,15 @@ export default function GPS() {
                         ),
                     },
                     {
+                      key: "notes",
+                      header: t("tasks.notes", "Notes"),
+                      render: (r) => r.notes ? (
+                        <span className="block max-w-[200px] truncate text-xs text-gray-600" title={r.notes}>{r.notes}</span>
+                      ) : (
+                        "—"
+                      ),
+                    },
+                    {
                       key: "map",
                       header: t("common.openInMaps"),
                       render: (r) => <MapViewButton lat={r.latitude} lng={r.longitude} label={t("common.view")} />,

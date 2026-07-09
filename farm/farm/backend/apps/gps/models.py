@@ -55,6 +55,7 @@ class LocationPing(OwnedModel):
         related_name="location_pings",
     )
     photo = models.ImageField(upload_to="location_pings/", null=True, blank=True)
+    notes = models.TextField(blank=True, help_text="Optional notes submitted with this work proof ping")
     recorded_at = models.DateTimeField()
 
     def __str__(self):

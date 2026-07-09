@@ -278,10 +278,12 @@ class DashboardView(APIView):
             check_out_time__isnull=True,
         ).values("employee__farm_id").annotate(cnt=Count("id")).values("cnt")
 
-        # Subquery: everyone who completed a check-in today (checked out or not)
+        # Subquery: everyone who completed a successful check-in today
+        # (status=PRESENT + check_in_time IS NOT NULL)
         checkin_today_subquery = Attendance.objects.filter(
             employee__farm_id=OuterRef("id"),
             date=today,
+            status=Attendance.Status.PRESENT,
             check_in_time__isnull=False,
         ).values("employee__farm_id").annotate(cnt=Count("id")).values("cnt")
 

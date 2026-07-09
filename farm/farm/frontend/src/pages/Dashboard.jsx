@@ -408,18 +408,7 @@ function HrCard({ mod, kpi, navigate, t }) {
             </div>
             <p className="text-sm font-bold text-gray-800">{t(mod.label)}</p>
           </div>
-          {/* Currently on the clock: checked in but not yet checked out.
-              Drops by one as soon as someone checks out. */}
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-600"
-            title={t("dashboard.checkedInNow", "Currently checked in")}
-          >
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
-            </span>
-            {wk.checked_in_now ?? 0} {t("dashboard.checkedIn", "checked in")}
-          </span>
+
         </div>
         {breakdown.length > 0 ? (
           <div className="mb-3">

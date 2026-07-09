@@ -382,6 +382,11 @@ export default function Attendance() {
                   <LogOut size={16} /> {t("attendance.checkOut")}
                 </Button>
               )}
+              {todayAttendance?.check_in_time && todayAttendance?.check_out_time && (
+                <Button disabled variant="secondary">
+                  <LogOut size={16} /> {t("attendance.checkedOut")}
+                </Button>
+              )}
             </div>
           </div>
           {todayAttendance?.check_in_lat && (
