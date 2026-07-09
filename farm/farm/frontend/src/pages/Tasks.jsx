@@ -1,30 +1,31 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Camera, Check, CheckCheck, CheckCircle, Loader2, MapPin, Play,
-  Pause, StopCircle, X, Send, RotateCcw, User, Clock, Navigation,
-  FileText, AlertCircle
+  Camera, Check, CheckCircle, Loader2, MapPin, Pause, Play,
+  StopCircle, X, FileText, AlertCircle, Send
 } from "lucide-react";
 import CrudResource from "../components/CrudResource";
-import { Badge, Button, ToastContainer, useToast, PhotoThumb } from "../components/ui";
-import { resource, api, toFormData } from "../lib/api";
+import { Badge, Button, ToastContainer, useToast } from "../components/ui";
+import { resource, toFormData } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
 const repo = resource("tasks");
-const execRepo = resource("tasks/executions");
+const pingsRepo = resource("gps/pings");
 
-// Status colors for the new workflow
+// Work phase config
+const workPhaseConfig = {
+  BEFORE: { activity: "CHECKIN", labelKey: "gps.beforeWork" },
+  DURING_WORK: { activity: "DURING_WORK", labelKey: "gps.duringWork" },
+  BREAK: { activity: "BREAK", labelKey: "tasks.break" },
+  RESUME: { activity: "RESUME", labelKey: "tasks.resumeWork" },
+  COMPLETED: { activity: "CHECKOUT", labelKey: "gps.completedWork" },
+};
+
+const prioColor = { LOW: "gray", MEDIUM: "blue", HIGH: "yellow", URGENT: "red" };
 const statusColor = {
-  TODO: "gray",
-  ASSIGNED: "yellow",
-  CONFIRMED: "blue",
-  IN_PROGRESS: "blue",
-  ON_BREAK: "amber",
-  WAITING_APPROVAL: "purple",
-  COMPLETED: "green",
-  APPROVED: "green",
-  REJECTED: "red",
-  RETURNED: "orange",
+  TODO: "gray", ASSIGNED: "yellow", CONFIRMED: "blue",
+  IN_PROGRESS: "blue", ON_BREAK: "amber", WAITING_APPROVAL: "purple",
+  COMPLETED: "green", APPROVED: "green", REJECTED: "red", RETURNED: "orange",
   CANCELLED: "red",
 };
 
@@ -42,13 +43,13 @@ const statusLabelMap = {
   CANCELLED: "tasks.statusCancelled",
 };
 
-const prioColor = { LOW: "gray", MEDIUM: "blue", HIGH: "yellow", URGENT: "red" };
 const prioLabelMap = {
   LOW: "tasks.priorityLow",
   MEDIUM: "tasks.priorityMedium",
   HIGH: "tasks.priorityHigh",
   URGENT: "tasks.priorityUrgent",
 };
+
 const scheduleLabelMap = {
   DAILY: "tasks.scheduleDaily",
   WEEKLY: "tasks.scheduleWeekly",
@@ -60,27 +61,26 @@ const scheduleLabelMap = {
 const MY_TASKS_PARAMS = { my_tasks: "true" };
 const ALL_TASKS_PARAMS = {};
 
-// Helper to get current GPS location
+// Get location
 const getLocation = () =>
   new Promise((resolve) => {
     if (!navigator.geolocation) return resolve(null);
     navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }),
       () => resolve(null),
       { enableHighAccuracy: true, timeout: 15000 }
     );
   });
 
-// Format seconds to HH:MM:SS
-const formatDuration = (seconds) => {
-  if (!seconds && seconds !== 0) return "00:00:00";
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
+const formatDuration = (minutes) => {
+  if (!minutes && minutes !== 0) return "—";
+  const totalSeconds = Math.round(minutes * 60);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 };
 
-// Format time for display
 const formatTime = (iso) => {
   if (!iso) return "—";
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -88,22 +88,17 @@ const formatTime = (iso) => {
 
 export default function Tasks() {
   const { t } = useTranslation();
-  const { hasRole, user: currentUser } = useAuth();
+  const { hasRole } = useAuth();
   const canManage = hasRole("SUPER_ADMIN", "FARM_MANAGER");
   const isEmployee = hasRole("EMPLOYEE");
   const [now, setNow] = useState(Date.now());
   const [myTasksOnly, setMyTasksOnly] = useState(false);
   const [toasts, addToast, removeToast] = useToast();
-  const timerRef = useRef(null);
 
-  // Tick every second for live timer
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
+    const id = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(id);
   }, []);
-
-  // Auto-refresh task list to get latest execution status
-  const [refreshKey, setRefreshKey] = useState(0);
 
   const assignFields = isEmployee
     ? []
@@ -112,273 +107,226 @@ export default function Tasks() {
         { name: "assigned_employee", label: t("tasks.assignToWorker"), optionsFrom: { path: "workforce/employees", label: (e) => e.name } },
       ];
 
-  // ── Workflow Action Modal State ──
-  const [actionModal, setActionModal] = useState(null); // { type, task, execution, onSuccess }
-  const [actionLoading, setActionLoading] = useState(false);
-  const [actionError, setActionError] = useState(null);
-  const [actionPos, setActionPos] = useState(null);
-  const [actionPhoto, setActionPhoto] = useState(null);
-  const [actionPhotoPreview, setActionPhotoPreview] = useState(null);
-  const [actionNotes, setActionNotes] = useState("");
-  const [actionProgress, setActionProgress] = useState(0);
+  // Work modal state
+  const [workModal, setWorkModal] = useState(null); // { row, phase, reload }
+  const [workPhoto, setWorkPhoto] = useState(null);
+  const [workPhotoPreview, setWorkPhotoPreview] = useState(null);
+  const [workPos, setWorkPos] = useState(null);
+  const [workPosLoading, setWorkPosLoading] = useState(false);
+  const [workSaving, setWorkSaving] = useState(false);
+  const [workError, setWorkError] = useState(null);
+  const [workNotes, setWorkNotes] = useState("");
 
-  // ── Complete Confirmation Modal ──
+  // Complete confirmation
   const [completeConfirm, setCompleteConfirm] = useState(false);
 
-  // Open action modal with GPS
-  const openActionModal = async (type, task, execution, onSuccess) => {
-    setActionModal({ type, task, execution, onSuccess });
-    setActionError(null);
-    setActionNotes("");
-    setActionProgress(execution?.progress_percentage || 0);
-    setActionPhoto(null);
-    setActionPhotoPreview(null);
-    setCompleteConfirm(false);
-
-    const loc = await getLocation();
-    setActionPos(loc);
+  const fetchWorkLocation = () => {
+    if (!navigator.geolocation) {
+      setWorkError(t("gps.noLocation"));
+      return;
+    }
+    setWorkError(null);
+    setWorkPosLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setWorkPos({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        });
+        setWorkPosLoading(false);
+      },
+      () => {
+        setWorkPosLoading(false);
+        setWorkError(t("gps.noLocation"));
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
   };
 
-  // Handle photo selection
-  const handlePhotoChange = (e) => {
+  const openWorkModal = (row, phase, reload) => {
+    setWorkModal({ row, phase, reload });
+    setWorkPhoto(null);
+    setWorkPhotoPreview(null);
+    setWorkError(null);
+    setWorkNotes("");
+    setWorkPos(null);
+    setCompleteConfirm(false);
+    fetchWorkLocation();
+  };
+
+  const handleWorkPhotoChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setActionPhoto(file);
+    setWorkPhoto(file);
     const reader = new FileReader();
-    reader.onloadend = () => setActionPhotoPreview(reader.result);
+    reader.onloadend = () => setWorkPhotoPreview(reader.result);
     reader.readAsDataURL(file);
   };
 
-  // Submit workflow action
-  const submitAction = async () => {
-    if (!actionModal) return;
-    setActionLoading(true);
-    setActionError(null);
+  const submitWork = async () => {
+    if (!workModal || !workPos) return;
 
+    // For COMPLETED phase, require confirmation
+    if (workModal.phase === "COMPLETED" && !completeConfirm) {
+      setCompleteConfirm(true);
+      return;
+    }
+
+    setWorkSaving(true);
+    setWorkError(null);
     try {
-      const { type, task, execution, onSuccess } = actionModal;
-      let result;
+      const phase = workModal.phase;
+      const activity = workPhaseConfig[phase]?.activity || "DURING_WORK";
 
-      const gpsData = {
-        gps_lat: actionPos?.lat ? Number(actionPos.lat.toFixed(6)) : null,
-        gps_lng: actionPos?.lng ? Number(actionPos.lng.toFixed(6)) : null,
+      const data = {
+        latitude: Number(workPos.lat.toFixed(6)),
+        longitude: Number(workPos.lng.toFixed(6)),
+        accuracy: workPos.accuracy != null ? Math.round(workPos.accuracy) : null,
+        activity: activity,
+        task: workModal.row.id,
+        notes: workNotes.trim() || "",
       };
 
-      switch (type) {
-        case "CONFIRM":
-          result = await execRepo.action(execution.id, "confirm");
-          addToast(t("tasks.confirmedSuccess"), "success");
-          break;
+      await pingsRepo.create(workPhoto ? toFormData({ ...data, photo: workPhoto }) : data);
 
-        case "START":
-          result = await execRepo.action(execution.id, "start", gpsData);
-          addToast(t("tasks.startedSuccess"), "success");
-          break;
+      const reload = workModal.reload;
+      setWorkModal(null);
+      reload();
 
-        case "BREAK":
-          result = await execRepo.action(execution.id, "break_work", gpsData);
-          addToast(t("tasks.breakStarted"), "success");
-          break;
+      const successKey = {
+        BEFORE: "tasks.beforeWorkSaved",
+        DURING_WORK: "tasks.duringWorkSaved",
+        BREAK: "tasks.breakStarted",
+        RESUME: "tasks.resumedSuccess",
+        COMPLETED: "tasks.workCompleted",
+      }[phase];
 
-        case "RESUME":
-          result = await execRepo.action(execution.id, "resume", {});
-          addToast(t("tasks.resumedSuccess"), "success");
-          break;
-
-        case "PROGRESS":
-          const progressData = {
-            ...gpsData,
-            progress_percentage: actionProgress,
-            remarks: actionNotes,
-          };
-          if (actionPhoto) {
-            result = await api.post(`/tasks/executions/${execution.id}/progress/`,
-              toFormData({ ...progressData, photo: actionPhoto })
-            );
-          } else {
-            result = await execRepo.action(execution.id, "progress", progressData);
-          }
-          addToast(t("tasks.progressSaved"), "success");
-          break;
-
-        case "COMPLETE":
-          // Show confirmation first
-          if (!completeConfirm) {
-            setCompleteConfirm(true);
-            setActionLoading(false);
-            return;
-          }
-          const completeData = {
-            ...gpsData,
-            completion_notes: actionNotes,
-          };
-          if (actionPhoto) {
-            result = await api.post(`/tasks/executions/${execution.id}/complete/`,
-              toFormData({ ...completeData, completion_photo: actionPhoto })
-            );
-          } else {
-            result = await execRepo.action(execution.id, "complete", completeData);
-          }
-          addToast(t("tasks.completedSuccess"), "success");
-          break;
-
-        case "APPROVE":
-          result = await execRepo.action(execution.id, "approve");
-          addToast(t("tasks.approvedSuccess"), "success");
-          break;
-
-        case "RETURN":
-          result = await execRepo.action(execution.id, "return_task");
-          addToast(t("tasks.returnedSuccess"), "success");
-          break;
-
-        default:
-          throw new Error("Unknown action");
-      }
-
-      setActionModal(null);
-      if (onSuccess) onSuccess();
-      setRefreshKey(k => k + 1);
+      addToast(t(successKey), "success");
     } catch (err) {
-      setActionError(err.response?.data?.detail || err.message);
+      setWorkError(err.response?.data?.detail || err.message);
     } finally {
-      setActionLoading(false);
+      setWorkSaving(false);
     }
   };
 
-  // Timer display component
-  const TaskTimer = ({ execution }) => {
-    if (!execution) return <span className="text-xs text-gray-300">—</span>;
+  // Timer component
+  const TaskTimer = ({ row }) => {
+    const session = row.active_session;
+    const phase = getWorkPhase(row);
+    const tracked = row.total_tracked_minutes;
 
-    const status = execution.status;
-    const startedAt = execution.started_at;
-
-    if (!startedAt) return <span className="text-xs text-gray-300">00:00:00</span>;
-
-    // Calculate current duration from backend
-    const currentDuration = execution.current_duration_seconds ||
-      (execution.working_seconds || 0);
-
-    // Live timer calculation
-    let liveSeconds = currentDuration;
-    if (status === "IN_PROGRESS" && execution.started_at) {
-      const startTime = new Date(execution.started_at).getTime();
-      const elapsed = Math.floor((now - startTime) / 1000);
-      // Subtract break time if on break
-      const breakSeconds = execution.break_seconds || 0;
-      liveSeconds = Math.max(0, elapsed - breakSeconds);
-    }
-
-    const isOnBreak = status === "ON_BREAK";
-
-    return (
-      <div className="flex items-center gap-1.5">
-        {isOnBreak ? (
+    if (phase === "ON_BREAK") {
+      const totalSeconds = Math.round((tracked || 0) * 60);
+      const h = Math.floor(totalSeconds / 3600);
+      const m = Math.floor((totalSeconds % 3600) / 60);
+      const s = totalSeconds % 60;
+      return (
+        <div className="flex items-center gap-1.5">
           <span className="relative flex h-2 w-2">
             <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400" />
           </span>
-        ) : status === "IN_PROGRESS" ? (
+          <span className="text-xs font-medium text-amber-700" title={t("tasks.onBreak")}>
+            {`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`} ⏸
+          </span>
+        </div>
+      );
+    }
+
+    if (phase === "COMPLETED") {
+      return tracked ? (
+        <span className="text-xs text-gray-500">
+          {formatDuration(tracked)}
+        </span>
+      ) : (
+        <span className="text-xs text-gray-300">—</span>
+      );
+    }
+
+    if (phase === "IN_PROGRESS" && session) {
+      const start = new Date(session.start_time);
+      const elapsed = Math.floor((Date.now() - start.getTime()) / 60000);
+      return (
+        <div className="flex items-center gap-1.5">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
           </span>
-        ) : null}
-        <span className={`text-xs font-mono font-medium ${
-          isOnBreak ? "text-amber-700" : status === "IN_PROGRESS" ? "text-green-700" : "text-gray-700"
-        }`}>
-          {formatDuration(liveSeconds)}
-          {isOnBreak && " ⏸"}
-        </span>
-      </div>
-    );
-  };
-
-  // Get execution status display
-  const getExecutionStatus = (execution) => {
-    if (!execution) return null;
-    return (
-      <div className="flex flex-col gap-1">
-        <Badge color={statusColor[execution.status]}>
-          {t(statusLabelMap[execution.status] || execution.status)}
-        </Badge>
-        {execution.progress_percentage > 0 && (
-          <span className="text-xs text-gray-500">{execution.progress_percentage}%</span>
-        )}
-      </div>
-    );
-  };
-
-  // Get action buttons based on execution status
-  const getActionButtons = (task, execution, reload) => {
-    if (!execution) {
-      // No execution yet - show ASSIGNED buttons
-      return (
-        <>
-          <button
-            onClick={() => openActionModal("CONFIRM", task, execution, reload)}
-            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-            title={t("tasks.confirmWork")}
-          >
-            <Check size={14} />
-            {t("tasks.confirmWork")}
-          </button>
-        </>
+          <span className="text-xs font-medium text-green-700" title={t("tasks.startedAt", { time: formatTime(session.start_time) })}>
+            {formatDuration(elapsed)}
+          </span>
+        </div>
       );
     }
 
-    const status = execution.status;
-    const isClosed = ["COMPLETED", "APPROVED", "REJECTED", "RETURNED"].includes(status);
+    // BEFORE phase or no session
+    return tracked ? (
+      <span className="text-xs text-gray-500" title={t("tasks.totalTracked")}>
+        {formatDuration(tracked)}
+      </span>
+    ) : (
+      <span className="text-xs text-gray-300">—</span>
+    );
+  };
+
+  // Get work phase from location pings — based on LATEST activity
+  const getWorkPhase = (row) => {
+    const pings = row.location_pings || [];
+    if (!pings.length) return "BEFORE";
+
+    // Sort by recorded_at descending and check the latest activity
+    const sorted = [...pings].sort((a, b) => new Date(b.recorded_at) - new Date(a.recorded_at));
+    const latest = sorted[0]?.activity;
+
+    if (latest === "CHECKOUT") return "COMPLETED";
+    if (latest === "BREAK") return "ON_BREAK";
+    if (["CHECKIN", "DURING_WORK", "RESUME"].includes(latest)) return "IN_PROGRESS";
+    return "BEFORE";
+  };
+
+  // Get action buttons based on phase
+  const getActionButtons = (row, reload) => {
+    const phase = getWorkPhase(row);
+    const isClosed = ["COMPLETED", "VERIFIED", "APPROVED", "CANCELLED"].includes(row.status);
 
     if (isClosed) {
       return (
-        <Badge color={statusColor[status]}>
-          {t(statusLabelMap[status] || status)}
+        <Badge color="green">
+          <span className="inline-flex items-center gap-1">
+            <CheckCircle size={12} /> {t("tasks.statusCompleted")}
+          </span>
         </Badge>
       );
     }
 
-    switch (status) {
-      case "ASSIGNED":
+    switch (phase) {
+      case "BEFORE":
+        // Show BEFORE WORK button
         return (
-          <>
-            <button
-              onClick={() => openActionModal("CONFIRM", task, execution, reload)}
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-              title={t("tasks.confirmWork")}
-            >
-              <Check size={14} />
-              {t("tasks.confirmWork")}
-            </button>
-          </>
-        );
-
-      case "CONFIRMED":
-        return (
-          <>
-            <button
-              onClick={() => openActionModal("START", task, execution, reload)}
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700"
-              title={t("tasks.startWork")}
-            >
-              <Play size={14} />
-              {t("tasks.startWork")}
-            </button>
-          </>
+          <button
+            onClick={() => openWorkModal(row, "BEFORE", reload)}
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
+            title={t("gps.beforeWork")}
+          >
+            <Camera size={14} />
+            {t("gps.beforeWork")}
+          </button>
         );
 
       case "IN_PROGRESS":
+        // Show 3 buttons: During Work (optional), Break, Complete Work
         return (
           <>
             <button
-              onClick={() => openActionModal("PROGRESS", task, execution, reload)}
+              onClick={() => openWorkModal(row, "DURING_WORK", reload)}
               className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
-              title={t("tasks.duringWork")}
+              title={t("gps.duringWork")}
             >
               <Camera size={14} />
-              {t("tasks.duringWork")}
+              {t("gps.duringWork")}
             </button>
             <button
-              onClick={() => openActionModal("BREAK", task, execution, reload)}
+              onClick={() => openWorkModal(row, "BREAK", reload)}
               className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600"
               title={t("tasks.break")}
             >
@@ -386,21 +334,22 @@ export default function Tasks() {
               {t("tasks.break")}
             </button>
             <button
-              onClick={() => openActionModal("COMPLETE", task, execution, reload)}
+              onClick={() => openWorkModal(row, "COMPLETED", reload)}
               className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
-              title={t("tasks.completeWork")}
+              title={t("gps.completedWork")}
             >
               <CheckCircle size={14} />
-              {t("tasks.completeWork")}
+              {t("gps.completedWork")}
             </button>
           </>
         );
 
       case "ON_BREAK":
+        // Show Resume Work and Complete Work
         return (
           <>
             <button
-              onClick={() => openActionModal("RESUME", task, execution, reload)}
+              onClick={() => openWorkModal(row, "RESUME", reload)}
               className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700"
               title={t("tasks.resumeWork")}
             >
@@ -408,42 +357,22 @@ export default function Tasks() {
               {t("tasks.resumeWork")}
             </button>
             <button
-              onClick={() => openActionModal("COMPLETE", task, execution, reload)}
+              onClick={() => openWorkModal(row, "COMPLETED", reload)}
               className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
-              title={t("tasks.completeWork")}
+              title={t("gps.completedWork")}
             >
               <CheckCircle size={14} />
-              {t("tasks.completeWork")}
+              {t("gps.completedWork")}
             </button>
           </>
         );
 
-      case "WAITING_APPROVAL":
-        if (canManage) {
-          return (
-            <>
-              <button
-                onClick={() => openActionModal("APPROVE", task, execution, reload)}
-                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700"
-                title={t("tasks.approve")}
-              >
-                <Check size={14} />
-                {t("tasks.approve")}
-              </button>
-              <button
-                onClick={() => openActionModal("RETURN", task, execution, reload)}
-                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-orange-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-orange-600"
-                title={t("tasks.return")}
-              >
-                <RotateCcw size={14} />
-                {t("tasks.return")}
-              </button>
-            </>
-          );
-        }
+      case "COMPLETED":
         return (
-          <Badge color="purple">
-            {t("tasks.waitingApproval")}
+          <Badge color="green">
+            <span className="inline-flex items-center gap-1">
+              <CheckCircle size={12} /> {t("tasks.statusCompleted")}
+            </span>
           </Badge>
         );
 
@@ -455,7 +384,6 @@ export default function Tasks() {
   return (
     <>
       <CrudResource
-        key={refreshKey}
         title={t("tasks.titlePg")}
         subtitle={t("tasks.subtitlePg")}
         path="tasks"
@@ -471,7 +399,6 @@ export default function Tasks() {
               onClick={() => setMyTasksOnly((p) => !p)}
               className="whitespace-nowrap"
             >
-              <User size={15} />
               {myTasksOnly ? t("tasks.myTasks") : t("tasks.allTasksBtn")}
             </Button>
           )
@@ -512,22 +439,31 @@ export default function Tasks() {
                 ) : "—",
             },
             {
-              key: "execution_status",
+              key: "progress",
+              header: t("header.progress"),
+              render: (r) => (
+                <div className="flex items-center gap-2">
+                  <div className="h-2 w-20 rounded-full bg-gray-200">
+                    <div className="h-2 rounded-full bg-brand-500" style={{ width: `${r.progress || 0}%` }} />
+                  </div>
+                  <span className="text-xs text-gray-500">{r.progress || 0}%</span>
+                </div>
+              ),
+            },
+            {
+              key: "status",
               header: t("header.status"),
-              render: (r) => getExecutionStatus(r.my_execution),
+              render: (r) => <Badge color={statusColor[r.status]}>{t(statusLabelMap[r.status] || r.status)}</Badge>,
             },
             {
               key: "timer",
               header: t("header.timer"),
-              render: (r) => <TaskTimer execution={r.my_execution} />,
+              render: (r) => <TaskTimer row={r} />,
             },
           ];
           return cols;
         })()}
-        rowActions={(row, reload) => {
-          const execution = row.my_execution;
-          return getActionButtons(row, execution, reload);
-        }}
+        rowActions={(row, reload) => getActionButtons(row, reload)}
         fieldDependencies={[
           { watch: "assigned_employee", target: "farm", mapField: "farm" }
         ]}
@@ -561,114 +497,97 @@ export default function Tasks() {
         ]}
       />
 
-      {/* ── Workflow Action Modal ── */}
-      {actionModal && (
+      {/* Work modal */}
+      {workModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[1000] p-4">
           <div className="bg-white rounded-xl w-full max-w-md shadow-xl relative z-[1001]">
             <div className="p-6 border-b flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-800">
-                {actionModal.type === "CONFIRM" && t("tasks.confirmWork")}
-                {actionModal.type === "START" && t("tasks.startWork")}
-                {actionModal.type === "BREAK" && t("tasks.break")}
-                {actionModal.type === "RESUME" && t("tasks.resumeWork")}
-                {actionModal.type === "PROGRESS" && t("tasks.duringWork")}
-                {actionModal.type === "COMPLETE" && (completeConfirm ? t("tasks.confirmComplete") : t("tasks.completeWork"))}
-                {actionModal.type === "APPROVE" && t("tasks.approve")}
-                {actionModal.type === "RETURN" && t("tasks.return")}
-                {' — '}{actionModal.task.title}
+                {t(workPhaseConfig[workModal.phase]?.labelKey)} — {workModal.row.title}
               </h3>
-              <button onClick={() => setActionModal(null)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setWorkModal(null)} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
               </button>
             </div>
-
             <div className="p-6 space-y-4">
-              {actionError && (
+              {workError && (
                 <div className="p-3 rounded-lg text-sm font-medium bg-red-50 text-red-700 ring-1 ring-red-200">
-                  {actionError}
+                  {workError}
                 </div>
               )}
 
-              {/* GPS Location */}
-              {["START", "BREAK", "RESUME", "PROGRESS", "COMPLETE"].includes(actionModal.type) && (
-                actionPos ? (
-                  <div className="flex items-start gap-3 rounded-lg bg-brand-50 p-3">
-                    <MapPin size={16} className="text-brand-600 mt-1" />
-                    <div>
-                      <p className="text-sm font-semibold text-gray-800">{t("gps.currentLocation")}</p>
-                      <p className="text-xs text-gray-600">
-                        {actionPos.lat.toFixed(6)}, {actionPos.lng.toFixed(6)}
-                      </p>
-                    </div>
+              {/* Location */}
+              {workPosLoading ? (
+                <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
+                  <Loader2 size={16} className="animate-spin text-brand-600 mt-1" />
+                  <p className="text-sm font-semibold text-gray-800">{t("common.gettingLocation")}</p>
+                </div>
+              ) : workPos ? (
+                <div className="flex items-start gap-3 rounded-lg bg-brand-50 p-3">
+                  <MapPin size={16} className="text-brand-600 mt-1" />
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">{t("gps.currentLocation")}</p>
+                    <p className="text-xs text-gray-600">
+                      {workPos.lat.toFixed(6)}, {workPos.lng.toFixed(6)}
+                    </p>
                   </div>
-                ) : (
-                  <div className="flex items-center justify-between gap-3 rounded-lg bg-red-50 p-3 ring-1 ring-red-200">
-                    <span className="text-sm text-gray-600">{t("common.couldNotGetLocation")}</span>
-                  </div>
-                )
-              )}
-
-              {/* Progress slider for DURING WORK */}
-              {actionModal.type === "PROGRESS" && (
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    {t("tasks.progress")}: {actionProgress}%
-                  </label>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={actionProgress}
-                    onChange={(e) => setActionProgress(Number(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                  />
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3 rounded-lg bg-red-50 p-3 ring-1 ring-red-200">
+                  <span className="text-sm text-gray-600">{t("common.couldNotGetLocation")}</span>
+                  <Button variant="secondary" onClick={fetchWorkLocation}>
+                    <MapPin size={14} /> {t("common.retry")}
+                  </Button>
                 </div>
               )}
 
-              {/* Notes */}
-              {["PROGRESS", "COMPLETE"].includes(actionModal.type) && (
+              {/* Notes - for all phases */}
+              {["DURING_WORK", "COMPLETED"].includes(workModal.phase) && (
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700">
                     {t("tasks.notes")} <span className="text-gray-400">({t("common.optional")})</span>
                   </label>
                   <textarea
-                    value={actionNotes}
-                    onChange={(e) => setActionNotes(e.target.value)}
-                    rows={3}
+                    value={workNotes}
+                    onChange={(e) => setWorkNotes(e.target.value)}
+                    rows={2}
                     placeholder={t("tasks.notesPlaceholder")}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
                   />
                 </div>
               )}
 
-              {/* Photo */}
-              {["PROGRESS", "COMPLETE"].includes(actionModal.type) && (
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    {t("common.photo")} <span className="text-gray-400">({t("common.optional")})</span>
+              {/* Photo - required for BEFORE, optional for others */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  {t("common.workPhoto")}
+                  {workModal.phase === "BEFORE" && <span className="text-red-500"> *</span>}
+                  {workModal.phase !== "BEFORE" && <span className="text-gray-400"> ({t("common.optional")})</span>}
+                </label>
+                {workPhotoPreview ? (
+                  <div className="relative">
+                    <img src={workPhotoPreview} alt="Preview" className="w-full h-40 object-cover rounded-lg" />
+                    <button
+                      onClick={() => { setWorkPhoto(null); setWorkPhotoPreview(null); }}
+                      className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-70"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                    <Camera size={24} className="text-gray-400 mb-2" />
+                    <p className="text-sm text-gray-500">{t("gps.clickPhoto")}</p>
+                    <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handleWorkPhotoChange} />
                   </label>
-                  {actionPhotoPreview ? (
-                    <div className="relative">
-                      <img src={actionPhotoPreview} alt="Preview" className="w-full h-40 object-cover rounded-lg" />
-                      <button
-                        onClick={() => { setActionPhoto(null); setActionPhotoPreview(null); }}
-                        className="absolute top-2 right-2 bg-black bg-opacity-50 text-white rounded-full p-1 hover:bg-opacity-70"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
-                      <Camera size={24} className="text-gray-400 mb-2" />
-                      <p className="text-sm text-gray-500">{t("gps.clickPhoto")}</p>
-                      <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handlePhotoChange} />
-                    </label>
-                  )}
-                </div>
-              )}
+                )}
+                {workModal.phase === "BEFORE" && (
+                  <p className="text-xs font-medium text-red-500">{t("tasks.photoRequired")}</p>
+                )}
+              </div>
 
               {/* Completion confirmation */}
-              {completeConfirm && actionModal.type === "COMPLETE" && (
+              {completeConfirm && workModal.phase === "COMPLETED" && (
                 <div className="p-4 rounded-lg bg-amber-50 border border-amber-200">
                   <div className="flex items-start gap-3">
                     <AlertCircle size={20} className="text-amber-600 mt-0.5" />
@@ -680,31 +599,26 @@ export default function Tasks() {
                 </div>
               )}
             </div>
-
             <div className="p-6 border-t flex gap-3 justify-end">
-              <Button variant="secondary" onClick={() => setActionModal(null)} disabled={actionLoading}>
+              <Button variant="secondary" onClick={() => setWorkModal(null)} disabled={workSaving}>
                 {t("common.cancel")}
               </Button>
               <Button
-                onClick={submitAction}
-                disabled={actionLoading}
-                variant={actionModal.type === "COMPLETE" ? "primary" : "primary"}
+                onClick={submitWork}
+                disabled={workSaving || !workPos || (workModal.phase === "BEFORE" && !workPhoto)}
               >
-                {actionLoading ? (
+                {workSaving ? (
                   <span className="flex items-center gap-2">
                     <Loader2 size={16} className="animate-spin" />
                     {t("common.saving")}
                   </span>
                 ) : (
                   <span className="flex items-center gap-2">
-                    {actionModal.type === "CONFIRM" && <><Check size={16} />{t("tasks.confirmWork")}</>}
-                    {actionModal.type === "START" && <><Play size={16} />{t("tasks.startWork")}</>}
-                    {actionModal.type === "BREAK" && <><Pause size={16} />{t("tasks.break")}</>}
-                    {actionModal.type === "RESUME" && <><Play size={16} />{t("tasks.resumeWork")}</>}
-                    {actionModal.type === "PROGRESS" && <><Camera size={16} />{t("tasks.saveProgress")}</>}
-                    {actionModal.type === "COMPLETE" && (completeConfirm ? <><CheckCircle size={16} />{t("common.yes")}</> : <><CheckCircle size={16} />{t("tasks.completeWork")}</>)}
-                    {actionModal.type === "APPROVE" && <><Check size={16} />{t("tasks.approve")}</>}
-                    {actionModal.type === "RETURN" && <><RotateCcw size={16} />{t("tasks.return")}</>}
+                    {workModal.phase === "BEFORE" && <><Camera size={16} />{t("gps.beforeWork")}</>}
+                    {workModal.phase === "DURING_WORK" && <><Camera size={16} />{t("gps.duringWork")}</>}
+                    {workModal.phase === "BREAK" && <><Pause size={16} />{t("tasks.break")}</>}
+                    {workModal.phase === "RESUME" && <><Play size={16} />{t("tasks.resumeWork")}</>}
+                    {workModal.phase === "COMPLETED" && (completeConfirm ? <><CheckCircle size={16} />{t("common.yes")}</> : <><CheckCircle size={16} />{t("gps.completedWork")}</>)}
                   </span>
                 )}
               </Button>

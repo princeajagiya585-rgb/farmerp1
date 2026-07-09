@@ -27,6 +27,8 @@ class LocationPing(OwnedModel):
         CHECKIN = "CHECKIN", "Check-in"
         CHECKOUT = "CHECKOUT", "Check-out"
         DURING_WORK = "DURING_WORK", "During Work"
+        BREAK = "BREAK", "Break"
+        RESUME = "RESUME", "Resume"
         TASK = "TASK", "Task"
         PATROL = "PATROL", "Patrol"
         TRACK = "TRACK", "Track"

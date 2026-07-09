@@ -144,6 +144,7 @@ class TaskSerializer(serializers.ModelSerializer):
     total_tracked_minutes = serializers.SerializerMethodField()
     work_phase = serializers.SerializerMethodField()
     during_work_count = serializers.SerializerMethodField()
+    location_pings = serializers.SerializerMethodField()
 
     # Execution data for workflow
     my_execution = serializers.SerializerMethodField()
@@ -170,32 +171,40 @@ class TaskSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField())
     def get_work_phase(self, obj):
-        """Which work-proof step comes next for this task.
+        """Determine the current work phase based on the latest location ping activity.
 
         BEFORE      → no work pings yet; show the "Before Work" button.
-        CONFIRMED   → CHECKIN ping exists but the worker hasn't clicked
-                      Submit yet. Show the "Submit" button to advance
-                      the task to SUBMITTED status.
-        SUBMITTED   → status is SUBMITTED, no active timer. Show
-                      "During Work", "Break", "Complete Work" buttons.
-        DURING      → status is SUBMITTED, timer is running. Show
-                      "Break" (to stop timer) and "Complete Work".
-        COMPLETED   → completed-work ping (CHECKOUT) exists; done.
+        IN_PROGRESS → CHECKIN exists and latest activity is CHECKIN, DURING_WORK, or RESUME.
+                      Show "During Work", "Break", "Complete Work" buttons.
+        ON_BREAK    → latest activity is BREAK (no RESUME after it).
+                      Show "Resume" and "Complete Work" buttons.
+        COMPLETED   → latest activity is CHECKOUT; task is done.
         """
-        activities = set(obj.location_pings.values_list("activity", flat=True))
-        if "CHECKOUT" in activities:
+        pings = list(obj.location_pings.values_list("activity", "recorded_at"))
+        if not pings:
+            return "BEFORE"
+        # Sort by recorded_at descending to get the latest activity
+        pings.sort(key=lambda x: x[1] or "", reverse=True)
+        latest = pings[0][0]
+
+        if latest == "CHECKOUT":
             return "COMPLETED"
-        if "CHECKIN" in activities:
-            if obj.status in (Task.Status.SUBMITTED, Task.Status.VERIFIED):
-                has_active = obj.work_sessions.filter(end_time__isnull=True).exists()
-                return "DURING" if has_active else "SUBMITTED"
-            # CHECKIN done but status not yet SUBMITTED — show Submit button
-            return "CONFIRMED"
+        if latest == "BREAK":
+            return "ON_BREAK"
+        if latest in ("CHECKIN", "DURING_WORK", "RESUME"):
+            return "IN_PROGRESS"
         return "BEFORE"
 
     @extend_schema_field(serializers.IntegerField())
     def get_during_work_count(self, obj):
         return obj.location_pings.filter(activity="DURING_WORK").count()
+
+    @extend_schema_field(serializers.ListField())
+    def get_location_pings(self, obj):
+        """Serialize location pings for the frontend to compute display state."""
+        from apps.gps.serializers import LocationPingSerializer
+        pings = obj.location_pings.all()
+        return LocationPingSerializer(pings, many=True, context=self.context).data
 
     @extend_schema_field(TaskWorkSessionSerializer(allow_null=True))
     def get_active_session(self, obj):

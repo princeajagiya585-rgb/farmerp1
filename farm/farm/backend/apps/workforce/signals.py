@@ -17,8 +17,9 @@ def employee_created(sender, instance, created, **kwargs):
     1. Create EmploymentHistory entry with JOINED event
     2. Create Availability record as AVAILABLE from joining date
 
-    NOTE: Attendance records are NOT auto-created.
-    Attendance is created ONLY when employee performs Check In.
+    NOTE: Attendance records are auto-created with Pending status each day
+    via today_status endpoint, the list view, or the create_daily_attendance
+    management command run on schedule. Actual check-in updates the record.
     """
     if created:
         effective_date = instance.date_of_joining or timezone.now().date()

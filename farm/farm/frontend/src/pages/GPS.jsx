@@ -12,8 +12,8 @@ import { useAuth } from "../context/AuthContext";
 const pingRepo = resource("gps/pings");
 const actRepo = resource("gps/activities");
 
-const activityLabelMap = { CHECKIN: "gps.activityCheckin", CHECKOUT: "gps.activityCheckout", DURING_WORK: "gps.duringWork", TASK: "gps.activityTask", PATROL: "gps.activityPatrol", TRACK: "gps.activityTrack" };
-const activityColorMap = { CHECKIN: "green", CHECKOUT: "red", DURING_WORK: "purple", TASK: "blue", TRACK: "purple", PATROL: "gray" };
+const activityLabelMap = { CHECKIN: "gps.activityCheckin", CHECKOUT: "gps.activityCheckout", DURING_WORK: "gps.duringWork", BREAK: "gps.break", RESUME: "gps.resume", TASK: "gps.activityTask", PATROL: "gps.activityPatrol", TRACK: "gps.activityTrack" };
+const activityColorMap = { CHECKIN: "green", CHECKOUT: "red", DURING_WORK: "purple", BREAK: "amber", RESUME: "blue", TASK: "blue", TRACK: "purple", PATROL: "gray" };
 
 /** Component: shows "Location not available" when coords are missing. */
 function MapViewButton({ lat, lng, label }) {
@@ -78,6 +78,8 @@ function appendPing(list, ping) {
 const workFilterOptions = [
   { value: "CHECKIN", labelKey: "gps.activityCheckin" },
   { value: "DURING_WORK", labelKey: "gps.duringWork" },
+  { value: "BREAK", labelKey: "gps.break" },
+  { value: "RESUME", labelKey: "gps.resume" },
   { value: "CHECKOUT", labelKey: "gps.activityCheckout" },
 ];
 
@@ -811,7 +813,7 @@ export default function GPS() {
             rows={(dateFrom || dateTo ? filteredPings : visibleAllPings).filter((r) => {
               // Attendance-era work entries (no task attached) stay off the
               // Location Map — attendance lives only on the Attendance page.
-              if (["CHECKIN", "CHECKOUT", "DURING_WORK"].includes(r.activity) && !r.task) return false;
+              if (["CHECKIN", "CHECKOUT", "DURING_WORK", "BREAK", "RESUME"].includes(r.activity) && !r.task) return false;
               if (filterUser && String(r.user) !== String(filterUser)) return false;
               if (filterActivity && r.activity !== filterActivity) return false;
               return true;
@@ -1058,8 +1060,10 @@ export default function GPS() {
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
                 >
                   <option value="CHECKIN">{t("gps.activityCheckin")}</option>
-                  <option value="CHECKOUT">{t("gps.activityCheckout")}</option>
                   <option value="DURING_WORK">{t("gps.duringWork")}</option>
+                  <option value="BREAK">{t("gps.break")}</option>
+                  <option value="RESUME">{t("gps.resume")}</option>
+                  <option value="CHECKOUT">{t("gps.activityCheckout")}</option>
                   <option value="TASK">{t("gps.activityTask")}</option>
                   <option value="PATROL">{t("gps.activityPatrol")}</option>
                   <option value="TRACK">{t("gps.activityTrack")}</option>

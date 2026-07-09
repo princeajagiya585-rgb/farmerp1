@@ -25,6 +25,13 @@ const apprColor = { PENDING: "yellow", APPROVED: "green", REJECTED: "red", FAILE
 const statusLabelMap = { PRESENT: "present", ABSENT: "absent", HALF_DAY: "halfDay", LEAVE: "leave", PRESENT_DONE: "presentDone" };
 const apprLabelMap = { PENDING: "pendingOption", APPROVED: "approvedOption", REJECTED: "rejectedOption", FAILED: "failedOption" };
 
+// Handle null/undefined status — show as Pending (no check-in yet)
+function StatusBadge({ row }) {
+  const { t } = useTranslation();
+  if (!row.status) return <Badge color="gray">{t("attendance.pending")}</Badge>;
+  return <Badge color={statusColor[row.status]}>{t(`attendance.${statusLabelMap[row.status] || row.status}`)}</Badge>;
+}
+
 const TODAY = new Date().toISOString().slice(0, 10);
 
 export default function Attendance() {
@@ -600,7 +607,7 @@ export default function Attendance() {
             {
               key: "status",
               header: t("attendance.statusLabel"),
-              render: (r) => <Badge color={statusColor[r.status]}>{t(`attendance.${statusLabelMap[r.status] || r.status}`)}</Badge>,
+              render: (r) => <StatusBadge row={r} />,
             },
             {
               key: "approval_status",

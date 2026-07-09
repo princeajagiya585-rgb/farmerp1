@@ -161,8 +161,6 @@ class WorkforceAllocationViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixi
 class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = Attendance.objects.select_related(
         "employee", "farm", "approved_by"
-    ).filter(
-        check_in_time__isnull=False
     ).all()
     serializer_class = AttendanceSerializer
     farm_lookup = "farm_id"
@@ -181,7 +179,63 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             qs = qs.filter(date__gte=date_after)
         if date_before:
             qs = qs.filter(date__lte=date_before)
+        # Auto-create Pending attendance records for today when listing
+        # (employees + managers see a row for every employee)
+        today = timezone.localdate()
+        # Only auto-create when viewing today's data (no date filter, or filter includes today)
+        should_auto_create = False
+        if not date_after and not date_before:
+            should_auto_create = True
+        elif date_after and date_after <= str(today) and (not date_before or date_before >= str(today)):
+            should_auto_create = True
+        if should_auto_create and self.request.user.role != Role.EMPLOYEE:
+            self._ensure_today_attendance()
         return qs
+
+    def _ensure_today_attendance(self):
+        """Create Pending attendance records for today for employees the user can see."""
+        from apps.farms.models import Farm
+        user = self.request.user
+        today = timezone.localdate()
+
+        # Get the farm IDs the user has access to
+        if user.role == Role.SUPER_ADMIN:
+            farm_ids = list(Farm.objects.values_list("id", flat=True))
+        else:
+            farm_ids = list(user.farms.values_list("id", flat=True))
+
+        if not farm_ids:
+            return
+
+        # Get all active employees on those farms
+        employees = Employee.objects.filter(
+            farm_id__in=farm_ids, is_active=True
+        ).select_related("farm")
+
+        # Existing attendance IDs for today (for bulk exclude)
+        existing_emp_ids = set(
+            Attendance.objects.filter(
+                employee__in=employees, date=today
+            ).values_list("employee_id", flat=True)
+        )
+
+        # Bulk-create missing records
+        to_create = []
+        for emp in employees:
+            if emp.id not in existing_emp_ids:
+                to_create.append(
+                    Attendance(
+                        employee=emp,
+                        farm=emp.farm,
+                        date=today,
+                        status=None,  # Pending — no status set yet
+                        approval_status=Attendance.ApprovalStatus.PENDING,
+                        created_by=user,
+                    )
+                )
+
+        if to_create:
+            Attendance.objects.bulk_create(to_create)
 
     @action(detail=False, methods=["post"])
     def check_in(self, request):
@@ -613,7 +667,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
     def today_status(self, request):
         """Get today's attendance status for a specific employee.
 
-        Returns attendance record if exists (including no check-in yet),
+        Returns attendance record (auto-creates a Pending one if none exists),
         used by frontend to show current status card.
         """
         employee_id = request.query_params.get("employee")
@@ -627,7 +681,19 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         ).select_related("employee", "farm").first()
 
         if not attendance:
-            return Response({"has_attendance": False})
+            # Auto-create a Pending attendance record for today
+            employee = Employee.objects.filter(pk=employee_id).first()
+            if employee:
+                attendance = Attendance.objects.create(
+                    employee=employee,
+                    farm=employee.farm,
+                    date=today,
+                    status=None,  # Pending
+                    approval_status=Attendance.ApprovalStatus.PENDING,
+                    created_by=request.user,
+                )
+            else:
+                return Response({"has_attendance": False})
 
         serializer = self.get_serializer(attendance, context={'request': request})
         data = serializer.data

@@ -102,12 +102,12 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
         activity = serializer.validated_data.get("activity")
         if task:
             existing = set(task.location_pings.values_list("activity", flat=True))
-            # Enforce the Before → During → Completed state machine and lock
-            # the task once completed.
+            # Lock completed tasks
             if LocationPing.Activity.CHECKOUT in existing:
                 raise serializers.ValidationError(
                     {"detail": "This task is already completed and locked."}
                 )
+            # Workflow validations
             if activity == LocationPing.Activity.CHECKIN:
                 if LocationPing.Activity.CHECKIN in existing:
                     raise serializers.ValidationError(
@@ -117,6 +117,32 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
                 if LocationPing.Activity.CHECKIN not in existing:
                     raise serializers.ValidationError(
                         {"detail": "Record Before Work first."}
+                    )
+            elif activity == LocationPing.Activity.BREAK:
+                # BREAK is valid only if CHECKIN exists and not currently on break (no BREAK without RESUME)
+                if LocationPing.Activity.CHECKIN not in existing:
+                    raise serializers.ValidationError(
+                        {"detail": "Record Before Work first."}
+                    )
+                # If there's already an unresolved BREAK (BREAK without RESUME), reject
+                if LocationPing.Activity.BREAK in existing and LocationPing.Activity.RESUME not in existing:
+                    raise serializers.ValidationError(
+                        {"detail": "Already on break. Resume work first."}
+                    )
+            elif activity == LocationPing.Activity.RESUME:
+                # RESUME is valid only if there's an unresolved BREAK
+                if LocationPing.Activity.BREAK not in existing:
+                    raise serializers.ValidationError(
+                        {"detail": "No active break to resume from."}
+                    )
+                # If RESUME already exists after the last BREAK, reject
+                # Check if the latest BREAK has a corresponding RESUME after it
+                all_pings = list(task.location_pings.filter(
+                    activity__in=["BREAK", "RESUME"]
+                ).order_by("-recorded_at"))
+                if all_pings and all_pings[0].activity == "RESUME":
+                    raise serializers.ValidationError(
+                        {"detail": "Already resumed from break. Take a break first."}
                     )
             elif activity == LocationPing.Activity.CHECKOUT:
                 if LocationPing.Activity.CHECKIN not in existing:
@@ -141,9 +167,10 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
         """Move the linked task through its work flow.
 
         A Before-Work ping (CHECKIN) just records the confirmation — no timer
-        starts and status stays unchanged. The worker must then click Submit to
-        advance the task to SUBMITTED status before work buttons appear.
+        starts and status stays unchanged.
         A During-Work ping (DURING_WORK) starts the work timer if needed.
+        A Break ping (BREAK) stops any active timer.
+        A Resume ping (RESUME) starts the timer again.
         A Completed-Work ping (CHECKOUT) stops the timer and closes the task.
         """
         from apps.tasks.models import Task, TaskWorkSession
@@ -153,8 +180,23 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
             return
         if ping.activity == LocationPing.Activity.DURING_WORK:
             # Start the work timer if the worker doesn't have one running.
-            # Note: CHECKIN no longer starts a timer — the worker must click
-            # Submit first, then the During Work / Break buttons manage timers.
+            has_active = TaskWorkSession.objects.filter(
+                task=task, user=ping.user, end_time__isnull=True
+            ).exists()
+            if not has_active:
+                TaskWorkSession.objects.create(
+                    task=task,
+                    user=ping.user,
+                    created_by=ping.user,
+                    start_time=timezone.now(),
+                )
+        elif ping.activity == LocationPing.Activity.BREAK:
+            # Stop any active work session when taking a break
+            TaskWorkSession.objects.filter(
+                task=task, user=ping.user, end_time__isnull=True
+            ).update(end_time=timezone.now())
+        elif ping.activity == LocationPing.Activity.RESUME:
+            # Start a new work session after break
             has_active = TaskWorkSession.objects.filter(
                 task=task, user=ping.user, end_time__isnull=True
             ).exists()
