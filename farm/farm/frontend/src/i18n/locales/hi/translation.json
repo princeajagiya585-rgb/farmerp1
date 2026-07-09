@@ -1241,6 +1241,7 @@
   "attendance.pending": "लंबित",
   "attendance.pendingOption": "लंबित",
   "attendance.checkedOut": "चेक आउट किया",
+  "attendance.todayAttendanceDone": "आज की हाजिरी पूरी हो गई है।",
   "attendance.approvedOption": "अनुमोदित",
   "attendance.rejectedOption": "अस्वीकृत",
   "attendance.confirmCheckOut": "चेक-आउट की पुष्टि करें",

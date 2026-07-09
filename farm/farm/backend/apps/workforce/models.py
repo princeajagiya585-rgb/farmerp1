@@ -179,6 +179,8 @@ class Attendance(OwnedModel):
     )
     overtime_hours = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     remarks = models.TextField(blank=True)
+    check_in_notes = models.TextField(blank=True)
+    check_out_notes = models.TextField(blank=True)
 
     class Meta:
         ordering = ["-date"]

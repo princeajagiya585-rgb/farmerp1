@@ -2,6 +2,7 @@ from calendar import monthrange
 from datetime import date, datetime, timedelta
 
 from django.db.models import Count, Q
+from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
@@ -179,63 +180,9 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             qs = qs.filter(date__gte=date_after)
         if date_before:
             qs = qs.filter(date__lte=date_before)
-        # Auto-create Pending attendance records for today when listing
-        # (employees + managers see a row for every employee)
-        today = timezone.localdate()
-        # Only auto-create when viewing today's data (no date filter, or filter includes today)
-        should_auto_create = False
-        if not date_after and not date_before:
-            should_auto_create = True
-        elif date_after and date_after <= str(today) and (not date_before or date_before >= str(today)):
-            should_auto_create = True
-        if should_auto_create and self.request.user.role != Role.EMPLOYEE:
-            self._ensure_today_attendance()
         return qs
 
-    def _ensure_today_attendance(self):
-        """Create Pending attendance records for today for employees the user can see."""
-        from apps.farms.models import Farm
-        user = self.request.user
-        today = timezone.localdate()
 
-        # Get the farm IDs the user has access to
-        if user.role == Role.SUPER_ADMIN:
-            farm_ids = list(Farm.objects.values_list("id", flat=True))
-        else:
-            farm_ids = list(user.farms.values_list("id", flat=True))
-
-        if not farm_ids:
-            return
-
-        # Get all active employees on those farms
-        employees = Employee.objects.filter(
-            farm_id__in=farm_ids, is_active=True
-        ).select_related("farm")
-
-        # Existing attendance IDs for today (for bulk exclude)
-        existing_emp_ids = set(
-            Attendance.objects.filter(
-                employee__in=employees, date=today
-            ).values_list("employee_id", flat=True)
-        )
-
-        # Bulk-create missing records
-        to_create = []
-        for emp in employees:
-            if emp.id not in existing_emp_ids:
-                to_create.append(
-                    Attendance(
-                        employee=emp,
-                        farm=emp.farm,
-                        date=today,
-                        status=None,  # Pending — no status set yet
-                        approval_status=Attendance.ApprovalStatus.PENDING,
-                        created_by=user,
-                    )
-                )
-
-        if to_create:
-            Attendance.objects.bulk_create(to_create)
 
     @action(detail=False, methods=["post"])
     def check_in(self, request):
@@ -347,71 +294,75 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         geofence rules to auto-approve or fail the check-in.
         Creates attendance record ONLY on successful check-in.
         """
-        att_date, check_in_dt = self._resolve_attendance_datetime(request)
+        with transaction.atomic():
+            att_date, check_in_dt = self._resolve_attendance_datetime(request)
 
-        # Check if attendance already exists for this date
-        existing = Attendance.objects.filter(employee=employee, date=att_date).first()
-        if existing and existing.check_in_time is not None:
-            # Already checked in - return existing record
-            return existing
+            # Check if attendance already exists for this date
+            existing = Attendance.objects.filter(employee=employee, date=att_date).first()
+            if existing and existing.check_in_time is not None:
+                # Already checked in - return existing record
+                return existing
 
-        # Create or get attendance record
-        if existing:
-            attendance = existing
-            attendance.farm = employee.farm
-            attendance.created_by = request.user
-        else:
-            attendance = Attendance.objects.create(
-                employee=employee,
-                farm=employee.farm,
-                date=att_date,
-                created_by=request.user,
-            )
-
-        attendance.check_in_time = check_in_dt
-        attendance.status = Attendance.Status.PRESENT
-        if request.data.get("check_in_lat") is not None:
-            attendance.check_in_lat = request.data.get("check_in_lat")
-        if request.data.get("check_in_lng") is not None:
-            attendance.check_in_lng = request.data.get("check_in_lng")
-        check_in_photo = request.FILES.get("check_in_photo")
-        if check_in_photo:
-            attendance.check_in_photo = check_in_photo
-
-        # ── GPS Geofence Validation (uses location_inside_farm) ───────────
-        lat = request.data.get("check_in_lat")
-        lng = request.data.get("check_in_lng")
-        if lat is not None and lng is not None:
-            lat, lng = float(lat), float(lng)
-            farm = employee.farm
-
-            # Calculate distance from farm centre for display
-            if farm.latitude is not None and farm.longitude is not None:
-                distance = haversine_m(
-                    float(farm.latitude), float(farm.longitude), lat, lng
-                )
-                attendance.check_in_distance = round(distance, 2)
-
-            # Use location_inside_farm for accurate geofence validation
-            # Checks Geofence model polygons, center+radius, farm polygon, then farm center+radius
-            is_inside = location_inside_farm(farm, lat, lng)
-            if is_inside is True:
-                attendance.geofence_status = True
-                attendance.approval_status = Attendance.ApprovalStatus.APPROVED
-            elif is_inside is False:
-                attendance.geofence_status = False
-                attendance.approval_status = Attendance.ApprovalStatus.FAILED
+            # Create or get attendance record
+            if existing:
+                attendance = existing
+                attendance.farm = employee.farm
+                attendance.created_by = request.user
             else:
-                # None means no fence config — cannot determine status
+                attendance = Attendance.objects.create(
+                    employee=employee,
+                    farm=employee.farm,
+                    date=att_date,
+                    created_by=request.user,
+                )
+
+            attendance.check_in_time = check_in_dt
+            attendance.status = Attendance.Status.PRESENT
+            if request.data.get("check_in_lat") is not None:
+                attendance.check_in_lat = request.data.get("check_in_lat")
+            if request.data.get("check_in_lng") is not None:
+                attendance.check_in_lng = request.data.get("check_in_lng")
+            check_in_photo = request.FILES.get("check_in_photo")
+            if check_in_photo:
+                attendance.check_in_photo = check_in_photo
+            # Add check_in_notes
+            if request.data.get("check_in_notes") is not None:
+                attendance.check_in_notes = request.data.get("check_in_notes")
+
+            # ── GPS Geofence Validation (uses location_inside_farm) ───────────
+            lat = request.data.get("check_in_lat")
+            lng = request.data.get("check_in_lng")
+            if lat is not None and lng is not None:
+                lat, lng = float(lat), float(lng)
+                farm = employee.farm
+
+                # Calculate distance from farm centre for display
+                if farm.latitude is not None and farm.longitude is not None:
+                    distance = haversine_m(
+                        float(farm.latitude), float(farm.longitude), lat, lng
+                    )
+                    attendance.check_in_distance = round(distance, 2)
+
+                # Use location_inside_farm for accurate geofence validation
+                # Checks Geofence model polygons, center+radius, farm polygon, then farm center+radius
+                is_inside = location_inside_farm(farm, lat, lng)
+                if is_inside is True:
+                    attendance.geofence_status = True
+                    attendance.approval_status = Attendance.ApprovalStatus.APPROVED
+                elif is_inside is False:
+                    attendance.geofence_status = False
+                    attendance.approval_status = Attendance.ApprovalStatus.FAILED
+                else:
+                    # None means no fence config — cannot determine status
+                    attendance.geofence_status = None
+                    attendance.approval_status = Attendance.ApprovalStatus.PENDING
+            else:
+                # No GPS coordinates provided
                 attendance.geofence_status = None
                 attendance.approval_status = Attendance.ApprovalStatus.PENDING
-        else:
-            # No GPS coordinates provided
-            attendance.geofence_status = None
-            attendance.approval_status = Attendance.ApprovalStatus.PENDING
 
-        attendance.save()
-        return attendance
+            attendance.save()
+            return attendance
 
     @action(detail=True, methods=["post"])
     def check_out(self, request, pk=None):
@@ -420,41 +371,45 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         Also validates check-out GPS coordinates against the farm's geofence
         so the Geofence column reflects the check-out location status.
         """
-        attendance = self.get_object()
-        # Guard against checking out twice or before checking in.
-        if attendance.check_in_time is None:
-            return Response({"detail": "Cannot check out before checking in."}, status=400)
-        if attendance.check_out_time is not None:
-            return Response({"detail": "Already checked out today."}, status=400)
-        attendance.check_out_time = timezone.now()
-        attendance.status = Attendance.Status.PRESENT_DONE
-        if request.data.get("overtime_hours") is not None:
-            attendance.overtime_hours = request.data.get("overtime_hours")
-        if request.data.get("check_out_lat") is not None:
-            attendance.check_out_lat = request.data.get("check_out_lat")
-        if request.data.get("check_out_lng") is not None:
-            attendance.check_out_lng = request.data.get("check_out_lng")
-        check_out_photo = request.FILES.get("check_out_photo")
-        if check_out_photo:
-            attendance.check_out_photo = check_out_photo
+        with transaction.atomic():
+            attendance = self.get_object()
+            # Guard against checking out twice or before checking in.
+            if attendance.check_in_time is None:
+                return Response({"detail": "Cannot check out before checking in."}, status=400)
+            if attendance.check_out_time is not None:
+                return Response({"detail": "Already checked out today."}, status=400)
+            attendance.check_out_time = timezone.now()
+            attendance.status = Attendance.Status.PRESENT_DONE
+            if request.data.get("overtime_hours") is not None:
+                attendance.overtime_hours = request.data.get("overtime_hours")
+            if request.data.get("check_out_lat") is not None:
+                attendance.check_out_lat = request.data.get("check_out_lat")
+            if request.data.get("check_out_lng") is not None:
+                attendance.check_out_lng = request.data.get("check_out_lng")
+            check_out_photo = request.FILES.get("check_out_photo")
+            if check_out_photo:
+                attendance.check_out_photo = check_out_photo
+            # Add check_out_notes
+            if request.data.get("check_out_notes") is not None:
+                attendance.check_out_notes = request.data.get("check_out_notes")
 
-        # Calculate check-out location but do NOT overwrite geofence_status
-        # (geofence_status reflects check-in location; check-out just records position)
-        out_lat = request.data.get("check_out_lat")
-        out_lng = request.data.get("check_out_lng")
-        if out_lat is not None and out_lng is not None:
-            farm = attendance.employee.farm
-            if farm.latitude is not None and farm.longitude is not None:
-                distance = haversine_m(
-                    float(farm.latitude), float(farm.longitude),
-                    float(out_lat), float(out_lng)
-                )
-                # Only save distance — do NOT update geofence_status (that stays as check-in result)
+            # Calculate check-out location but do NOT overwrite geofence_status
+            # (geofence_status reflects check-in location; check-out just records position)
+            out_lat = request.data.get("check_out_lat")
+            out_lng = request.data.get("check_out_lng")
+            if out_lat is not None and out_lng is not None:
+                farm = attendance.employee.farm
+                if farm.latitude is not None and farm.longitude is not None:
+                    distance = haversine_m(
+                        float(farm.latitude), float(farm.longitude),
+                        float(out_lat), float(out_lng)
+                    )
+                    # Only save distance — do NOT update geofence_status (that stays as check-in result)
 
-        attendance.save()
+            attendance.save()
 
-        serializer = self.get_serializer(attendance, context={'request': request})
-        return Response(serializer.data, status=200)
+            serializer = self.get_serializer(attendance, context={'request': request})
+            return Response(serializer.data, status=200)
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
@@ -663,7 +618,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
     def today_status(self, request):
         """Get today's attendance status for a specific employee.
 
-        Returns attendance record (auto-creates a Pending one if none exists),
+        Returns attendance record only if it exists (no auto-creation),
         used by frontend to show current status card.
         """
         employee_id = request.query_params.get("employee")
@@ -677,19 +632,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         ).select_related("employee", "farm").first()
 
         if not attendance:
-            # Auto-create a Pending attendance record for today
-            employee = Employee.objects.filter(pk=employee_id).first()
-            if employee:
-                attendance = Attendance.objects.create(
-                    employee=employee,
-                    farm=employee.farm,
-                    date=today,
-                    status=None,  # Pending
-                    approval_status=Attendance.ApprovalStatus.PENDING,
-                    created_by=request.user,
-                )
-            else:
-                return Response({"has_attendance": False})
+            return Response({"has_attendance": False})
 
         serializer = self.get_serializer(attendance, context={'request': request})
         data = serializer.data
