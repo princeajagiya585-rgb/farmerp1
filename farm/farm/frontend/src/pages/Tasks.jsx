@@ -252,58 +252,68 @@ export default function Tasks() {
           </Button>
         )
       }
-      columns={[
-        { key: "title", header: t("header.work") },
-        { key: "start_date", header: t("tasks.fieldStartDate") },
-        { key: "farm_name", header: t("header.farm") },
-        {
-          key: "priority",
-          header: t("header.priority"),
-          render: (r) => <Badge color={prioColor[r.priority]}>{t(prioLabelMap[r.priority] || r.priority)}</Badge>,
-        },
-        {
-          key: "schedule_type",
-          header: t("header.schedule"),
-          render: (r) => t(scheduleLabelMap[r.schedule_type] || r.schedule_type),
-        },
-        { key: "assigned_to_name", header: t("header.user"), render: (r) => {
-            if (r.active_session?.user_name) return r.active_session.user_name;
-            if (r.active_session?.username) return r.active_session.username;
-            return r.assigned_to_name || r.assigned_employee_name || "—";
-          } },
-        {
-          key: "due_date",
-          header: t("header.dueDate"),
-          render: (r) =>
-            r.due_date ? (
-              <span className={r.is_overdue ? "font-semibold text-red-600" : ""}>
-                {r.due_date}{r.is_overdue ? " ⚠" : ""}
-              </span>
-            ) : "—",
-        },
-        {
-          key: "progress",
-          header: t("header.progress"),
-          render: (r) => (
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-20 rounded-full bg-gray-200">
-                <div className="h-2 rounded-full bg-brand-500" style={{ width: `${r.progress || 0}%` }} />
+      columns={(() => {
+        const cols = [
+          { key: "title", header: t("header.work") },
+          { key: "start_date", header: t("tasks.fieldStartDate") },
+          { key: "farm_name", header: t("header.farm") },
+          {
+            key: "priority",
+            header: t("header.priority"),
+            render: (r) => <Badge color={prioColor[r.priority]}>{t(prioLabelMap[r.priority] || r.priority)}</Badge>,
+          },
+          {
+            key: "schedule_type",
+            header: t("header.schedule"),
+            render: (r) => t(scheduleLabelMap[r.schedule_type] || r.schedule_type),
+          },
+          // Assign To User — hidden from employees
+          ...(isEmployee ? [] : [{
+            key: "assigned_to_name",
+            header: t("tasks.assignToUser"),
+            render: (r) => r.assigned_to_name || r.active_session?.user_name || r.active_session?.username || "—",
+          }]),
+          // Assign To Worker — hidden from employees
+          ...(isEmployee ? [] : [{
+            key: "assigned_employee_name",
+            header: t("tasks.assignToWorker"),
+            render: (r) => r.assigned_employee_name || "—",
+          }]),
+          {
+            key: "due_date",
+            header: t("header.dueDate"),
+            render: (r) =>
+              r.due_date ? (
+                <span className={r.is_overdue ? "font-semibold text-red-600" : ""}>
+                  {r.due_date}{r.is_overdue ? " ⚠" : ""}
+                </span>
+              ) : "—",
+          },
+          {
+            key: "progress",
+            header: t("header.progress"),
+            render: (r) => (
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-20 rounded-full bg-gray-200">
+                  <div className="h-2 rounded-full bg-brand-500" style={{ width: `${r.progress || 0}%` }} />
+                </div>
+                <span className="text-xs text-gray-500">{r.progress || 0}%</span>
               </div>
-              <span className="text-xs text-gray-500">{r.progress || 0}%</span>
-            </div>
-          ),
-        },
-        {
-          key: "status",
-          header: t("header.status"),
-          render: (r) => <Badge color={statusColor[r.status]}>{t(statusLabelMap[r.status] || r.status)}</Badge>,
-        },
-        {
-          key: "timer",
-          header: t("header.timer"),
-          render: (r) => <TaskTimer row={r} />,
-        },
-      ]}
+            ),
+          },
+          {
+            key: "status",
+            header: t("header.status"),
+            render: (r) => <Badge color={statusColor[r.status]}>{t(statusLabelMap[r.status] || r.status)}</Badge>,
+          },
+          {
+            key: "timer",
+            header: t("header.timer"),
+            render: (r) => <TaskTimer row={r} />,
+          },
+        ];
+        return cols;
+      })()}
       rowActions={(row, reload) => (
         <>
           {/* Work-proof state machine (all users):
@@ -357,18 +367,10 @@ export default function Tasks() {
               <button
                 onClick={async () => { await repo.action(row.id, "start_work"); reload(); }}
                 className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-700"
-                title={t("tasks.resumeTask")}
+                title="Start"
               >
                 <span>▶</span>
-                {t("tasks.resumeTask")}
-              </button>
-              <button
-                onClick={() => openWorkModal(row, "DURING", reload)}
-                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                title={t("gps.duringWork")}
-              >
-                <Camera size={14} />
-                {t("gps.duringWork")}
+                Start
               </button>
               {(row.during_work_count || 0) > 0 && (
                 <button
