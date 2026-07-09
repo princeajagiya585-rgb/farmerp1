@@ -189,12 +189,13 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         return super().list(request, *args, **kwargs)
 
     def _backfill_absent_days(self):
-        """Ensure every active employee has an attendance row per day.
+        """Ensure every active employee has an attendance row per PAST day.
 
-        Days with no check-in stay ABSENT automatically; a check-in flips the
-        row to PRESENT (see ``_do_check_in``). Managers/admins can edit any
-        row manually. Idempotent and cheap: only missing (employee, date)
-        pairs inside the window are created.
+        Today's row is deliberately NOT created here — it only appears when the
+        employee actually checks in (see ``_do_check_in``). Past days with no
+        check-in stay ABSENT automatically. Managers/admins can edit any row
+        manually. Idempotent and cheap: only missing (employee, date) pairs
+        inside the window are created.
         """
         today = timezone.localdate()
         window_start = today - timedelta(days=self.ABSENT_BACKFILL_DAYS)
@@ -202,7 +203,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         if not employees:
             return
         existing = set(
-            Attendance.objects.filter(date__gte=window_start, date__lte=today)
+            Attendance.objects.filter(date__gte=window_start, date__lt=today)
             .values_list("employee_id", "date")
         )
         missing = []
@@ -211,7 +212,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             if emp.created_at:
                 start = max(window_start, timezone.localtime(emp.created_at).date())
             d = start
-            while d <= today:
+            while d < today:
                 if (emp.id, d) not in existing:
                     missing.append(
                         Attendance(
