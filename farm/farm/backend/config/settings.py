@@ -27,7 +27,7 @@ if not SECRET_KEY:
 DEBUG = env_bool("DEBUG", False)
 ALLOWED_HOSTS = env_list(
     "ALLOWED_HOSTS",
-    "localhost,127.0.0.1,.up.railway.app,.railway.app,farmerp1.vercel.app"
+    "localhost,127.0.0.1,.up.railway.app,.railway.app,farmerp-frontend.vercel.app"
 )
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
@@ -297,13 +297,13 @@ LOCATIONIQ_API_KEY = os.getenv("LOCATIONIQ_API_KEY", "")
 # ---------------------------------------------------------------------------
 CORS_ALLOWED_ORIGINS = env_list(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173,http://localhost:5174,http://localhost:3000,https://farmerp1.vercel.app"
+    "http://localhost:5173,http://localhost:5174,http://localhost:3000,https://farmerp1.vercel.app,https://farmerp-frontend.vercel.app"
 )
 CORS_ALLOW_CREDENTIALS = True
 # Required by Django for cross-origin POST (e.g. the admin) behind HTTPS.
 CSRF_TRUSTED_ORIGINS = env_list(
     "CSRF_TRUSTED_ORIGINS",
-    "https://farmerp1.vercel.app"
+    "https://farmerp1.vercel.app,https://farmerp-frontend.vercel.app"
 )
 # Behind Railway/Vercel's HTTPS proxy, trust the forwarded scheme header.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
