@@ -576,6 +576,15 @@ export default function Attendance() {
               },
             },
             {
+              key: "geofence_verified",
+              header: t("header.geofence"),
+              render: (r) => {
+                if (r.geofence_verified === true) return <Badge color="green">{t("gps.inFence")}</Badge>;
+                if (r.geofence_verified === false) return <Badge color="red">{t("gps.outside")}</Badge>;
+                return <span className="text-gray-400">—</span>;
+              },
+            },
+            {
               key: "check_in_coords",
               header: t("attendance.gpsIn"),
               render: (r) =>

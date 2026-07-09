@@ -1712,5 +1712,9 @@
   "tasks.break": "Break",
   "tasks.breakTask": "Pause timer (break)",
   "tasks.resumeTask": "Resume Work",
-  "tasks.onBreak": "On Break"
+  "tasks.onBreak": "On Break",
+  "tasks.submittedSuccess": "Task submitted successfully!",
+  "tasks.workResumed": "Work resumed!",
+  "tasks.workPaused": "Work paused!",
+  "tasks.confirmed": "Confirmed"
 }

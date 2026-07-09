@@ -390,7 +390,11 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
 
     @action(detail=True, methods=["post"])
     def check_out(self, request, pk=None):
-        """Set check-out time and optional overtime."""
+        """Set check-out time and optional overtime.
+
+        Also validates check-out GPS coordinates against the farm's geofence
+        so the Geofence column reflects the check-out location status.
+        """
         attendance = self.get_object()
         # Guard against checking out twice or before checking in.
         if attendance.check_in_time is None:
@@ -408,6 +412,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         check_out_photo = request.FILES.get("check_out_photo")
         if check_out_photo:
             attendance.check_out_photo = check_out_photo
+
         attendance.save()
 
         serializer = self.get_serializer(attendance, context={'request': request})

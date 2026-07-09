@@ -64,8 +64,8 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
     def get_permissions(self):
         # Any authenticated user (incl. EMPLOYEE/LABOUR) may create their own
-        # tasks, start/stop their work timer, and mark their task complete.
-        if self.action in ("mark_complete", "create", "start_work", "stop_work"):
+        # tasks, start/stop their work timer, submit, and mark their task complete.
+        if self.action in ("mark_complete", "submit", "create", "start_work", "stop_work"):
             from rest_framework.permissions import IsAuthenticated
             return [IsAuthenticated()]
         return super().get_permissions()
@@ -111,8 +111,9 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     def submit(self, request, pk=None):
         task = self.get_object()
         task.status = Task.Status.SUBMITTED
-        task.progress = 100
-        task.save(update_fields=["status", "progress", "updated_at"])
+        # Don't force progress=100 — this is now used as the worker's
+        # "ready to work" acknowledgment after Before Work confirmation.
+        task.save(update_fields=["status", "updated_at"])
         return Response(self.get_serializer(task).data)
 
     @action(detail=True, methods=["post"])

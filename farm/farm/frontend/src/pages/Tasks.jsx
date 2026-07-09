@@ -18,10 +18,18 @@ const ALL_TASKS_PARAMS = {};
 // Work-proof flow: each phase posts a geo-tagged (optionally photographed)
 // LocationPing tied to the task. CHECKIN/CHECKOUT activities are labelled
 // "Before Work"/"Completed Work" throughout the UI.
+//
+// Flow:
+//   BEFORE     → Before Work button (creates CHECKIN ping).
+//   CONFIRMED  → Submit button (changes task status to SUBMITTED).
+//   SUBMITTED  → During Work / Break / Complete Work buttons.
+//   DURING     → Break (stop timer) + Complete Work buttons.
+//   COMPLETED  → Done — shows completed badge.
 const workPhaseConfig = {
   BEFORE: { activity: "CHECKIN", labelKey: "gps.beforeWork" },
+  CONFIRMED: { activity: "CHECKIN", labelKey: "tasks.confirmed" },
+  SUBMITTED: { activity: "DURING_WORK", labelKey: "gps.duringWork" },
   DURING: { activity: "DURING_WORK", labelKey: "gps.duringWork" },
-  ON_BREAK: { activity: "DURING_WORK", labelKey: "tasks.onBreak" },
   COMPLETED: { activity: "CHECKOUT", labelKey: "gps.completedWork" },
 };
 const prioColor = { LOW: "gray", MEDIUM: "blue", HIGH: "yellow", URGENT: "red" };
@@ -161,6 +169,7 @@ export default function Tasks() {
       reload();
       const successKey = {
         BEFORE: "tasks.beforeWorkSaved",
+        SUBMITTED: "tasks.duringWorkSaved",  // During Work from SUBMITTED phase
         DURING: "tasks.duringWorkSaved",
         COMPLETED: "tasks.workCompleted",
       }[phase];
@@ -189,7 +198,8 @@ export default function Tasks() {
 
   const TaskTimer = ({ row }) => {
     const session = row.active_session;
-    const onBreak = row.work_phase === "ON_BREAK";
+    const phase = row.work_phase || "BEFORE";
+    const onBreak = phase === "SUBMITTED";
     const tracked = row.total_tracked_minutes;
     
     if (onBreak && tracked) {
@@ -314,15 +324,22 @@ export default function Tasks() {
         ];
         return cols;
       })()}
-      rowActions={(row, reload) => (
+      rowActions={(row, reload) => {
+        const phase = row.work_phase || "BEFORE";
+        const isClosed = ["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status);
+        return (
         <>
-          {/* Work-proof state machine (all users):
-              BEFORE    → Before Work button.
-              DURING    → During Work + Break + Completed Work (if during_work_count > 0).
-              ON_BREAK  → Resume Work + During Work + Completed Work (if during_work_count > 0).
-              COMPLETED → locked; show only the Completed badge.
-              A row without work_phase (e.g. cached API data) defaults to BEFORE. */}
-          {!["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status) && (row.work_phase || "BEFORE") === "BEFORE" && (
+          {/* =======================================================
+               Work-proof state machine (all users):
+               BEFORE     → Before Work (CHECKIN) — no timer, status stays.
+               CONFIRMED  → Submit (advances status to SUBMITTED).
+               SUBMITTED  → During Work / Break / Complete Work.
+               DURING     → Break (stop timer) / Complete Work.
+               COMPLETED  → Locked; show completed badge.
+               ======================================================= */}
+
+          {/* ── BEFORE: No CHECKIN yet — show "Before Work" button ── */}
+          {!isClosed && phase === "BEFORE" && (
             <button
               onClick={() => openWorkModal(row, "BEFORE", reload)}
               className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
@@ -332,10 +349,28 @@ export default function Tasks() {
               {t("gps.beforeWork")}
             </button>
           )}
-          {!["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status) && row.work_phase === "DURING" && (
+
+          {/* ── CONFIRMED: CHECKIN done, waiting for Submit ── */}
+          {!isClosed && phase === "CONFIRMED" && (
+            <button
+              onClick={async () => {
+                await repo.action(row.id, "submit");
+                addToast(t("tasks.submittedSuccess"), "success");
+                reload();
+              }}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-purple-700"
+              title={t("tasks.submit")}
+            >
+              <Send size={14} />
+              {t("tasks.submit")}
+            </button>
+          )}
+
+          {/* ── SUBMITTED: Timer stopped — show During Work, Break (start), Complete ── */}
+          {!isClosed && phase === "SUBMITTED" && (
             <>
               <button
-                onClick={() => openWorkModal(row, "DURING", reload)}
+                onClick={() => openWorkModal(row, "SUBMITTED", reload)}
                 className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
                 title={t("gps.duringWork")}
               >
@@ -343,60 +378,56 @@ export default function Tasks() {
                 {t("gps.duringWork")}
               </button>
               <button
-                onClick={async () => { await repo.action(row.id, "stop_work"); reload(); }}
+                onClick={async () => { await repo.action(row.id, "start_work"); addToast(t("tasks.workResumed"), "success"); reload(); }}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-700"
+                title={t("tasks.resumeTask")}
+              >
+                <span>▶</span>
+                {t("tasks.resumeTask")}
+              </button>
+              <button
+                onClick={() => openWorkModal(row, "COMPLETED", reload)}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
+                title={t("gps.completedWork")}
+              >
+                <CheckCircle size={14} />
+                {t("gps.completedWork")}
+              </button>
+            </>
+          )}
+
+          {/* ── DURING: Timer running — show Break (stop timer) + Complete ── */}
+          {!isClosed && phase === "DURING" && (
+            <>
+              <button
+                onClick={async () => { await repo.action(row.id, "stop_work"); addToast(t("tasks.workPaused"), "success"); reload(); }}
                 className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600"
                 title={t("tasks.break")}
               >
                 <span>☕</span>
                 {t("tasks.break")}
               </button>
-              {(row.during_work_count || 0) > 0 && (
-                <button
-                  onClick={() => openWorkModal(row, "COMPLETED", reload)}
-                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
-                  title={t("gps.completedWork")}
-                >
-                  <CheckCircle size={14} />
-                  {t("gps.completedWork")}
-                </button>
-              )}
-            </>
-          )}
-          {!["COMPLETED", "VERIFIED", "CANCELLED"].includes(row.status) && row.work_phase === "ON_BREAK" && (
-            <>
               <button
-                onClick={async () => { await repo.action(row.id, "start_work"); reload(); }}
-                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-700"
-                title="Start"
+                onClick={() => openWorkModal(row, "COMPLETED", reload)}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
+                title={t("gps.completedWork")}
               >
-                <span>▶</span>
-                Start
+                <CheckCircle size={14} />
+                {t("gps.completedWork")}
               </button>
-              {(row.during_work_count || 0) > 0 && (
-                <button
-                  onClick={() => openWorkModal(row, "COMPLETED", reload)}
-                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
-                  title={t("gps.completedWork")}
-                >
-                  <CheckCircle size={14} />
-                  {t("gps.completedWork")}
-                </button>
-              )}
             </>
           )}
-          {row.work_phase === "COMPLETED" && (
+
+          {/* ── COMPLETED: Done — show badge ── */}
+          {phase === "COMPLETED" && (
             <Badge color="green">
               <span className="inline-flex items-center gap-1">
                 <CheckCircle size={12} /> {t("tasks.statusCompleted")}
               </span>
             </Badge>
           )}
-          {/* Admin workflow: submit / verify / complete */}
-          {canManage && ["TODO", "IN_PROGRESS"].includes(row.status) && (
-            <button onClick={() => act(row.id, "submit", reload)} className="rounded p-1.5 text-purple-600 hover:bg-purple-50" title={t("tasks.submit")}>
-              <Send size={15} />
-            </button>
-          )}
+
+          {/* Admin workflow: verify / complete (only for statuses after SUBMITTED) */}
           {canManage && row.status === "SUBMITTED" && (
             <button onClick={() => act(row.id, "verify", reload)} className="rounded p-1.5 text-green-600 hover:bg-green-50" title={t("tasks.verify")}>
               <Check size={15} />
@@ -408,7 +439,8 @@ export default function Tasks() {
             </button>
           )}
         </>
-      )}
+        );
+      }}
       fieldDependencies={[
         { watch: "assigned_employee", target: "farm", mapField: "farm" }
       ]}

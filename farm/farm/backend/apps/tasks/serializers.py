@@ -72,24 +72,25 @@ class TaskSerializer(serializers.ModelSerializer):
     def get_work_phase(self, obj):
         """Which work-proof step comes next for this task.
 
-        BEFORE     → no work pings yet; show the "Before Work" button.
-        DURING     → before-work ping exists + timer is running.
-                    Show "During Work" (and "Completed Work" once at least
-                    one during-work entry exists).
-        ON_BREAK   → during-work ping exists but timer is stopped
-                    (paused by the user). Show "Resume Work" + "During
-                    Work" + "Completed Work".
-        COMPLETED  → completed-work ping exists; the flow is finished.
+        BEFORE      → no work pings yet; show the "Before Work" button.
+        CONFIRMED   → CHECKIN ping exists but the worker hasn't clicked
+                      Submit yet. Show the "Submit" button to advance
+                      the task to SUBMITTED status.
+        SUBMITTED   → status is SUBMITTED, no active timer. Show
+                      "During Work", "Break", "Complete Work" buttons.
+        DURING      → status is SUBMITTED, timer is running. Show
+                      "Break" (to stop timer) and "Complete Work".
+        COMPLETED   → completed-work ping (CHECKOUT) exists; done.
         """
         activities = set(obj.location_pings.values_list("activity", flat=True))
         if "CHECKOUT" in activities:
             return "COMPLETED"
         if "CHECKIN" in activities:
-            has_active = obj.work_sessions.filter(end_time__isnull=True).exists()
-            if "DURING_WORK" in activities:
-                return "DURING" if has_active else "ON_BREAK"
-            # CHECKIN without DURING_WORK — timer is running from _advance_task_phase
-            return "DURING" if has_active else "ON_BREAK"
+            if obj.status in (Task.Status.SUBMITTED, Task.Status.VERIFIED):
+                has_active = obj.work_sessions.filter(end_time__isnull=True).exists()
+                return "DURING" if has_active else "SUBMITTED"
+            # CHECKIN done but status not yet SUBMITTED — show Submit button
+            return "CONFIRMED"
         return "BEFORE"
 
     @extend_schema_field(serializers.IntegerField())

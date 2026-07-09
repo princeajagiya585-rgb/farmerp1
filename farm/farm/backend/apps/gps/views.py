@@ -123,10 +123,7 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
                     raise serializers.ValidationError(
                         {"detail": "Record Before Work first."}
                     )
-                if LocationPing.Activity.DURING_WORK not in existing:
-                    raise serializers.ValidationError(
-                        {"detail": "Add a During Work update before completing."}
-                    )
+                # DURING_WORK is optional — workers can complete without it.
         extra = {}
         if task and not serializer.validated_data.get("farm"):
             extra["farm"] = task.farm
@@ -143,23 +140,21 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
     def _advance_task_phase(ping):
         """Move the linked task through its work flow.
 
-        A Before-Work ping (CHECKIN) starts the task and its work timer; a
-        During-Work ping keeps the timer alive; a Completed-Work ping
-        (CHECKOUT) stops the timer and closes the task.
+        A Before-Work ping (CHECKIN) just records the confirmation — no timer
+        starts and status stays unchanged. The worker must then click Submit to
+        advance the task to SUBMITTED status before work buttons appear.
+        A During-Work ping (DURING_WORK) starts the work timer if needed.
+        A Completed-Work ping (CHECKOUT) stops the timer and closes the task.
         """
         from apps.tasks.models import Task, TaskWorkSession
 
         task = ping.task
         if not task:
             return
-        if ping.activity in (
-            LocationPing.Activity.CHECKIN,
-            LocationPing.Activity.DURING_WORK,
-        ):
-            if task.status == Task.Status.TODO:
-                task.status = Task.Status.IN_PROGRESS
-                task.save(update_fields=["status", "updated_at"])
+        if ping.activity == LocationPing.Activity.DURING_WORK:
             # Start the work timer if the worker doesn't have one running.
+            # Note: CHECKIN no longer starts a timer — the worker must click
+            # Submit first, then the During Work / Break buttons manage timers.
             has_active = TaskWorkSession.objects.filter(
                 task=task, user=ping.user, end_time__isnull=True
             ).exists()
