@@ -130,10 +130,11 @@ export default function CrudResource({
     }
   }, [showFarmFilter, showEmployeeFilter, showUserFilter, isEmployee]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options = {}) => {
     setLoading(true);
     try {
       const params = { page, ...listParams };
+      if (options.forceRefresh) params._t = Date.now();
       if (search) params.search = search;
       if (dateFrom) params.date_from = dateFrom;
       if (dateTo) params.date_to = dateTo;

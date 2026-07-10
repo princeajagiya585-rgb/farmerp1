@@ -48,6 +48,8 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     ).prefetch_related(
         "location_pings",
         "work_sessions",
+        "executions",
+        "activities",
     ).all()
     serializer_class = TaskSerializer
     farm_lookup = "farm_id"
@@ -70,7 +72,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     def get_permissions(self):
         # Any authenticated user (incl. EMPLOYEE/LABOUR) may create their own
         # tasks, start/stop their work timer, submit, and mark their task complete.
-        if self.action in ("mark_complete", "submit", "create", "start_work", "stop_work"):
+        if self.action in ("mark_complete", "submit", "create", "start_work", "stop_work", "before_work", "complete_work", "during_work", "resume_work", "take_break", "get_history"):
             from rest_framework.permissions import IsAuthenticated
             return [IsAuthenticated()]
         return super().get_permissions()
@@ -249,7 +251,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         task.save(update_fields=["progress", "status", "updated_at"])
         return Response(self.get_serializer(task).data)
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], url_path="start-work")
     def start_work(self, request, pk=None):
         """Start a work session on this task."""
         task = self.get_object()
@@ -274,7 +276,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             task.save(update_fields=["status", "updated_at"])
         return Response(TaskWorkSessionSerializer(session).data, status=201)
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], url_path="stop-work")
     def stop_work(self, request, pk=None):
         """Stop the active work session on this task."""
         task = self.get_object()
@@ -290,7 +292,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         session.save(update_fields=["end_time", "updated_at"])
         return Response(TaskWorkSessionSerializer(session).data)
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], url_path="before-work")
     def before_work(self, request, pk=None):
         """Employee starts work on a task - Before Work action.
 
@@ -380,7 +382,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
         return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], url_path="take-break")
     def take_break(self, request, pk=None):
         """Employee takes a break - Break action.
 
@@ -460,7 +462,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
         return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], url_path="resume-work")
     def resume_work(self, request, pk=None):
         """Employee resumes work after break - Resume action.
 
@@ -537,7 +539,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
         return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], url_path="during-work")
     def during_work(self, request, pk=None):
         """Employee provides progress update - During Work action.
 
@@ -608,7 +610,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
         return Response(TaskActivitySerializer(activity, context={'request': request}).data)
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], url_path="complete-work")
     def complete_work(self, request, pk=None):
         """Employee completes the task - Complete Work action.
 
@@ -707,7 +709,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
         return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
 
-    @action(detail=True, methods=["get"])
+    @action(detail=True, methods=["get"], url_path="get-timer")
     def get_timer(self, request, pk=None):
         """Get current timer status for a task."""
         task = self.get_object()
@@ -741,7 +743,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
         return Response(timer_data)
 
-    @action(detail=True, methods=["get"])
+    @action(detail=True, methods=["get"], url_path="get-history")
     def get_history(self, request, pk=None):
         """Get activity history for a task."""
         task = self.get_object()

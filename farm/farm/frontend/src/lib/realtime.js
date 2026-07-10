@@ -9,21 +9,44 @@
 
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 15000;
+const MAX_RECONNECT_RETRIES = 10; // After 10 retries (~30s), fall back to polling
 
 // ── WebSocket Base URL ──────────────────────────────────────────────────
-//  Production:  VITE_WS_URL must be set in Vercel dashboard to Railway WS URL.
-//               Vercel does NOT proxy WebSocket connections, so a direct URL is
-//               required (e.g. wss://your-backend.up.railway.app).
-//  Development: falls back to ws://localhost:8000 (the Daphne dev server).
+//  ⚠️  Vercel does NOT proxy WebSocket connections (rewrites only work for
+//     HTTP). So WebSocket connections MUST go directly to the Railway backend.
+//
+//  Production:  Set VITE_WS_URL in Vercel Dashboard to Railway WebSocket URL
+//               (e.g. "wss://farmerp-backend-production.up.railway.app").
+//               If NOT set, it defaults to the same URL using the https→wss
+//               protocol swap from VITE_API_URL (if set) or the hardcoded default.
+//
+//  Development: Falls back to ws://localhost:8000 (the Daphne dev server).
 function resolveWsBase() {
-  // In production, use the live working backend directly (Vercel can't proxy
-  // WebSockets). In dev, honour VITE_WS_URL or fall back to localhost Daphne.
-  if (!import.meta.env.DEV) return "wss://farmerp-backend-production.up.railway.app";
+  // 1. If VITE_WS_URL is explicitly set, use it (highest priority)
   if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+
+  // 2. In production, derive from VITE_API_URL or use the default Railway URL
+  if (!import.meta.env.DEV) {
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (apiUrl) {
+      // Derive WS URL from API URL: https://... → wss://...
+      return apiUrl.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
+    }
+    return "wss://farmerp-backend-production.up.railway.app";
+  }
+
+  // 3. Development: fall back to localhost
   const proto = window.location.protocol === "https:" ? "wss" : "ws";
   return `${proto}://${window.location.hostname}:8000`;
 }
 const WS_BASE = resolveWsBase();
+
+if (!import.meta.env.DEV && !import.meta.env.VITE_WS_URL) {
+  console.log(
+    "[WS] VITE_WS_URL not set — using default:", WS_BASE,
+    "Set VITE_WS_URL in Vercel env vars if connecting to a different backend."
+  );
+}
 
 // Enabled by default; set VITE_ENABLE_WEBSOCKET="false" to fall back to polling only.
 const ENABLE_WEBSOCKET = import.meta.env.VITE_ENABLE_WEBSOCKET !== "false";
@@ -56,6 +79,7 @@ export function connectNotificationStream({ onMessage, onStatus, signal }) {
   let retries = 0;
   let timer = null;
   let stopped = false;
+  let pollingFallback = false;
 
   const getToken = () => localStorage.getItem("access");
 
@@ -73,8 +97,48 @@ export function connectNotificationStream({ onMessage, onStatus, signal }) {
     signal.addEventListener("abort", cleanup, { once: true });
   }
 
+  // ── HTTP polling fallback ──────────────────────────────────────────
+  // When WebSocket fails after max retries, switch to polling the
+  // notifications endpoint every 15 seconds as a degraded fallback.
+  function startPollingFallback() {
+    if (stopped || pollingFallback) return;
+    pollingFallback = true;
+    onStatus?.("polling");
+    console.warn("[WS] WebSocket unavailable after max retries — falling back to HTTP polling.");
+
+    let pollTimer = null;
+    async function poll() {
+      if (stopped) return;
+      try {
+        const token = getToken();
+        if (!token) return;
+        const { default: { api } } = await import("./api");
+        const { data } = await api.get("/notifications/unread/");
+        if (data && data.results) {
+          data.results.forEach(msg => onMessage?.(msg));
+        }
+      } catch {
+        // Silently retry on next poll cycle
+      }
+      if (!stopped) {
+        pollTimer = setTimeout(poll, 15000);
+      }
+    }
+    poll();
+    return () => {
+      if (pollTimer) clearTimeout(pollTimer);
+    };
+  }
+
   function connect() {
     if (stopped) return;
+
+    // After max retries, give up on WebSocket and use polling
+    if (retries >= MAX_RECONNECT_RETRIES) {
+      startPollingFallback();
+      return;
+    }
+
     const token = getToken();
     if (!token) {
       scheduleReconnect();
@@ -132,6 +196,7 @@ export function connectLocationStream({ onMessage, onStatus, signal }) {
   let retries = 0;
   let timer = null;
   let stopped = false;
+  let pollingFallback = false;
 
   const getToken = () => localStorage.getItem("access");
 
@@ -153,8 +218,47 @@ export function connectLocationStream({ onMessage, onStatus, signal }) {
     signal.addEventListener("abort", cleanup, { once: true });
   }
 
+  // ── HTTP polling fallback ──────────────────────────────────────────
+  // When WebSocket fails after max retries, switch to polling the
+  // GPS pings endpoint every 10 seconds as a degraded fallback.
+  function startPollingFallback() {
+    if (stopped || pollingFallback) return;
+    pollingFallback = true;
+    onStatus?.("polling");
+    console.warn("[WS] GPS WebSocket unavailable after max retries — falling back to HTTP polling.");
+
+    let pollTimer = null;
+    async function poll() {
+      if (stopped) return;
+      try {
+        const token = getToken();
+        if (!token) return;
+        const { default: { api } } = await import("./api");
+        const { data } = await api.get("/gps/pings/?page_size=20");
+        if (data && data.results) {
+          data.results.forEach(ping => onMessage?.({ _type: "location_ping", ...ping }));
+        }
+      } catch {
+        // Silently retry on next poll cycle
+      }
+      if (!stopped) {
+        pollTimer = setTimeout(poll, 10000);
+      }
+    }
+    poll();
+    return () => {
+      if (pollTimer) clearTimeout(pollTimer);
+    };
+  }
+
   function connect() {
     if (stopped) return;
+
+    // After max retries, give up on WebSocket and use polling
+    if (retries >= MAX_RECONNECT_RETRIES) {
+      startPollingFallback();
+      return;
+    }
 
     const token = getToken();
     if (!token) {

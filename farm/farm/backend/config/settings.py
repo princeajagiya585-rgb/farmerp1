@@ -293,26 +293,47 @@ SPECTACULAR_SETTINGS = {
 LOCATIONIQ_API_KEY = os.getenv("LOCATIONIQ_API_KEY", "")
 
 # ---------------------------------------------------------------------------
-# CORS
+# CORS — Cross-Origin Resource Sharing
 # ---------------------------------------------------------------------------
-CORS_ALLOWED_ORIGINS = env_list(
-    "CORS_ALLOWED_ORIGINS",
-    "http://localhost:5173,http://localhost:5174,http://localhost:3000,https://farmerp1.vercel.app,https://farmerp-frontend.vercel.app"
-)
+# IMPORTANT: The CORS_ALLOWED_ORIGINS env var APPENDS to the defaults below.
+# It does NOT replace them. This prevents accidentally blocking your frontend
+# when you add a new URL to the env var.
+#
+# To add more origins without removing the defaults, set:
+#   CORS_ALLOWED_ORIGINS = https://your-custom-domain.com,https://another-domain.com
+#
+# The default list already includes the production and development URLs.
+_CORS_DEFAULTS = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:3000",
+    "https://farmerp1.vercel.app",
+    "https://farmerp-frontend.vercel.app",
+]
+
+# Merge env var origins with defaults (no accidental overrides)
+_env_origins = env_list("CORS_ALLOWED_ORIGINS", "")
+CORS_ALLOWED_ORIGINS = list(set(_CORS_DEFAULTS + _env_origins))
+
 # CORS_ALLOWED_ORIGINS does NOT support wildcards, so use regex for any
 # Vercel/Railway deployment that the CORS env var hasn't explicitly listed.
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.+vercel\.app$",
     r"^https://.+railway\.app$",
+    r"^https://.+netlify\.app$",
 ]
 CORS_ALLOW_CREDENTIALS = True
+
 # Required by Django for cross-origin POST (e.g. the admin) behind HTTPS.
 # Note: CSRF_TRUSTED_ORIGINS does NOT support wildcards either.
 # Add your exact frontend URL in the Railway dashboard env var.
-CSRF_TRUSTED_ORIGINS = env_list(
-    "CSRF_TRUSTED_ORIGINS",
-    "https://farmerp1.vercel.app,https://farmerp-frontend.vercel.app"
-)
+_CSRF_DEFAULTS = [
+    "https://farmerp1.vercel.app",
+    "https://farmerp-frontend.vercel.app",
+]
+_env_csrf = env_list("CSRF_TRUSTED_ORIGINS", "")
+CSRF_TRUSTED_ORIGINS = list(set(_CSRF_DEFAULTS + _env_csrf))
+
 # Behind Railway/Vercel's HTTPS proxy, trust the forwarded scheme header.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True

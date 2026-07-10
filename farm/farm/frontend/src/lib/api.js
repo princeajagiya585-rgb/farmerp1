@@ -1,19 +1,33 @@
 import axios from "axios";
 
 // ── API Base URL ────────────────────────────────────────────────────────
-//  Production: leave blank → same-origin requests go through Vercel proxy.
-//               To call Railway directly, set VITE_API_URL in Vercel Dashboard.
-//  Development: leave blank → Vite proxy forwards /api to localhost:8000.
-// In production, always use the live backend that runs the current fixed code
-// and is connected to the production Supabase DB. (The original Railway backend
-// deploy is broken; this points the site at the working backend regardless of
-// any stale VITE_API_URL in the Vercel env.) In dev, keep the Vite proxy.
-// ── API Base URL ────────────────────────────────────────────────────────
-//  Production: leave blank → same-origin requests go through Vercel proxy.
-//               To call Railway directly, set VITE_API_URL in Vercel Dashboard.
+//  🚨 CRITICAL: In production (Vercel), DO NOT set VITE_API_URL in Vercel env vars.
+//     When VITE_API_URL is blank/empty, API_BASE = "/api/v1" which means ALL
+//     API requests go to the SAME origin (farmerp1.vercel.app). Vercel then
+//     PROXIES them to Railway via vercel.json rewrites — NO CORS needed.
+//
+//  ❌ If VITE_API_URL is set to "https://farmerp-backend-production.up.railway.app",
+//     the browser makes DIRECT cross-origin requests to Railway, which triggers
+//     the CORS errors you're seeing. The CORS headers on Railway must then match
+//     perfectly, which is fragile and often breaks.
+//
+//  ✅ SOLUTION: Keep VITE_API_URL unset (blank) in Vercel → use same-origin proxy.
+//     Only set VITE_API_URL if you need to bypass the proxy for debugging.
+//
 //  Development: leave blank → Vite proxy forwards /api to localhost:8000.
 const API_ORIGIN = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 const API_BASE = `${API_ORIGIN}/api/v1`;
+
+// Warn if VITE_API_URL is explicitly set — the user might not realize they are
+// bypassing the Vercel proxy and hitting CORS issues.
+if (import.meta.env.PROD && import.meta.env.VITE_API_URL) {
+  console.warn(
+    "[API] VITE_API_URL is set to:", import.meta.env.VITE_API_URL,
+    "— the app will make direct cross-origin requests to Railway. ",
+    "If you see CORS errors, unset VITE_API_URL in your Vercel env vars ",
+    "to use the same-origin Vercel proxy instead."
+  );
+}
 
 export const api = axios.create({ baseURL: API_BASE });
 

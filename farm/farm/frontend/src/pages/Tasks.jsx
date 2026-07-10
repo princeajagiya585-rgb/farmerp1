@@ -264,9 +264,10 @@ export default function Tasks() {
       // Use the new API endpoints
       await repo.action(workModal.row.id, action, workPhoto ? toFormData({ ...data, photo: workPhoto }) : data);
 
+      // Use forceRefresh to bust browser cache and ensure fresh data
       const reload = workModal.reload;
       setWorkModal(null);
-      reload();
+      reload({ forceRefresh: true });
 
       const successKey = {
         BEFORE: "tasks.beforeWorkSaved",
@@ -287,26 +288,32 @@ export default function Tasks() {
   // Get work phase — uses backend-computed work_phase field, with
   // fallback to local computation from location_pings for older backends.
   const getWorkPhase = (row) => {
-    // Use execution status if available (new workflow)
+    // First priority: use my_execution if available (new workflow)
     if (row.my_execution) {
       const status = row.my_execution.status;
-      if (status === "WAITING_APPROVAL" || status === "COMPLETED" || status === "APPROVED") {
+      // Check terminal statuses first
+      if (["WAITING_APPROVAL", "COMPLETED", "APPROVED"].includes(status)) {
         return "COMPLETED";
       }
       if (status === "ON_BREAK") {
         return "ON_BREAK";
       }
+      // IN_PROGRESS — check if before_work has been done
       if (status === "IN_PROGRESS") {
-        // Check if before_work has been done
-        if (row.my_execution.before_work_time) {
-          return "IN_PROGRESS";
-        }
-        return "BEFORE";
+        return row.my_execution.before_work_time ? "IN_PROGRESS" : "BEFORE";
       }
+      // If my_execution exists with any other status (ASSIGNED, CONFIRMED),
+      // still mark as BEFORE so the user can start work via before_work
+      return "BEFORE";
     }
 
-    // Backend already computes work_phase — use it directly
-    if (row.work_phase) return row.work_phase;
+    // Second priority: Backend already computes work_phase — use it directly
+    if (row.work_phase) {
+      const validPhases = ["BEFORE", "IN_PROGRESS", "ON_BREAK", "COMPLETED"];
+      if (validPhases.includes(row.work_phase)) {
+        return row.work_phase;
+      }
+    }
 
     // Fallback: compute from location_pings (legacy)
     const pings = row.location_pings || [];
