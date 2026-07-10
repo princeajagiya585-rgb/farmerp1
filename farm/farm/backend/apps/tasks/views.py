@@ -309,8 +309,12 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         is_assigned = (
             task.assigned_to == user or
             (employee and task.assigned_employee_id == employee.id) or
-            user.role in ["SUPER_ADMIN", "FARM_MANAGER"]
+            user.role in [Role.SUPER_ADMIN, Role.FARM_MANAGER]
         )
+        if not is_assigned:
+            # For employees with no profile, allow if task has no specific assignment
+            if user.role == Role.EMPLOYEE and not task.assigned_to and not task.assigned_employee:
+                is_assigned = True
         if not is_assigned:
             return Response(
                 {"detail": "You are not assigned to this task."},
