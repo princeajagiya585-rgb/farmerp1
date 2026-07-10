@@ -85,6 +85,11 @@ export default function CrudResource({
   const [currentRow, setCurrentRow] = useState(null);
   const [showCreateDropdown, setShowCreateDropdown] = useState(false);
 
+  // Immediately update a single row in local state (no API call)
+  const updateRow = useCallback((id, updates) => {
+    setRows(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
+  }, []);
+
   // Load options for FK select fields
   useEffect(() => {
     fields
@@ -364,7 +369,7 @@ export default function CrudResource({
             header: t("common.actions"),
             render: (row) => (
               <div className="flex items-center gap-1">
-                {rowActions && rowActions(row, load)}
+                {rowActions && rowActions(row, load, updateRow)}
                 {canModify && (
                   <button onClick={() => openEdit(row)} className="rounded p-1.5 text-gray-500 hover:bg-gray-100" title={t("common.edit")}>
                     <Pencil size={15} />
