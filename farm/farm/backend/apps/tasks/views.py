@@ -13,10 +13,11 @@ from apps.accounts.models import Role
 from apps.core.mixins import BaseModelViewSet
 from apps.farms.views import FarmScopedQuerysetMixin
 
-from .models import Task, TaskUpdate, TaskWorkSession, TaskExecution, TaskBreakLog, TaskProgressLog
+from .models import Task, TaskUpdate, TaskWorkSession, TaskExecution, TaskBreakLog, TaskProgressLog, TaskActivity
 from .serializers import (
     TaskSerializer, TaskUpdateSerializer, TaskWorkSessionSerializer,
-    TaskExecutionSerializer, TaskBreakLogSerializer, TaskProgressLogSerializer
+    TaskExecutionSerializer, TaskBreakLogSerializer, TaskProgressLogSerializer,
+    TaskActivitySerializer
 )
 
 
@@ -288,6 +289,485 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         session.end_time = timezone.now()
         session.save(update_fields=["end_time", "updated_at"])
         return Response(TaskWorkSessionSerializer(session).data)
+
+    @action(detail=True, methods=["post"])
+    def before_work(self, request, pk=None):
+        """Employee starts work on a task - Before Work action.
+
+        Required: photo, latitude, longitude
+        Optional: address, notes
+        """
+        task = self.get_object()
+        user = request.user
+
+        # Get employee
+        from apps.workforce.models import Employee
+        employee = Employee.objects.filter(user=user).first()
+        if not employee:
+            return Response(
+                {"detail": "Employee profile not found."},
+                status=400,
+            )
+
+        # Verify assignment
+        if task.assigned_employee_id != employee.id:
+            return Response(
+                {"detail": "You are not assigned to this task."},
+                status=403,
+            )
+
+        # Get or create execution
+        execution = TaskExecution.objects.filter(task=task, employee=employee).first()
+        if not execution:
+            execution = TaskExecution.objects.create(
+                task=task,
+                employee=employee,
+                created_by=user,
+                status=TaskExecution.Status.IN_PROGRESS,
+            )
+        else:
+            # Check if already started
+            if execution.before_work_time:
+                return Response(
+                    {"detail": "Work already started on this task."},
+                    status=400,
+                )
+
+        # Validate required fields
+        lat = request.data.get("latitude")
+        lng = request.data.get("longitude")
+        if not lat or not lng:
+            return Response(
+                {"detail": "GPS location is required (latitude, longitude)."},
+                status=400,
+            )
+
+        photo = request.FILES.get("photo")
+
+        # Update execution with before work data
+        execution.before_work_latitude = lat
+        execution.before_work_longitude = lng
+        execution.before_work_address = request.data.get("address", "")
+        execution.before_work_time = timezone.now()
+        execution.status = TaskExecution.Status.IN_PROGRESS
+
+        if photo:
+            execution.before_work_photo = photo
+
+        execution.save(update_fields=[
+            "before_work_latitude", "before_work_longitude", "before_work_address",
+            "before_work_time", "before_work_photo", "status", "updated_at"
+        ])
+
+        # Update task status
+        task.before_work_time = execution.before_work_time
+        task.status = Task.Status.IN_PROGRESS
+        task.save(update_fields=["before_work_time", "status", "updated_at"])
+
+        # Create TaskActivity record
+        TaskActivity.objects.create(
+            task=task,
+            task_execution=execution,
+            employee=employee,
+            action_type=TaskActivity.ActionType.BEFORE_WORK,
+            photo=photo,
+            latitude=lat,
+            longitude=lng,
+            address=request.data.get("address", ""),
+            notes=request.data.get("notes", ""),
+            created_by=user,
+        )
+
+        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"])
+    def take_break(self, request, pk=None):
+        """Employee takes a break - Break action.
+
+        Required: photo, latitude, longitude, reason
+        """
+        task = self.get_object()
+        user = request.user
+
+        # Get employee
+        from apps.workforce.models import Employee
+        employee = Employee.objects.filter(user=user).first()
+        if not employee:
+            return Response(
+                {"detail": "Employee profile not found."},
+                status=400,
+            )
+
+        # Get execution
+        execution = TaskExecution.objects.filter(task=task, employee=employee).first()
+        if not execution:
+            return Response(
+                {"detail": "No active work session. Please start work first."},
+                status=400,
+            )
+
+        # Validate not already on break
+        if execution.status == TaskExecution.Status.ON_BREAK:
+            return Response(
+                {"detail": "Already on break. Please resume first."},
+                status=400,
+            )
+
+        # Validate required fields
+        lat = request.data.get("latitude")
+        lng = request.data.get("longitude")
+        reason = request.data.get("reason")
+        if not lat or not lng:
+            return Response(
+                {"detail": "GPS location is required (latitude, longitude)."},
+                status=400,
+            )
+        if not reason:
+            return Response(
+                {"detail": "Reason for break is required."},
+                status=400,
+            )
+
+        photo = request.FILES.get("photo")
+
+        # Update execution with break start data
+        execution.break_start_lat = lat
+        execution.break_start_lng = lng
+        execution.break_start_reason = reason
+        execution.break_start_time = timezone.now()
+        execution.status = TaskExecution.Status.ON_BREAK
+
+        if photo:
+            execution.break_start_photo = photo
+
+        execution.save(update_fields=[
+            "break_start_lat", "break_start_lng", "break_start_reason",
+            "break_start_time", "break_start_photo", "status", "updated_at"
+        ])
+
+        # Create TaskActivity record
+        TaskActivity.objects.create(
+            task=task,
+            task_execution=execution,
+            employee=employee,
+            action_type=TaskActivity.ActionType.BREAK_START,
+            photo=photo,
+            latitude=lat,
+            longitude=lng,
+            reason=reason,
+            created_by=user,
+        )
+
+        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"])
+    def resume_work(self, request, pk=None):
+        """Employee resumes work after break - Resume action.
+
+        Required: photo, latitude, longitude
+        """
+        task = self.get_object()
+        user = request.user
+
+        # Get employee
+        from apps.workforce.models import Employee
+        employee = Employee.objects.filter(user=user).first()
+        if not employee:
+            return Response(
+                {"detail": "Employee profile not found."},
+                status=400,
+            )
+
+        # Get execution
+        execution = TaskExecution.objects.filter(task=task, employee=employee).first()
+        if not execution:
+            return Response(
+                {"detail": "No active work session. Please start work first."},
+                status=400,
+            )
+
+        # Validate on break
+        if execution.status != TaskExecution.Status.ON_BREAK:
+            return Response(
+                {"detail": "Not on break. Cannot resume."},
+                status=400,
+            )
+
+        # Validate required fields
+        lat = request.data.get("latitude")
+        lng = request.data.get("longitude")
+        if not lat or not lng:
+            return Response(
+                {"detail": "GPS location is required (latitude, longitude)."},
+                status=400,
+            )
+
+        photo = request.FILES.get("photo")
+
+        # Calculate break duration
+        if execution.break_start_time:
+            break_duration = (timezone.now() - execution.break_start_time).total_seconds()
+            execution.total_break_seconds += int(break_duration)
+
+        # Update execution with break end data
+        execution.break_end_lat = lat
+        execution.break_end_lng = lng
+        execution.break_end_time = timezone.now()
+        execution.status = TaskExecution.Status.IN_PROGRESS
+
+        if photo:
+            execution.break_end_photo = photo
+
+        execution.save(update_fields=[
+            "break_end_lat", "break_end_lng", "break_end_time",
+            "break_end_photo", "total_break_seconds", "status", "updated_at"
+        ])
+
+        # Create TaskActivity record
+        TaskActivity.objects.create(
+            task=task,
+            task_execution=execution,
+            employee=employee,
+            action_type=TaskActivity.ActionType.BREAK_END,
+            photo=photo,
+            latitude=lat,
+            longitude=lng,
+            created_by=user,
+        )
+
+        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"])
+    def during_work(self, request, pk=None):
+        """Employee provides progress update - During Work action.
+
+        Required: photo, latitude, longitude
+        Optional: notes
+        """
+        task = self.get_object()
+        user = request.user
+
+        # Get employee
+        from apps.workforce.models import Employee
+        employee = Employee.objects.filter(user=user).first()
+        if not employee:
+            return Response(
+                {"detail": "Employee profile not found."},
+                status=400,
+            )
+
+        # Get execution
+        execution = TaskExecution.objects.filter(task=task, employee=employee).first()
+        if not execution:
+            return Response(
+                {"detail": "No active work session. Please start work first."},
+                status=400,
+            )
+
+        # Validate not completed
+        if execution.status in [TaskExecution.Status.COMPLETED, TaskExecution.Status.APPROVED, TaskExecution.Status.WAITING_APPROVAL]:
+            return Response(
+                {"detail": "Task is already completed."},
+                status=400,
+            )
+
+        # Validate required fields
+        lat = request.data.get("latitude")
+        lng = request.data.get("longitude")
+        if not lat or not lng:
+            return Response(
+                {"detail": "GPS location is required (latitude, longitude)."},
+                status=400,
+            )
+
+        photo = request.FILES.get("photo")
+
+        # Create TaskActivity record (progress is stored in activity)
+        activity = TaskActivity.objects.create(
+            task=task,
+            task_execution=execution,
+            employee=employee,
+            action_type=TaskActivity.ActionType.DURING_WORK,
+            photo=photo,
+            latitude=lat,
+            longitude=lng,
+            notes=request.data.get("notes", ""),
+            created_by=user,
+        )
+
+        # Also create TaskProgressLog for backward compatibility
+        TaskProgressLog.objects.create(
+            task_execution=execution,
+            progress_percentage=request.data.get("progress_percentage", 0),
+            remarks=request.data.get("notes", ""),
+            photo=photo,
+            gps_lat=lat,
+            gps_lng=lng,
+            created_by=user,
+        )
+
+        return Response(TaskActivitySerializer(activity, context={'request': request}).data)
+
+    @action(detail=True, methods=["post"])
+    def complete_work(self, request, pk=None):
+        """Employee completes the task - Complete Work action.
+
+        Required: photo, latitude, longitude, completion_notes
+        """
+        task = self.get_object()
+        user = request.user
+
+        # Get employee
+        from apps.workforce.models import Employee
+        employee = Employee.objects.filter(user=user).first()
+        if not employee:
+            return Response(
+                {"detail": "Employee profile not found."},
+                status=400,
+            )
+
+        # Get execution
+        execution = TaskExecution.objects.filter(task=task, employee=employee).first()
+        if not execution:
+            return Response(
+                {"detail": "No active work session. Please start work first."},
+                status=400,
+            )
+
+        # Validate not already completed
+        if execution.status in [TaskExecution.Status.COMPLETED, TaskExecution.Status.APPROVED, TaskExecution.Status.WAITING_APPROVAL]:
+            return Response(
+                {"detail": "Task is already completed."},
+                status=400,
+            )
+
+        # If on break, end the break first
+        if execution.status == TaskExecution.Status.ON_BREAK:
+            if execution.break_start_time:
+                break_duration = (timezone.now() - execution.break_start_time).total_seconds()
+                execution.total_break_seconds += int(break_duration)
+            execution.break_end_time = timezone.now()
+
+        # Validate required fields
+        lat = request.data.get("latitude")
+        lng = request.data.get("longitude")
+        completion_notes = request.data.get("completion_notes", "")
+        if not lat or not lng:
+            return Response(
+                {"detail": "GPS location is required (latitude, longitude)."},
+                status=400,
+            )
+        if not completion_notes:
+            return Response(
+                {"detail": "Completion notes are required."},
+                status=400,
+            )
+
+        photo = request.FILES.get("photo")
+
+        # Calculate final working time
+        if execution.before_work_time:
+            total_work = (timezone.now() - execution.before_work_time).total_seconds()
+            execution.total_work_seconds = int(total_work - execution.total_break_seconds)
+
+        # Update execution with completion data
+        execution.completion_lat = lat
+        execution.completion_lng = lng
+        execution.completion_notes = completion_notes
+        execution.completion_time = timezone.now()
+        execution.completed_at = timezone.now()
+        execution.status = TaskExecution.Status.WAITING_APPROVAL
+
+        if photo:
+            execution.completion_photo = photo
+
+        execution.save(update_fields=[
+            "completion_lat", "completion_lng", "completion_notes",
+            "completion_time", "completed_at", "total_work_seconds",
+            "total_break_seconds", "completion_photo", "status", "updated_at"
+        ])
+
+        # Update task
+        task.completed_time = execution.completion_time
+        task.status = Task.Status.WAITING_APPROVAL
+        task.save(update_fields=["completed_time", "status", "updated_at"])
+
+        # Create TaskActivity record
+        TaskActivity.objects.create(
+            task=task,
+            task_execution=execution,
+            employee=employee,
+            action_type=TaskActivity.ActionType.COMPLETED,
+            photo=photo,
+            latitude=lat,
+            longitude=lng,
+            notes=completion_notes,
+            created_by=user,
+        )
+
+        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+
+    @action(detail=True, methods=["get"])
+    def get_timer(self, request, pk=None):
+        """Get current timer status for a task."""
+        task = self.get_object()
+        user = request.user
+
+        # Get employee
+        from apps.workforce.models import Employee
+        employee = Employee.objects.filter(user=user).first()
+        if not employee:
+            return Response(
+                {"detail": "Employee profile not found."},
+                status=400,
+            )
+
+        # Get execution
+        execution = TaskExecution.objects.filter(task=task, employee=employee).first()
+        if not execution:
+            return Response({
+                "working_seconds": 0,
+                "break_seconds": 0,
+                "net_work_seconds": 0,
+                "timer_display": "00:00:00",
+                "is_running": False,
+                "is_on_break": False,
+                "is_completed": False,
+                "started_at": None,
+            })
+
+        # Get timer data from serializer
+        timer_data = TaskExecutionSerializer(execution, context={'request': request}).data.get('timer_data', {})
+
+        return Response(timer_data)
+
+    @action(detail=True, methods=["get"])
+    def get_history(self, request, pk=None):
+        """Get activity history for a task."""
+        task = self.get_object()
+        user = request.user
+
+        # Get employee
+        from apps.workforce.models import Employee
+        employee = Employee.objects.filter(user=user).first()
+        if not employee:
+            return Response(
+                {"detail": "Employee profile not found."},
+                status=400,
+            )
+
+        # Get execution
+        execution = TaskExecution.objects.filter(task=task, employee=employee).first()
+        if not execution:
+            return Response([])
+
+        # Get activities
+        activities = TaskActivity.objects.filter(
+            task=task,
+            task_execution=execution
+        ).order_by("-timestamp")
+
+        return Response(TaskActivitySerializer(activities, many=True, context={'request': request}).data)
 
 
 class TaskWorkSessionViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):

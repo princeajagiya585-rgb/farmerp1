@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from apps.core.mixins import BaseModelViewSet, EmployeeSelfScopedMixin
 from apps.accounts.models import Role
 from apps.farms.views import FarmScopedQuerysetMixin
-from apps.gps.utils import haversine_m, location_inside_farm
+from apps.gps.utils import haversine_m, location_inside_farm, reverse_geocode
 
 from .models import (
     Employee,
@@ -293,6 +293,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         Sets GPS coordinates, computes distance from the farm centre, and uses
         geofence rules to auto-approve or fail the check-in.
         Creates attendance record ONLY on successful check-in.
+        Also detects address from GPS coordinates.
         """
         with transaction.atomic():
             att_date, check_in_dt = self._resolve_attendance_datetime(request)
@@ -356,6 +357,14 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
                     # None means no fence config — cannot determine status
                     attendance.geofence_status = None
                     attendance.approval_status = Attendance.ApprovalStatus.PENDING
+
+                # ── Auto-detect address from GPS ───────────────────────────────
+                try:
+                    address = reverse_geocode(lat, lng)
+                    if address:
+                        attendance.check_in_address = address
+                except Exception:
+                    pass  # Ignore geocoding errors
             else:
                 # No GPS coordinates provided
                 attendance.geofence_status = None
@@ -370,6 +379,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
 
         Also validates check-out GPS coordinates against the farm's geofence
         so the Geofence column reflects the check-out location status.
+        Calculates working hours and overtime automatically.
         """
         with transaction.atomic():
             attendance = self.get_object()
@@ -393,18 +403,48 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             if request.data.get("check_out_notes") is not None:
                 attendance.check_out_notes = request.data.get("check_out_notes")
 
-            # Calculate check-out location but do NOT overwrite geofence_status
-            # (geofence_status reflects check-in location; check-out just records position)
+            # Calculate check-out location and detect address
             out_lat = request.data.get("check_out_lat")
             out_lng = request.data.get("check_out_lng")
             if out_lat is not None and out_lng is not None:
+                out_lat, out_lng = float(out_lat), float(out_lng)
                 farm = attendance.employee.farm
+
+                # Calculate distance from farm centre for display
                 if farm.latitude is not None and farm.longitude is not None:
                     distance = haversine_m(
                         float(farm.latitude), float(farm.longitude),
-                        float(out_lat), float(out_lng)
+                        out_lat, out_lng
                     )
-                    # Only save distance — do NOT update geofence_status (that stays as check-in result)
+                    attendance.check_out_distance = round(distance, 2)
+
+                # Check geofence status at check-out location
+                is_inside_out = location_inside_farm(farm, out_lat, out_lng)
+                if is_inside_out is True:
+                    attendance.check_out_geofence_status = True
+                elif is_inside_out is False:
+                    attendance.check_out_geofence_status = False
+
+                # Auto-detect address from GPS
+                try:
+                    address = reverse_geocode(out_lat, out_lng)
+                    if address:
+                        attendance.check_out_address = address
+                except Exception:
+                    pass  # Ignore geocoding errors
+
+            # ── Calculate Working Hours ─────────────────────────────────────
+            # Calculate total working seconds
+            working_seconds = attendance.calculate_working_hours()
+            attendance.working_seconds = working_seconds
+
+            # Calculate overtime (beyond 8 hours = 28800 seconds)
+            overtime_seconds = attendance.calculate_overtime(regular_hours=8)
+            attendance.overtime_seconds = overtime_seconds
+
+            # Convert overtime to hours for the existing field
+            if overtime_seconds > 0:
+                attendance.overtime_hours = round(overtime_seconds / 3600, 2)
 
             attendance.save()
 

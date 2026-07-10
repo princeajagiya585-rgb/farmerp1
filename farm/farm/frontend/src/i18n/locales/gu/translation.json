@@ -58,6 +58,7 @@
   "common.upload": "અપલોડ",
   "common.submit": "સબમિટ કરો",
   "common.view": "જુઓ",
+  "common.optional": "વૈકલ્પિક",
   "common.approve": "મંજૂર કરો",
   "common.reject": "નામંજૂર કરો",
   "common.verify": "ચકાસો",
@@ -311,6 +312,7 @@
   "header.longitude": "રેખાંશ",
   "header.attendancePct": "હાજરી %",
   "header.otHrs": "ઓટી કલાકો",
+  "attendance.workingHours": "કામ કલાકો",
   "header.block": "બ્લોક",
   "header.contact": "સંપર્ક",
   "header.costCenter": "ખર્ચ કેન્દ્ર",
@@ -1335,6 +1337,7 @@
   "attendance.title": "હાજરી",
   "attendance.subtitle": "દૈનિક હાજરી નોંધ અને ચેક-ઇન/આઉટ સંચાલન",
   "attendance.remarks": "ટિપ્પણી",
+  "attendance.remarksPlaceholder": "કોઈ ટિપ્પણી ઉમેરો...",
   "attendance.approvalStatusLabel": "મંજૂરી સ્થિતિ",
   "attendanceReports.title": "હાજરી અહેવાલો",
   "attendanceReports.subtitle": "હાજરી સારાંશ અને વિશ્લેષણ બનાવો અને જુઓ",
@@ -1700,5 +1703,12 @@
   "audit.actionREJECT": "નામંજૂર",
   "tasks.break": "વિરામ",
   "tasks.breakTask": "કાર્ય થોભાવો (વિરામ)",
-  "tasks.resumeTask": "કાર્ય ફરી શરૂ કરો"
+  "tasks.resumeTask": "કાર્ય ફરી શરૂ કરો",
+  "tasks.breakStarted": "વિરામ શરૂ - ટાઈમર રુક્યો",
+  "tasks.resumedSuccess": "કાર્ય ફરી શરૂ - ટાઈમર ચાલુ",
+  "tasks.breakReasonRequired": "વિરામનું કારણ આવશ્યક છે",
+  "tasks.completionNotesRequired": "પૂર્ણતા નોટ્સ આવશ્યક છે",
+  "tasks.breakReason": "વિરામનું કારણ",
+  "tasks.breakReasonPlaceholder": "તમે શા માટે વિરામ લે છો?",
+  "tasks.completionNotesPlaceholder": "તમે શું પૂર્ણ કર્યું વર્ણન કરો..."
 }

@@ -2,23 +2,23 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Camera, CheckCircle, Loader2, MapPin, Pause, Play,
-  X, AlertCircle
+  X, AlertCircle, Clock
 } from "lucide-react";
 import CrudResource from "../components/CrudResource";
 import { Badge, Button, ToastContainer, useToast } from "../components/ui";
-import { resource, toFormData } from "../lib/api";
+import { resource, toFormData, api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
 const repo = resource("tasks");
 const pingsRepo = resource("gps/pings");
 
-// Work phase config
+// Work phase config - using new API endpoints
 const workPhaseConfig = {
-  BEFORE: { activity: "CHECKIN", labelKey: "gps.beforeWork" },
-  DURING_WORK: { activity: "DURING_WORK", labelKey: "gps.duringWork" },
-  BREAK: { activity: "BREAK", labelKey: "tasks.break" },
-  RESUME: { activity: "RESUME", labelKey: "tasks.resumeWork" },
-  COMPLETED: { activity: "CHECKOUT", labelKey: "gps.completedWork" },
+  BEFORE: { action: "before-work", labelKey: "gps.beforeWork" },
+  BREAK_START: { action: "take-break", labelKey: "tasks.break" },
+  BREAK_END: { action: "resume-work", labelKey: "tasks.resumeWork" },
+  DURING_WORK: { action: "during-work", labelKey: "gps.duringWork" },
+  COMPLETED: { action: "complete-work", labelKey: "gps.completedWork" },
 };
 
 const prioColor = { LOW: "gray", MEDIUM: "blue", HIGH: "yellow", URGENT: "red" };
@@ -61,12 +61,29 @@ const scheduleLabelMap = {
 const MY_TASKS_PARAMS = { my_tasks: "true" };
 const ALL_TASKS_PARAMS = {};
 
-// Get location
+// Get location with address
 const getLocation = () =>
   new Promise((resolve) => {
     if (!navigator.geolocation) return resolve(null);
     navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }),
+      async (p) => {
+        const loc = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy };
+
+        // Try to get address from coordinates using reverse geocoding
+        try {
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${loc.lat}&lon=${loc.lng}&zoom=18&addressdetails=1`
+          );
+          const data = await response.json();
+          if (data.display_name) {
+            loc.address = data.display_name;
+          }
+        } catch (e) {
+          console.log("Address lookup failed:", e);
+        }
+
+        resolve(loc);
+      },
       () => resolve(null),
       { enableHighAccuracy: true, timeout: 15000 }
     );
@@ -96,7 +113,10 @@ export default function Tasks() {
   const [toasts, addToast, removeToast] = useToast();
 
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 30000);
+    const id = setInterval(() => {
+      setNow(Date.now());
+      setTimerRefresh(r => r + 1); // Trigger timer refresh
+    }, 1000); // Update every second for live timer
     return () => clearInterval(id);
   }, []);
 
@@ -116,6 +136,11 @@ export default function Tasks() {
   const [workSaving, setWorkSaving] = useState(false);
   const [workError, setWorkError] = useState(null);
   const [workNotes, setWorkNotes] = useState("");
+  const [workAddress, setWorkAddress] = useState("");
+  const [workReason, setWorkReason] = useState("");
+
+  // Timer refresh state
+  const [timerRefresh, setTimerRefresh] = useState(0);
 
   // Complete confirmation
   const [completeConfirm, setCompleteConfirm] = useState(false);
@@ -131,12 +156,28 @@ export default function Tasks() {
     setWorkError(null);
     setWorkPosLoading(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setWorkPos({
+      async (pos) => {
+        const locationData = {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
-        });
+        };
+
+        // Try to get address
+        try {
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${locationData.lat}&lon=${locationData.lng}&zoom=18&addressdetails=1`
+          );
+          const data = await response.json();
+          if (data.display_name) {
+            locationData.address = data.display_name;
+            setWorkAddress(data.display_name);
+          }
+        } catch (e) {
+          console.log("Address lookup failed:", e);
+        }
+
+        setWorkPos(locationData);
         setWorkPosLoading(false);
       },
       () => {
@@ -153,6 +194,8 @@ export default function Tasks() {
     setWorkPhotoPreview(null);
     setWorkError(null);
     setWorkNotes("");
+    setWorkAddress("");
+    setWorkReason("");
     setWorkPos(null);
     setCompleteConfirm(false);
     fetchWorkLocation();
@@ -203,41 +246,51 @@ export default function Tasks() {
   const submitWork = async () => {
     if (!workModal) return;
 
-    // Safety guard: BREAK/RESUME should never reach the modal
-    if (["BREAK", "RESUME"].includes(workModal.phase)) {
-      setWorkModal(null);
-      return;
-    }
+    const phase = workModal.phase;
 
     // For COMPLETED phase, require confirmation
-    if (workModal.phase === "COMPLETED" && !completeConfirm) {
+    if (phase === "COMPLETED" && !completeConfirm) {
       setCompleteConfirm(true);
       return;
     }
 
-    // BEFORE phase requires location + photo
-    if (workModal.phase === "BEFORE" && (!workPos || !workPhoto)) {
+    // Validate required fields based on phase
+    if (!workPos || (!workPhoto && phase !== "DURING_WORK")) {
       if (!workPos) setWorkError(t("gps.noLocation"));
-      if (!workPhoto) setWorkError(t("tasks.photoRequired"));
+      if (!workPhoto && phase === "BEFORE") setWorkError(t("tasks.photoRequired"));
+      return;
+    }
+
+    // Require reason for break
+    if (phase === "BREAK_START" && !workReason.trim()) {
+      setWorkError(t("tasks.breakReasonRequired"));
+      return;
+    }
+
+    // Require completion notes for COMPLETED
+    if (phase === "COMPLETED" && !workNotes.trim()) {
+      setWorkError(t("tasks.completionNotesRequired"));
       return;
     }
 
     setWorkSaving(true);
     setWorkError(null);
+
     try {
-      const phase = workModal.phase;
-      const activity = workPhaseConfig[phase]?.activity || "DURING_WORK";
+      const action = workPhaseConfig[phase]?.action;
 
       const data = {
         latitude: workPos ? Number(workPos.lat.toFixed(6)) : null,
         longitude: workPos ? Number(workPos.lng.toFixed(6)) : null,
         accuracy: workPos?.accuracy != null ? Math.round(workPos.accuracy) : null,
-        activity: activity,
-        task: workModal.row.id,
+        address: workAddress || workPos?.address || "",
         notes: workNotes.trim() || "",
+        reason: workReason.trim() || "",
+        completion_notes: workNotes.trim() || "",
       };
 
-      await pingsRepo.create(workPhoto ? toFormData({ ...data, photo: workPhoto }) : data);
+      // Use the new API endpoints
+      await repo.action(workModal.row.id, action, workPhoto ? toFormData({ ...data, photo: workPhoto }) : data);
 
       const reload = workModal.reload;
       setWorkModal(null);
@@ -245,6 +298,8 @@ export default function Tasks() {
 
       const successKey = {
         BEFORE: "tasks.beforeWorkSaved",
+        BREAK_START: "tasks.breakStarted",
+        BREAK_END: "tasks.resumedSuccess",
         DURING_WORK: "tasks.duringWorkSaved",
         COMPLETED: "tasks.workCompleted",
       }[phase];
@@ -260,6 +315,24 @@ export default function Tasks() {
   // Get work phase — uses backend-computed work_phase field, with
   // fallback to local computation from location_pings for older backends.
   const getWorkPhase = (row) => {
+    // Use execution status if available (new workflow)
+    if (row.my_execution) {
+      const status = row.my_execution.status;
+      if (status === "WAITING_APPROVAL" || status === "COMPLETED" || status === "APPROVED") {
+        return "COMPLETED";
+      }
+      if (status === "ON_BREAK") {
+        return "ON_BREAK";
+      }
+      if (status === "IN_PROGRESS") {
+        // Check if before_work has been done
+        if (row.my_execution.before_work_time) {
+          return "IN_PROGRESS";
+        }
+        return "BEFORE";
+      }
+    }
+
     // Backend already computes work_phase — use it directly
     if (row.work_phase) return row.work_phase;
 
@@ -274,41 +347,70 @@ export default function Tasks() {
     return "BEFORE";
   };
 
-  // Timer component
+  // Timer component - uses execution timer_data for accurate live timing
   const TaskTimer = ({ row }) => {
-    const session = row.active_session;
+    const execution = row.my_execution;
     const phase = getWorkPhase(row);
-    const tracked = row.total_tracked_minutes;
+    const timerData = execution?.timer_data;
+
+    if (phase === "COMPLETED") {
+      // Show final completed time
+      const netSeconds = timerData?.net_work_seconds || 0;
+      const h = Math.floor(netSeconds / 3600);
+      const m = Math.floor((netSeconds % 3600) / 60);
+      const s = netSeconds % 60;
+      return (
+        <div className="flex items-center gap-1.5">
+          <CheckCircle size={12} className="text-green-500" />
+          <span className="text-xs font-medium text-green-700">
+            {`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`}
+          </span>
+        </div>
+      );
+    }
 
     if (phase === "ON_BREAK") {
-      const totalSeconds = Math.round((tracked || 0) * 60);
-      const h = Math.floor(totalSeconds / 3600);
-      const m = Math.floor((totalSeconds % 3600) / 60);
-      const s = totalSeconds % 60;
+      const workingSeconds = timerData?.working_seconds || 0;
       return (
         <div className="flex items-center gap-1.5">
           <span className="relative flex h-2 w-2">
             <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400" />
           </span>
           <span className="text-xs font-medium text-amber-700" title={t("tasks.onBreak")}>
-            {`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`} ⏸
+            {`${String(Math.floor(workingSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((workingSeconds % 3600) / 60)).padStart(2, "0")}:${String(workingSeconds % 60).padStart(2, "0")} ⏸`}
           </span>
         </div>
       );
     }
 
-    if (phase === "COMPLETED") {
-      return tracked ? (
-        <span className="text-xs text-gray-500">
-          {formatDuration(tracked)}
-        </span>
-      ) : (
-        <span className="text-xs text-gray-300">—</span>
+    if (phase === "IN_PROGRESS" && timerData) {
+      const workingSeconds = timerData.working_seconds || 0;
+      const isRunning = timerData.is_running;
+
+      return (
+        <div className="flex items-center gap-1.5">
+          {isRunning ? (
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+            </span>
+          ) : (
+            <span className="relative flex h-2 w-2">
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+            </span>
+          )}
+          <span className={`text-xs font-medium ${isRunning ? "text-green-700" : "text-gray-600"}`}>
+            {`${String(Math.floor(workingSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((workingSeconds % 3600) / 60)).padStart(2, "0")}:${String(workingSeconds % 60).padStart(2, "0")}`}
+          </span>
+        </div>
       );
     }
 
+    // Fallback: use legacy active_session
+    const session = row.active_session;
+    const tracked = row.total_tracked_minutes;
+
     if (phase === "IN_PROGRESS") {
-      // Total = completed sessions + current live session
       let totalMin = tracked || 0;
       if (session) {
         const elapsed = (Date.now() - new Date(session.start_time).getTime()) / 60000;
@@ -378,7 +480,7 @@ export default function Tasks() {
         );
 
       case "IN_PROGRESS":
-        // Show 3 buttons: During Work (photo+notes via modal), Break (one-click), Complete Work (modal with confirmation)
+        // Show 3 buttons: During Work (modal), Break (modal), Complete Work (modal)
         return (
           <>
             <button
@@ -390,7 +492,7 @@ export default function Tasks() {
               {t("gps.duringWork")}
             </button>
             <button
-              onClick={() => handleDirectAction(row, "BREAK", reload)}
+              onClick={() => openWorkModal(row, "BREAK_START", reload)}
               disabled={savingBreak === row.id}
               className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600 disabled:opacity-50"
               title={t("tasks.break")}
@@ -410,7 +512,7 @@ export default function Tasks() {
         );
 
       case "ON_BREAK":
-        // Show During Work (photo+notes via modal), Resume (one-click), Complete Work (modal with confirmation)
+        // Show During Work (modal), Resume (modal), Complete Work (modal)
         return (
           <>
             <button
@@ -422,7 +524,7 @@ export default function Tasks() {
               {t("gps.duringWork")}
             </button>
             <button
-              onClick={() => handleDirectAction(row, "RESUME", reload)}
+              onClick={() => openWorkModal(row, "BREAK_END", reload)}
               disabled={savingResume === row.id}
               className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50"
               title={t("tasks.resumeWork")}
@@ -598,21 +700,28 @@ export default function Tasks() {
                 </div>
               )}
 
-              {/* Location */}
+              {/* Location with Address */}
               {workPosLoading ? (
                 <div className="flex items-start gap-3 rounded-lg bg-gray-50 p-3">
                   <Loader2 size={16} className="animate-spin text-brand-600 mt-1" />
                   <p className="text-sm font-semibold text-gray-800">{t("common.gettingLocation")}</p>
                 </div>
               ) : workPos ? (
-                <div className="flex items-start gap-3 rounded-lg bg-brand-50 p-3">
-                  <MapPin size={16} className="text-brand-600 mt-1" />
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{t("gps.currentLocation")}</p>
-                    <p className="text-xs text-gray-600">
-                      {workPos.lat.toFixed(6)}, {workPos.lng.toFixed(6)}
-                    </p>
+                <div className="space-y-2">
+                  <div className="flex items-start gap-3 rounded-lg bg-brand-50 p-3">
+                    <MapPin size={16} className="text-brand-600 mt-1" />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{t("gps.currentLocation")}</p>
+                      <p className="text-xs text-gray-600">
+                        {workPos.lat.toFixed(6)}, {workPos.lng.toFixed(6)}
+                      </p>
+                    </div>
                   </div>
+                  {workPos.address && (
+                    <p className="text-xs text-gray-500 px-1" title={workPos.address}>
+                      📍 {workPos.address.substring(0, 80)}...
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="flex items-center justify-between gap-3 rounded-lg bg-red-50 p-3 ring-1 ring-red-200">
@@ -623,8 +732,24 @@ export default function Tasks() {
                 </div>
               )}
 
-              {/* Notes - for work phases */}
-              {["DURING_WORK", "COMPLETED"].includes(workModal.phase) && (
+              {/* Reason - required for BREAK_START */}
+              {workModal.phase === "BREAK_START" && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    {t("tasks.breakReason")} <span className="text-red-500"> *</span>
+                  </label>
+                  <textarea
+                    value={workReason}
+                    onChange={(e) => setWorkReason(e.target.value)}
+                    rows={2}
+                    placeholder={t("tasks.breakReasonPlaceholder")}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+                  />
+                </div>
+              )}
+
+              {/* Notes - for DURING_WORK, COMPLETED, and BEFORE */}
+              {["DURING_WORK", "COMPLETED", "BEFORE"].includes(workModal.phase) && (
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700">
                     {t("tasks.notes")} <span className="text-gray-400">({t("common.optional")})</span>
@@ -633,7 +758,7 @@ export default function Tasks() {
                     value={workNotes}
                     onChange={(e) => setWorkNotes(e.target.value)}
                     rows={2}
-                    placeholder={t("tasks.notesPlaceholder")}
+                    placeholder={workModal.phase === "COMPLETED" ? t("tasks.completionNotesPlaceholder") : t("tasks.notesPlaceholder")}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
                   />
                 </div>
@@ -687,7 +812,13 @@ export default function Tasks() {
               </Button>
               <Button
                 onClick={submitWork}
-                disabled={workSaving || (workModal.phase === "BEFORE" && (!workPos || !workPhoto))}
+                disabled={
+                  workSaving ||
+                  !workPos ||
+                  (workModal.phase === "BEFORE" && !workPhoto) ||
+                  (workModal.phase === "BREAK_START" && !workReason.trim()) ||
+                  (workModal.phase === "COMPLETED" && (!completeConfirm || !workNotes.trim()))
+                }
               >
                 {workSaving ? (
                   <span className="flex items-center gap-2">

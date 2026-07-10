@@ -98,6 +98,10 @@ class Task(OwnedModel):
         help_text="Root task of a recurring series",
     )
 
+    # Work Lifecycle Fields (per requirements)
+    before_work_time = models.DateTimeField(null=True, blank=True)
+    completed_time = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return self.title
 
@@ -234,9 +238,52 @@ class TaskExecution(OwnedModel):
         max_digits=9, decimal_places=6, null=True, blank=True
     )
 
+    # Before Work details (new fields for work lifecycle)
+    before_work_photo = models.ImageField(upload_to="tasks/before_work/", null=True, blank=True)
+    before_work_latitude = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    before_work_longitude = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    before_work_address = models.TextField(blank=True)
+    before_work_time = models.DateTimeField(null=True, blank=True)
+
+    # Break details
+    break_start_photo = models.ImageField(upload_to="tasks/break_start/", null=True, blank=True)
+    break_start_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    break_start_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    break_start_reason = models.TextField(blank=True)
+    break_start_time = models.DateTimeField(null=True, blank=True)
+
+    break_end_photo = models.ImageField(upload_to="tasks/break_end/", null=True, blank=True)
+    break_end_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    break_end_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    break_end_time = models.DateTimeField(null=True, blank=True)
+
+    # Total timer tracking (in seconds)
+    total_break_seconds = models.IntegerField(default=0)
+    total_work_seconds = models.IntegerField(default=0)
+    current_timer_seconds = models.IntegerField(default=0)
+
     # Completion details
     completion_photo = models.ImageField(upload_to="tasks/completion/", null=True, blank=True)
     completion_notes = models.TextField(blank=True)
+    completion_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    completion_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    completion_time = models.DateTimeField(null=True, blank=True)
 
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -310,6 +357,63 @@ class TaskBreakLog(OwnedModel):
             delta = self.break_ended_at - self.break_started_at
             self.break_duration_seconds = int(delta.total_seconds())
         super().save(*args, **kwargs)
+
+
+class TaskActivity(OwnedModel):
+    """Tracks individual activity entries in the task work lifecycle.
+
+    This model stores detailed records of each work action:
+    - BEFORE_WORK: Employee starts work on a task
+    - BREAK_START: Employee goes on break
+    - BREAK_END: Employee resumes work after break
+    - DURING_WORK: Employee provides progress update
+    - COMPLETED: Employee completes the task
+    """
+
+    class ActionType(models.TextChoices):
+        BEFORE_WORK = "BEFORE_WORK", "Before Work"
+        BREAK_START = "BREAK_START", "Break Start"
+        BREAK_END = "BREAK_END", "Break End"
+        DURING_WORK = "DURING_WORK", "During Work"
+        COMPLETED = "COMPLETED", "Completed"
+
+    task = models.ForeignKey(
+        Task, on_delete=models.CASCADE, related_name="activities"
+    )
+    task_execution = models.ForeignKey(
+        TaskExecution,
+        on_delete=models.CASCADE,
+        related_name="activities",
+        null=True,
+        blank=True,
+    )
+    employee = models.ForeignKey(
+        "workforce.Employee",
+        on_delete=models.CASCADE,
+        related_name="task_activities",
+    )
+    action_type = models.CharField(
+        max_length=20, choices=ActionType.choices
+    )
+    photo = models.ImageField(upload_to="tasks/activities/", null=True, blank=True)
+    latitude = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    longitude = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True
+    )
+    address = models.TextField(blank=True, help_text="Auto-detected address from GPS")
+    notes = models.TextField(blank=True, help_text="Optional notes for DURING_WORK and COMPLETED")
+    reason = models.TextField(blank=True, help_text="Reason for break (BREAK_START)")
+    timestamp = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-timestamp"]
+        verbose_name = "Task Activity"
+        verbose_name_plural = "Task Activities"
+
+    def __str__(self):
+        return f"{self.action_type} on {self.task.title} at {self.timestamp}"
 
 
 class TaskProgressLog(OwnedModel):

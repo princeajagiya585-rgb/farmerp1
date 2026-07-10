@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Download, MapPin, Check, X, LogIn, LogOut, Clock, Navigation, Camera, Loader2, Pencil, Trash2 } from "lucide-react";
+import { Download, MapPin, Check, X, LogIn, LogOut, Clock, Navigation, Camera, Loader2, Pencil, Trash2, Timer } from "lucide-react";
 import { openMapUrl, hasValidCoords } from "../lib/maps";
 import { api, resource, toFormData, normalizePhotoUrl } from "../lib/api";
 import { Badge, Button, Card, PageHeader, PhotoThumb, Table, Select, ToastContainer, useToast } from "../components/ui";
@@ -33,6 +33,23 @@ function StatusBadge({ row }) {
 }
 
 const TODAY = new Date().toISOString().slice(0, 10);
+
+// Format seconds to HH:MM:SS
+function formatDuration(seconds) {
+  if (!seconds || seconds < 0) return "00:00:00";
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Calculate elapsed time in seconds from check-in time
+function calculateElapsedSeconds(checkInTime) {
+  if (!checkInTime) return 0;
+  const checkIn = new Date(checkInTime);
+  const now = new Date();
+  return Math.floor((now - checkIn) / 1000);
+}
 
 export default function Attendance() {
   const { t } = useTranslation();
@@ -67,6 +84,7 @@ export default function Attendance() {
   const [checkInPhoto, setCheckInPhoto] = useState(null);
   const [checkInPreview, setCheckInPreview] = useState(null);
   const [checkInPos, setCheckInPos] = useState(null);
+  const [checkInNotes, setCheckInNotes] = useState("");
   // Admin/manager only: optionally back-date a check-in. Blank = live (now).
   const [checkInDate, setCheckInDate] = useState("");
   const [checkInTime, setCheckInTime] = useState("");
@@ -76,6 +94,10 @@ export default function Attendance() {
   const [checkOutPhoto, setCheckOutPhoto] = useState(null);
   const [checkOutPreview, setCheckOutPreview] = useState(null);
   const [checkOutPos, setCheckOutPos] = useState(null);
+  const [checkOutNotes, setCheckOutNotes] = useState("");
+  // Timer state for live duration display
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const timerRef = useRef(null);
 
   const load = () => {
     const params = { page_size: 50 };
@@ -118,6 +140,43 @@ export default function Attendance() {
     }).catch(() => {});
   }, [myProfile, rows]);
 
+  // Timer effect - update elapsed seconds every second when checked in but not checked out
+  useEffect(() => {
+    if (todayAttendance?.check_in_time && !todayAttendance?.check_out_time) {
+      // Initial calculation
+      setElapsedSeconds(calculateElapsedSeconds(todayAttendance.check_in_time));
+
+      // Start interval
+      timerRef.current = setInterval(() => {
+        setElapsedSeconds(calculateElapsedSeconds(todayAttendance.check_in_time));
+      }, 1000);
+    } else if (todayAttendance?.check_out_time) {
+      // Calculate final duration when checked out
+      const checkIn = new Date(todayAttendance.check_in_time);
+      const checkOut = new Date(todayAttendance.check_out_time);
+      setElapsedSeconds(Math.floor((checkOut - checkIn) / 1000));
+      // Clear interval
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    } else {
+      // Reset when not checked in
+      setElapsedSeconds(0);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [todayAttendance]);
+
   // Re-resolve my employee profile + today's attendance. Needed right after a
   // first-ever check-in: the backend links the Employee to this user during
   // check_in, so the profile (and the Check Out button) only appears after a
@@ -144,6 +203,7 @@ export default function Attendance() {
     setCheckInPhoto(null);
     setCheckInPreview(null);
     setCheckInPos(null);
+    setCheckInNotes("");
     setCheckInDate("");
     setCheckInTime("");
     setMsg("");
@@ -174,6 +234,7 @@ export default function Attendance() {
         farm: checkInTarget.farm,
         check_in_lat: loc?.lat,
         check_in_lng: loc?.lng,
+        check_in_notes: checkInNotes,
       };
       // Only admins/managers may set a custom date/time; employees are always live.
       // (The backend enforces this too — an employee's date/time is ignored.)
@@ -206,6 +267,7 @@ export default function Attendance() {
     setCheckOutPhoto(null);
     setCheckOutPreview(null);
     setCheckOutPos(null);
+    setCheckOutNotes("");
     setMsg("");
     setCheckOutModalOpen(true);
     setPosLoading(true);
@@ -232,6 +294,7 @@ export default function Attendance() {
       const payload = {
         check_out_lat: loc?.lat,
         check_out_lng: loc?.lng,
+        check_out_notes: checkOutNotes,
       };
       const body = checkOutPhoto ? toFormData({ ...payload, check_out_photo: checkOutPhoto }) : payload;
       await repo.action(checkOutTarget.id, "check_out", body);
@@ -348,7 +411,7 @@ export default function Attendance() {
                 <p className="text-lg font-bold text-gray-800">
                   {myProfile?.name || currentUser?.first_name || currentUser?.username || t("common.employee")}
                 </p>
-                <div className="flex items-center gap-3 mt-1">
+                <div className="flex items-center gap-3 mt-1 flex-wrap">
                   {todayAttendance?.check_in_time ? (
                     <>
                       <span className="flex items-center gap-1 text-xs text-green-600">
@@ -358,7 +421,12 @@ export default function Attendance() {
                         <span className="flex items-center gap-1 text-xs text-blue-600">
                           <LogOut size={12} /> {t("attendance.out")}: {fmt(todayAttendance.check_out_time)}
                         </span>
-                      ) : null}
+                      ) : (
+                        // Show live timer when checked in but not checked out
+                        <span className="flex items-center gap-1 text-xs text-orange-600 font-mono">
+                          <Timer size={12} /> {formatDuration(elapsedSeconds)}
+                        </span>
+                      )}
                     </>
                   ) : (
                     <Badge color="gray">{t("common.notCheckedIn")}</Badge>
@@ -379,6 +447,16 @@ export default function Attendance() {
                   {todayAttendance?.geofence_status === false && (
                     <Badge color="red">{t("gps.outside")}</Badge>
                   )}
+                  {todayAttendance?.working_hours_formatted && (
+                    <span className="flex items-center gap-1 text-xs text-gray-600">
+                      <Clock size={12} /> {todayAttendance.working_hours_formatted}
+                    </span>
+                  )}
+                  {todayAttendance?.overtime_hours_formatted && (
+                    <span className="flex items-center gap-1 text-xs text-red-600">
+                      <Clock size={12} /> OT: {todayAttendance.overtime_hours_formatted}
+                    </span>
+                  )}
                   {todayAttendance?.check_in_distance != null && (
                     <span className="flex items-center gap-1 text-xs text-gray-500">
                       <MapPin size={12} /> {todayAttendance.check_in_distance}m
@@ -389,29 +467,37 @@ export default function Attendance() {
             </div>
             <div className="flex gap-2">
               {!todayAttendance?.check_in_time && (
-                <Button onClick={() => {
-                  if (myProfile) {
-                    openCheckInModal(myProfile);
-                  } else {
-                    if (empId) {
-                      const emp = employees.find((e) => e.id === empId);
-                      if (emp) openCheckInModal(emp);
-                    } else if (employees.length) {
-                      openCheckInModal(employees[0]);
+                <Button
+                  onClick={() => {
+                    if (myProfile) {
+                      openCheckInModal(myProfile);
+                    } else {
+                      if (empId) {
+                        const emp = employees.find((e) => e.id === empId);
+                        if (emp) openCheckInModal(emp);
+                      } else if (employees.length) {
+                        openCheckInModal(employees[0]);
+                      }
                     }
-                  }
-                }} disabled={actionLoading || (!myProfile && !employees.length)}>
+                  }}
+                  disabled={actionLoading || (!myProfile && !employees.length)}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
                   <Camera size={16} /> {t("attendance.checkIn")}
                 </Button>
               )}
               {todayAttendance?.check_in_time && !todayAttendance?.check_out_time && (
-                <Button onClick={() => openCheckOutModal(todayAttendance)} disabled={actionLoading}>
+                <Button
+                  onClick={() => openCheckOutModal(todayAttendance)}
+                  disabled={actionLoading}
+                  className="bg-orange-500 hover:bg-orange-600 text-white"
+                >
                   <LogOut size={16} /> {t("attendance.checkOut")}
                 </Button>
               )}
               {todayAttendance?.check_in_time && todayAttendance?.check_out_time && (
-                <Button disabled variant="secondary">
-                  <LogOut size={16} /> {t("attendance.checkedOut")}
+                <Button disabled variant="secondary" className="bg-gray-400 text-gray-200 cursor-not-allowed">
+                  <Check size={16} /> {t("attendance.checkedOut")}
                 </Button>
               )}
             </div>
@@ -628,7 +714,12 @@ export default function Attendance() {
             {
               key: "overtime_hours",
               header: t("header.otHrs"),
-              render: (r) => r.overtime_hours || "0"
+              render: (r) => r.overtime_hours_formatted || r.overtime_hours || "0"
+            },
+            {
+              key: "working_hours",
+              header: t("attendance.workingHours") || "Work Hours",
+              render: (r) => r.working_hours_formatted || "—"
             },
             {
               key: "_a",
@@ -735,8 +826,8 @@ export default function Attendance() {
                 <Loader2 size={16} className="animate-spin text-brand-600" /> {t("common.gettingLocation")}
                 </div>
               ) : checkInPos ? (
-                <div className="flex items-start gap-3 rounded-lg bg-brand-50 p-3">
-                  <MapPin size={16} className="mt-0.5 text-brand-600" />
+                <div className="flex items-start gap-3 rounded-lg bg-green-50 p-3 border border-green-200">
+                  <MapPin size={16} className="mt-0.5 text-green-600" />
                   <div>
                     <p className="text-sm font-semibold text-gray-800">{t("common.currentLocation")}</p>
                     <p className="text-xs text-gray-600">
@@ -745,7 +836,7 @@ export default function Attendance() {
                   </div>
                 </div>
               ) : (
-                <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700 ring-1 ring-amber-200">
+                <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 ring-1 ring-red-200">
                   {t("common.locationUnavailable")}
                 </div>
               )}
@@ -799,12 +890,29 @@ export default function Attendance() {
                   </label>
                 )}
               </div>
+
+              {/* Optional Notes */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t("attendance.remarks")} ({t("common.optional")})</label>
+                <textarea
+                  value={checkInNotes}
+                  onChange={(e) => setCheckInNotes(e.target.value)}
+                  placeholder={t("attendance.remarksPlaceholder") || "Add any notes..."}
+                  rows={2}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+                />
+              </div>
             </div>
             <div className="flex justify-end gap-3 border-t p-5">
               <Button variant="secondary" onClick={() => setCheckInModalOpen(false)} disabled={actionLoading}>
                 {t("common.cancel")}
               </Button>
-              <Button onClick={submitCheckIn} disabled={actionLoading}>
+              <Button
+                onClick={submitCheckIn}
+                disabled={actionLoading || !checkInPos || !checkInPhoto}
+                className={!checkInPos || !checkInPhoto ? "opacity-50" : "bg-green-600 hover:bg-green-700"}
+                title={!checkInPos ? "Location required" : !checkInPhoto ? "Photo required" : "Click to check in"}
+              >
                 {actionLoading ? (
                   <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> {t("common.checkingIn")}</span>
                 ) : (
@@ -940,8 +1048,8 @@ export default function Attendance() {
                 <Loader2 size={16} className="animate-spin text-brand-600" /> {t("common.gettingLocation")}
                 </div>
               ) : checkOutPos ? (
-                <div className="flex items-start gap-3 rounded-lg bg-brand-50 p-3">
-                  <MapPin size={16} className="mt-0.5 text-brand-600" />
+                <div className="flex items-start gap-3 rounded-lg bg-green-50 p-3 border border-green-200">
+                  <MapPin size={16} className="mt-0.5 text-green-600" />
                   <div>
                     <p className="text-sm font-semibold text-gray-800">{t("common.currentLocation")}</p>
                     <p className="text-xs text-gray-600">
@@ -950,7 +1058,7 @@ export default function Attendance() {
                   </div>
                 </div>
               ) : (
-                <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700 ring-1 ring-amber-200">
+                <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 ring-1 ring-red-200">
                   {t("common.locationUnavailable")}
                 </div>
               )}
@@ -975,12 +1083,29 @@ export default function Attendance() {
                   </label>
                 )}
               </div>
+
+              {/* Optional Notes */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700">{t("attendance.remarks")} ({t("common.optional")})</label>
+                <textarea
+                  value={checkOutNotes}
+                  onChange={(e) => setCheckOutNotes(e.target.value)}
+                  placeholder={t("attendance.remarksPlaceholder") || "Add any notes..."}
+                  rows={2}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+                />
+              </div>
             </div>
             <div className="flex justify-end gap-3 border-t p-5">
               <Button variant="secondary" onClick={() => setCheckOutModalOpen(false)} disabled={actionLoading}>
                 {t("attendance.cancel")}
               </Button>
-              <Button onClick={submitCheckOut} disabled={actionLoading}>
+              <Button
+                onClick={submitCheckOut}
+                disabled={actionLoading || !checkOutPos || !checkOutPhoto}
+                className={!checkOutPos || !checkOutPhoto ? "opacity-50" : "bg-orange-500 hover:bg-orange-600"}
+                title={!checkOutPos ? "Location required" : !checkOutPhoto ? "Photo required" : "Click to check out"}
+              >
                 {actionLoading ? (
                   <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> {t("attendance.checkingOut")}</span>
                 ) : (

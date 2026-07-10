@@ -778,6 +778,7 @@
   "cropMon.totalCrops": "कुल फसलें",
   "cropMon.noSeasonal": "कोई मौसमी डेटा नहीं।",
   "common.view": "देखें",
+  "common.optional": "वैकल्पिक",
   "common.approve": "अनुमोदित करें",
   "common.reject": "अस्वीकार करें",
   "common.verify": "सत्यापित करें",
@@ -1028,6 +1029,7 @@
   "header.longitude": "देशांतर",
   "header.attendancePct": "उपस्थिति %",
   "header.otHrs": "OT घंटे",
+  "attendance.workingHours": "कार्य घंટે",
   "header.block": "ब्लॉक",
   "header.contact": "संपर्क",
   "header.costCenter": "लागत केंद्र",
@@ -1263,6 +1265,7 @@
   "attendance.out": "आउट",
   "attendance.allStatus": "सभी स्थितियां",
   "attendance.remarks": "टिप्पणी",
+  "attendance.remarksPlaceholder": "कोई टिप्पणी जोड़ें...",
   "attendance.approvalStatusLabel": "अनुमोदन स्थिति",
   "attendanceReports.allMonths": "सभी महीने",
   "attendanceReports.selectFarm": "फार्म",
@@ -1708,5 +1711,12 @@
   "audit.actionREJECT": "अस्वीकार",
   "tasks.break": "विराम",
   "tasks.breakTask": "कार्य रोकें (विराम)",
-  "tasks.resumeTask": "कार्य फिर से शुरू करें"
+  "tasks.resumeTask": "कार्य फिर से शुरू करें",
+  "tasks.breakStarted": "विराम शुरू - टाइमर रुका",
+  "tasks.resumedSuccess": "कार्य फिर से शुरू - टाइमर जारी",
+  "tasks.breakReasonRequired": "विराम का कारण आवश्यक है",
+  "tasks.completionNotesRequired": "पूर्णता नोट्स आवश्यक हैं",
+  "tasks.breakReason": "विराम का कारण",
+  "tasks.breakReasonPlaceholder": "आप विराम क्यों ले रहे हैं?",
+  "tasks.completionNotesPlaceholder": "आपने क्या पूरा किया वर्णन करें..."
 }

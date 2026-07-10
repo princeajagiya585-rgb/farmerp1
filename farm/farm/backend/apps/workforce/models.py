@@ -181,6 +181,22 @@ class Attendance(OwnedModel):
     remarks = models.TextField(blank=True)
     check_in_notes = models.TextField(blank=True)
     check_out_notes = models.TextField(blank=True)
+    # Address fields for GPS location
+    check_in_address = models.TextField(blank=True, help_text="Auto-detected address from check-in GPS")
+    check_out_address = models.TextField(blank=True, help_text="Auto-detected address from check-out GPS")
+    # Working hours calculation (in seconds)
+    working_seconds = models.IntegerField(default=0, help_text="Total working seconds for this attendance")
+    overtime_seconds = models.IntegerField(default=0, help_text="Overtime seconds beyond regular working hours")
+    # Check-out geofence status (can be different from check-in)
+    check_out_geofence_status = models.BooleanField(
+        null=True, blank=True,
+        help_text="True if GPS is inside farm geofence at check-out, False if outside, null if no GPS"
+    )
+    # Distance from farm center at check-out
+    check_out_distance = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Distance from farm center in metres at check-out"
+    )
 
     class Meta:
         ordering = ["-date"]
@@ -188,6 +204,21 @@ class Attendance(OwnedModel):
 
     def __str__(self):
         return f"{self.employee.name} - {self.date} ({self.status})"
+
+    def calculate_working_hours(self):
+        """Calculate working hours in seconds between check-in and check-out."""
+        if not self.check_in_time or not self.check_out_time:
+            return 0
+        delta = self.check_out_time - self.check_in_time
+        return int(delta.total_seconds())
+
+    def calculate_overtime(self, regular_hours=8):
+        """Calculate overtime seconds beyond regular working hours (default 8 hours)."""
+        working = self.calculate_working_hours()
+        regular_seconds = regular_hours * 3600
+        if working > regular_seconds:
+            return working - regular_seconds
+        return 0
 
 
 class Department(TimeStampedModel):

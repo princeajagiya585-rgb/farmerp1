@@ -3,7 +3,22 @@ from rest_framework import serializers
 
 from apps.core.utils import build_absolute_photo_url
 
-from .models import Task, TaskUpdate, TaskWorkSession, TaskExecution, TaskBreakLog, TaskProgressLog
+from .models import Task, TaskUpdate, TaskWorkSession, TaskExecution, TaskBreakLog, TaskProgressLog, TaskActivity
+
+
+class TaskActivitySerializer(serializers.ModelSerializer):
+    employee_name = serializers.CharField(source="employee.name", read_only=True)
+    task_title = serializers.CharField(source="task.title", read_only=True)
+    created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
+    photo_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskActivity
+        fields = "__all__"
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_photo_url(self, obj):
+        return build_absolute_photo_url(obj.photo, self.context.get('request'))
 
 
 class TaskBreakLogSerializer(serializers.ModelSerializer):
@@ -33,12 +48,20 @@ class TaskExecutionSerializer(serializers.ModelSerializer):
     approved_by_name = serializers.CharField(source="approved_by.get_full_name", read_only=True, default=None)
     created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
+    # Photo URLs for new fields
+    before_work_photo_url = serializers.SerializerMethodField()
+    break_start_photo_url = serializers.SerializerMethodField()
+    break_end_photo_url = serializers.SerializerMethodField()
+    completion_photo_url = serializers.SerializerMethodField()
+
     # Computed fields
     current_duration_seconds = serializers.SerializerMethodField()
     current_timer_display = serializers.SerializerMethodField()
     total_break_duration_seconds = serializers.SerializerMethodField()
     break_logs_data = serializers.SerializerMethodField()
     progress_logs_data = serializers.SerializerMethodField()
+    activities_data = serializers.SerializerMethodField()
+    timer_data = serializers.SerializerMethodField()
 
     class Meta:
         model = TaskExecution
@@ -48,6 +71,22 @@ class TaskExecutionSerializer(serializers.ModelSerializer):
             "confirmed_at", "started_at", "completed_at", "approved_at", "returned_at",
             "working_seconds", "break_seconds", "created_by", "approved_by"
         ]
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_before_work_photo_url(self, obj):
+        return build_absolute_photo_url(obj.before_work_photo, self.context.get('request'))
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_break_start_photo_url(self, obj):
+        return build_absolute_photo_url(obj.break_start_photo, self.context.get('request'))
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_break_end_photo_url(self, obj):
+        return build_absolute_photo_url(obj.break_end_photo, self.context.get('request'))
+
+    @extend_schema_field(serializers.URLField(allow_null=True))
+    def get_completion_photo_url(self, obj):
+        return build_absolute_photo_url(obj.completion_photo, self.context.get('request'))
 
     @extend_schema_field(serializers.IntegerField())
     def get_current_duration_seconds(self, obj):
@@ -83,6 +122,49 @@ class TaskExecutionSerializer(serializers.ModelSerializer):
     @extend_schema_field(serializers.ListField())
     def get_progress_logs_data(self, obj):
         return TaskProgressLogSerializer(obj.progress_logs.all(), many=True).data
+
+    @extend_schema_field(serializers.ListField())
+    def get_activities_data(self, obj):
+        """Get all task activities for this execution."""
+        return TaskActivitySerializer(obj.activities.all(), many=True, context=self.context).data
+
+    @extend_schema_field(serializers.DictField())
+    def get_timer_data(self, obj):
+        """Get comprehensive timer data for the frontend."""
+        from django.utils import timezone
+
+        now = timezone.now()
+
+        # Calculate working time
+        working_seconds = obj.calculate_current_duration()
+
+        # Calculate break time
+        break_seconds = obj.total_break_seconds
+        if obj.status == obj.Status.ON_BREAK and obj.break_start_time:
+            current_break = int((now - obj.break_start_time).total_seconds())
+            break_seconds += current_break
+
+        # Net working time (total - break)
+        net_work_seconds = max(0, working_seconds - break_seconds)
+
+        # Timer display
+        hours = working_seconds // 3600
+        minutes = (working_seconds % 3600) // 60
+        secs = working_seconds % 60
+
+        return {
+            "working_seconds": working_seconds,
+            "break_seconds": break_seconds,
+            "net_work_seconds": net_work_seconds,
+            "timer_display": f"{hours:02d}:{minutes:02d}:{secs:02d}",
+            "is_running": obj.status == obj.Status.IN_PROGRESS,
+            "is_on_break": obj.status == obj.Status.ON_BREAK,
+            "is_completed": obj.status in [obj.Status.COMPLETED, obj.Status.APPROVED, obj.Status.WAITING_APPROVAL],
+            "started_at": obj.started_at,
+            "before_work_time": obj.before_work_time,
+            "break_start_time": obj.break_start_time,
+            "completed_time": obj.completed_at,
+        }
 
 
 class TaskWorkSessionSerializer(serializers.ModelSerializer):
@@ -171,15 +253,28 @@ class TaskSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField())
     def get_work_phase(self, obj):
-        """Determine the current work phase based on the latest location ping activity.
+        """Determine the current work phase based on TaskActivity model.
 
-        BEFORE      → no work pings yet; show the "Before Work" button.
-        IN_PROGRESS → CHECKIN exists and latest activity is CHECKIN, DURING_WORK, or RESUME.
+        BEFORE      → no activities yet; show the "Before Work" button.
+        IN_PROGRESS → BEFORE_WORK exists and latest activity is not BREAK_START.
                       Show "During Work", "Break", "Complete Work" buttons.
-        ON_BREAK    → latest activity is BREAK (no RESUME after it).
+        ON_BREAK    → latest activity is BREAK_START (no BREAK_END after it).
                       Show "Resume" and "Complete Work" buttons.
-        COMPLETED   → latest activity is CHECKOUT; task is done.
+        COMPLETED   → latest activity is COMPLETED; task is done.
         """
+        # First check TaskActivity model
+        activities = list(obj.activities.values_list("action_type", "timestamp").order_by("-timestamp"))
+        if activities:
+            latest = activities[0][0]
+            if latest == TaskActivity.ActionType.COMPLETED:
+                return "COMPLETED"
+            if latest == TaskActivity.ActionType.BREAK_START:
+                return "ON_BREAK"
+            if latest in (TaskActivity.ActionType.BEFORE_WORK, TaskActivity.ActionType.DURING_WORK, TaskActivity.ActionType.BREAK_END):
+                return "IN_PROGRESS"
+            return "BEFORE"
+
+        # Fallback: compute from location_pings (legacy)
         pings = list(obj.location_pings.values_list("activity", "recorded_at"))
         if not pings:
             return "BEFORE"
