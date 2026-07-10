@@ -14,9 +14,22 @@ const getLocation = () =>
   new Promise((resolve) => {
     if (!navigator.geolocation) return resolve({});
     navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+      async (p) => {
+        const loc = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy };
+        // Auto-detect address from GPS
+        try {
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${loc.lat}&lon=${loc.lng}&zoom=18&addressdetails=1`
+          );
+          const data = await response.json();
+          if (data.display_name) loc.address = data.display_name;
+        } catch (e) {
+          console.log("Address lookup failed:", e);
+        }
+        resolve(loc);
+      },
       () => resolve({}),
-      { enableHighAccuracy: true, timeout: 8000 }
+      { enableHighAccuracy: true, timeout: 10000 }
     );
   });
 
@@ -397,11 +410,17 @@ export default function Attendance() {
             <div className="flex items-center gap-4">
               <div className={`flex h-14 w-14 items-center justify-center rounded-full ${
                 todayAttendance?.check_in_time
-                  ? "bg-green-100 text-green-600"
+                  ? todayAttendance?.check_out_time
+                    ? "bg-purple-100 text-purple-600"
+                    : "bg-green-100 text-green-600"
                   : "bg-gray-100 text-gray-400"
               }`}>
                 {todayAttendance?.check_in_time ? (
-                  <LogIn size={24} />
+                  todayAttendance?.check_out_time ? (
+                    <Check size={24} />
+                  ) : (
+                    <LogIn size={24} />
+                  )
                 ) : (
                   <Clock size={24} />
                 )}
@@ -411,19 +430,18 @@ export default function Attendance() {
                 <p className="text-lg font-bold text-gray-800">
                   {myProfile?.name || currentUser?.first_name || currentUser?.username || t("common.employee")}
                 </p>
-                <div className="flex items-center gap-3 mt-1 flex-wrap">
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   {todayAttendance?.check_in_time ? (
                     <>
                       <span className="flex items-center gap-1 text-xs text-green-600">
-                        <LogIn size={12} /> {t("attendance.in")}: {fmt(todayAttendance.check_in_time)}
+                        <LogIn size={12} /> {fmt(todayAttendance.check_in_time)}
                       </span>
                       {todayAttendance.check_out_time ? (
-                        <span className="flex items-center gap-1 text-xs text-blue-600">
-                          <LogOut size={12} /> {t("attendance.out")}: {fmt(todayAttendance.check_out_time)}
+                        <span className="flex items-center gap-1 text-xs text-purple-600">
+                          <LogOut size={12} /> {fmt(todayAttendance.check_out_time)}
                         </span>
                       ) : (
-                        // Show live timer when checked in but not checked out
-                        <span className="flex items-center gap-1 text-xs text-orange-600 font-mono">
+                        <span className="flex items-center gap-1 text-xs text-orange-600 font-mono font-bold">
                           <Timer size={12} /> {formatDuration(elapsedSeconds)}
                         </span>
                       )}
@@ -431,41 +449,39 @@ export default function Attendance() {
                   ) : (
                     <Badge color="gray">{t("common.notCheckedIn")}</Badge>
                   )}
+                  {todayAttendance?.check_in_distance != null && (
+                    <Badge color={todayAttendance.geofence_status ? "green" : "red"}>
+                      <MapPin size={10} /> {todayAttendance.geofence_status ? t("gps.inFence") : t("gps.outside")} ({Math.round(todayAttendance.check_in_distance)}m)
+                    </Badge>
+                  )}
                   {todayAttendance?.status && (
                     <Badge color={statusColor[todayAttendance.status]}>
                       {t(`attendance.${statusLabelMap[todayAttendance.status] || todayAttendance.status}`)}
                     </Badge>
                   )}
-                  {todayAttendance?.approval_status && (
-                    <Badge color={apprColor[todayAttendance.approval_status]}>
-                      {t(`attendance.${apprLabelMap[todayAttendance.approval_status] || todayAttendance.approval_status}`)}
-                    </Badge>
-                  )}
-                  {todayAttendance?.geofence_status === true && (
-                    <Badge color="green">{t("gps.inFence")}</Badge>
-                  )}
-                  {todayAttendance?.geofence_status === false && (
-                    <Badge color="red">{t("gps.outside")}</Badge>
-                  )}
                   {todayAttendance?.working_hours_formatted && (
-                    <span className="flex items-center gap-1 text-xs text-gray-600">
+                    <span className="flex items-center gap-1 text-xs text-gray-600 font-mono">
                       <Clock size={12} /> {todayAttendance.working_hours_formatted}
                     </span>
                   )}
                   {todayAttendance?.overtime_hours_formatted && (
-                    <span className="flex items-center gap-1 text-xs text-red-600">
-                      <Clock size={12} /> OT: {todayAttendance.overtime_hours_formatted}
-                    </span>
-                  )}
-                  {todayAttendance?.check_in_distance != null && (
-                    <span className="flex items-center gap-1 text-xs text-gray-500">
-                      <MapPin size={12} /> {todayAttendance.check_in_distance}m
-                    </span>
+                    <Badge color="red">OT: {todayAttendance.overtime_hours_formatted}</Badge>
                   )}
                 </div>
+                {/* Show address and geofence details */}
+                {todayAttendance?.check_in_address && (
+                  <p className="text-xs text-gray-400 mt-1 truncate max-w-md">
+                    📍 {todayAttendance.check_in_address.substring(0, 120)}
+                  </p>
+                )}
+                {todayAttendance?.check_out_address && todayAttendance?.check_out_time && (
+                  <p className="text-xs text-gray-400 mt-0.5 truncate max-w-md">
+                    📍 Check-out: {todayAttendance.check_out_address.substring(0, 120)}
+                  </p>
+                )}
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 shrink-0">
               {!todayAttendance?.check_in_time && (
                 <Button
                   onClick={() => {
@@ -481,7 +497,7 @@ export default function Attendance() {
                     }
                   }}
                   disabled={actionLoading || (!myProfile && !employees.length)}
-                  className="bg-green-600 hover:bg-green-700 text-white"
+                  className="bg-green-600 hover:bg-green-700 active:bg-green-800 text-white shadow-sm"
                 >
                   <Camera size={16} /> {t("attendance.checkIn")}
                 </Button>
@@ -490,13 +506,13 @@ export default function Attendance() {
                 <Button
                   onClick={() => openCheckOutModal(todayAttendance)}
                   disabled={actionLoading}
-                  className="bg-orange-500 hover:bg-orange-600 text-white"
+                  className="bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white shadow-sm"
                 >
                   <LogOut size={16} /> {t("attendance.checkOut")}
                 </Button>
               )}
               {todayAttendance?.check_in_time && todayAttendance?.check_out_time && (
-                <Button disabled variant="secondary" className="bg-gray-400 text-gray-200 cursor-not-allowed">
+                <Button disabled className="bg-gray-300 text-gray-500 cursor-not-allowed shadow-sm">
                   <Check size={16} /> {t("attendance.checkedOut")}
                 </Button>
               )}
@@ -507,7 +523,7 @@ export default function Attendance() {
               <MapPin size={12} />
               <span>{t("attendance.checkIn")}: {Number(todayAttendance.check_in_lat).toFixed(4)}, {Number(todayAttendance.check_in_lng).toFixed(4)}</span>
               {todayAttendance.location_name && (
-                <span className="text-gray-500 truncate max-w-[300px]">· {todayAttendance.location_name}</span>
+                <span className="text-gray-500 truncate max-w-[240px]">· {todayAttendance.location_name}</span>
               )}
               <button
                 type="button"
@@ -683,9 +699,25 @@ export default function Attendance() {
               key: "geofence_status",
               header: t("header.geofence"),
               render: (r) => {
-                const geoStatus = r.geofence_status_display || r.geofence_status;
-                if (geoStatus === "YES" || geoStatus === true) return <Badge color="green">{t("gps.inFence")}</Badge>;
-                if (geoStatus === "NO" || geoStatus === false) return <Badge color="red">{t("gps.outside")}</Badge>;
+                const checkInStatus = r.geofence_status_display || r.geofence_status;
+                const checkOutStatus = r.check_out_geofence_status_display ?? r.check_out_geofence_status;
+                const isInside = checkInStatus === "YES" || checkInStatus === true;
+                const isOutside = checkInStatus === "NO" || checkInStatus === false;
+                const outInside = checkOutStatus === "YES" || checkOutStatus === true;
+                const outOutside = checkOutStatus === "NO" || checkOutStatus === false;
+
+                // Show combined status: track if they checked in from inside but out from outside
+                if (isInside && outOutside) {
+                  return (
+                    <div className="flex items-center gap-1">
+                      <Badge color="green">{t("gps.inFence")}</Badge>
+                      <span className="text-xs text-gray-400">→</span>
+                      <Badge color="red">{t("gps.outside")}</Badge>
+                    </div>
+                  );
+                }
+                if (isInside) return <Badge color="green">{t("gps.inFence")}</Badge>;
+                if (isOutside) return <Badge color="red">{t("gps.outside")}</Badge>;
                 return <span className="text-gray-400">—</span>;
               },
             },
@@ -826,14 +858,24 @@ export default function Attendance() {
                 <Loader2 size={16} className="animate-spin text-brand-600" /> {t("common.gettingLocation")}
                 </div>
               ) : checkInPos ? (
-                <div className="flex items-start gap-3 rounded-lg bg-green-50 p-3 border border-green-200">
-                  <MapPin size={16} className="mt-0.5 text-green-600" />
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{t("common.currentLocation")}</p>
-                    <p className="text-xs text-gray-600">
-                      {checkInPos.lat.toFixed(6)}, {checkInPos.lng.toFixed(6)}
-                    </p>
+                <div className="space-y-2">
+                  <div className="flex items-start gap-3 rounded-lg bg-green-50 p-3 border border-green-200">
+                    <MapPin size={16} className="mt-0.5 text-green-600" />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{t("common.currentLocation")}</p>
+                      <p className="text-xs text-gray-600 font-mono">
+                        {checkInPos.lat.toFixed(6)}, {checkInPos.lng.toFixed(6)}
+                      </p>
+                      {checkInPos.accuracy != null && (
+                        <p className="text-xs text-green-500">±{Math.round(checkInPos.accuracy)}m {t("common.accuracy")}</p>
+                      )}
+                    </div>
                   </div>
+                  {checkInPos.address && (
+                    <p className="text-xs text-gray-500 px-1" title={checkInPos.address}>
+                      📍 {checkInPos.address.substring(0, 100)}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 ring-1 ring-red-200">
@@ -1048,14 +1090,24 @@ export default function Attendance() {
                 <Loader2 size={16} className="animate-spin text-brand-600" /> {t("common.gettingLocation")}
                 </div>
               ) : checkOutPos ? (
-                <div className="flex items-start gap-3 rounded-lg bg-green-50 p-3 border border-green-200">
-                  <MapPin size={16} className="mt-0.5 text-green-600" />
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{t("common.currentLocation")}</p>
-                    <p className="text-xs text-gray-600">
-                      {checkOutPos.lat.toFixed(6)}, {checkOutPos.lng.toFixed(6)}
-                    </p>
+                <div className="space-y-2">
+                  <div className="flex items-start gap-3 rounded-lg bg-green-50 p-3 border border-green-200">
+                    <MapPin size={16} className="mt-0.5 text-green-600" />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{t("common.currentLocation")}</p>
+                      <p className="text-xs text-gray-600 font-mono">
+                        {checkOutPos.lat.toFixed(6)}, {checkOutPos.lng.toFixed(6)}
+                      </p>
+                      {checkOutPos.accuracy != null && (
+                        <p className="text-xs text-green-500">±{Math.round(checkOutPos.accuracy)}m {t("common.accuracy")}</p>
+                      )}
+                    </div>
                   </div>
+                  {checkOutPos.address && (
+                    <p className="text-xs text-gray-500 px-1" title={checkOutPos.address}>
+                      📍 {checkOutPos.address.substring(0, 100)}
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 ring-1 ring-red-200">

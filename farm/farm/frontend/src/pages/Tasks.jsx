@@ -2,15 +2,14 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Camera, CheckCircle, Loader2, MapPin, Pause, Play,
-  X, AlertCircle, Clock
+  X, AlertCircle
 } from "lucide-react";
 import CrudResource from "../components/CrudResource";
 import { Badge, Button, ToastContainer, useToast } from "../components/ui";
-import { resource, toFormData, api } from "../lib/api";
+import { resource, toFormData } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
 const repo = resource("tasks");
-const pingsRepo = resource("gps/pings");
 
 // Work phase config - using new API endpoints
 const workPhaseConfig = {
@@ -144,9 +143,6 @@ export default function Tasks() {
 
   // Complete confirmation
   const [completeConfirm, setCompleteConfirm] = useState(false);
-  // Track direct-action saving state per task id
-  const [savingBreak, setSavingBreak] = useState(null);
-  const [savingResume, setSavingResume] = useState(null);
 
   const fetchWorkLocation = () => {
     if (!navigator.geolocation) {
@@ -210,38 +206,7 @@ export default function Tasks() {
     reader.readAsDataURL(file);
   };
 
-  // Direct action for Break/Resume — one-click, no modal form
-  const handleDirectAction = async (row, phase, reload) => {
-    const activity = workPhaseConfig[phase]?.activity;
-    if (!activity) return;
 
-    const setSaving = phase === "BREAK" ? setSavingBreak : setSavingResume;
-    setSaving(row.id);
-
-    try {
-      // Try to get location (optional for break/resume)
-      const loc = await getLocation();
-
-      const data = {
-        latitude: loc ? Number(Number(loc.lat).toFixed(6)) : null,
-        longitude: loc ? Number(Number(loc.lng).toFixed(6)) : null,
-        accuracy: loc?.accuracy != null ? Math.round(loc.accuracy) : null,
-        activity: activity,
-        task: row.id,
-        notes: "",
-      };
-
-      await pingsRepo.create(data);
-      reload();
-
-      const successKey = phase === "BREAK" ? "tasks.breakStarted" : "tasks.resumedSuccess";
-      addToast(t(successKey), "success");
-    } catch (err) {
-      addToast(err.response?.data?.detail || err.message, "error");
-    } finally {
-      setSaving(null);
-    }
-  };
 
   const submitWork = async () => {
     if (!workModal) return;
@@ -255,9 +220,16 @@ export default function Tasks() {
     }
 
     // Validate required fields based on phase
-    if (!workPos || (!workPhoto && phase !== "DURING_WORK")) {
-      if (!workPos) setWorkError(t("gps.noLocation"));
-      if (!workPhoto && phase === "BEFORE") setWorkError(t("tasks.photoRequired"));
+    // Every action requires GPS (per requirement)
+    if (!workPos) {
+      setWorkError(t("gps.noLocation"));
+      return;
+    }
+
+    // Every action requires a photo (per requirement: "Every action requires Camera Photo")
+    // DURING_WORK is the only exception — it's optional by design
+    if (!workPhoto && phase !== "DURING_WORK") {
+      setWorkError(t("tasks.photoRequired"));
       return;
     }
 
@@ -493,12 +465,11 @@ export default function Tasks() {
             </button>
             <button
               onClick={() => openWorkModal(row, "BREAK_START", reload)}
-              disabled={savingBreak === row.id}
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-amber-500 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600"
               title={t("tasks.break")}
             >
-              {savingBreak === row.id ? <Loader2 size={14} className="animate-spin" /> : <Pause size={14} />}
-              {savingBreak === row.id ? t("common.saving") : t("tasks.break")}
+              <Pause size={14} />
+              {t("tasks.break")}
             </button>
             <button
               onClick={() => openWorkModal(row, "COMPLETED", reload)}
@@ -512,7 +483,7 @@ export default function Tasks() {
         );
 
       case "ON_BREAK":
-        // Show During Work (modal), Resume (modal), Complete Work (modal)
+        // Show During Work (modal), Resume (modal) — NO Complete Work until work resumes
         return (
           <>
             <button
@@ -525,20 +496,11 @@ export default function Tasks() {
             </button>
             <button
               onClick={() => openWorkModal(row, "BREAK_END", reload)}
-              disabled={savingResume === row.id}
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700"
               title={t("tasks.resumeWork")}
             >
-              {savingResume === row.id ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-              {savingResume === row.id ? t("common.saving") : t("tasks.resumeWork")}
-            </button>
-            <button
-              onClick={() => openWorkModal(row, "COMPLETED", reload)}
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
-              title={t("gps.completedWork")}
-            >
-              <CheckCircle size={14} />
-              {t("gps.completedWork")}
+              <Play size={14} />
+              {t("tasks.resumeWork")}
             </button>
           </>
         );
@@ -764,12 +726,15 @@ export default function Tasks() {
                 </div>
               )}
 
-              {/* Photo - required for BEFORE, optional for others */}
+              {/* Photo - required for all phases except DURING_WORK */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
                   {t("common.workPhoto")}
-                  {workModal.phase === "BEFORE" && <span className="text-red-500"> *</span>}
-                  {workModal.phase !== "BEFORE" && <span className="text-gray-400"> ({t("common.optional")})</span>}
+                  {workModal.phase !== "DURING_WORK" ? (
+                    <span className="text-red-500"> *</span>
+                  ) : (
+                    <span className="text-gray-400"> ({t("common.optional")})</span>
+                  )}
                 </label>
                 {workPhotoPreview ? (
                   <div className="relative">
@@ -785,12 +750,15 @@ export default function Tasks() {
                   <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
                     <Camera size={24} className="text-gray-400 mb-2" />
                     <p className="text-sm text-gray-500">{t("gps.clickPhoto")}</p>
-                    <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handleWorkPhotoChange} />
+                    <input type="file" className="hidden" accept="image/*" capture="camera" onChange={handleWorkPhotoChange} />
                   </label>
                 )}
-                {workModal.phase === "BEFORE" && (
-                  <p className="text-xs font-medium text-red-500">{t("tasks.photoRequired")}</p>
-                )}
+                {
+                  // Photo is required for all phases except DURING_WORK
+                  workModal.phase !== "DURING_WORK" && (
+                    <p className="text-xs font-medium text-red-500">{t("tasks.photoRequired")}</p>
+                  )
+                }
               </div>
 
               {/* Completion confirmation */}
@@ -815,7 +783,7 @@ export default function Tasks() {
                 disabled={
                   workSaving ||
                   !workPos ||
-                  (workModal.phase === "BEFORE" && !workPhoto) ||
+                  (workModal.phase !== "DURING_WORK" && !workPhoto) ||
                   (workModal.phase === "BREAK_START" && !workReason.trim()) ||
                   (workModal.phase === "COMPLETED" && (!completeConfirm || !workNotes.trim()))
                 }
