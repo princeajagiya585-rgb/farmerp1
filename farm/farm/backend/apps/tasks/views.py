@@ -294,12 +294,11 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="before-work")
     def before_work(self, request, pk=None):
-        """Employee starts work on a task - Before Work action.
-
-        Required: photo, latitude, longitude
-        Optional: address, notes
-        """
-        task = self.get_object()
+        """Employee starts work on a task - Before Work action."""
+        try:
+            task = Task.objects.get(pk=pk)
+        except Task.DoesNotExist:
+            return Response({"detail": "Not found."}, status=404)
         user = request.user
 
         # Get employee (optional — task may be assigned via assigned_to user)
@@ -392,12 +391,11 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="take-break")
     def take_break(self, request, pk=None):
-        """Employee takes a break - Break action.
-
-        Photo and GPS are optional (for one-click quick actions from the UI).
-        Reason is optional — defaults to "Break".
-        """
-        task = self.get_object()
+        """Employee takes a break - Break action."""
+        try:
+            task = Task.objects.get(pk=pk)
+        except Task.DoesNotExist:
+            return Response({"detail": "Not found."}, status=404)
         user = request.user
 
         # Get employee (optional — assigned_to user may not have an employee profile)
@@ -469,11 +467,11 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="resume-work")
     def resume_work(self, request, pk=None):
-        """Employee resumes work after break - Resume action.
-
-        Photo and GPS are optional (for one-click quick actions from the UI).
-        """
-        task = self.get_object()
+        """Employee resumes work after break - Resume action."""
+        try:
+            task = Task.objects.get(pk=pk)
+        except Task.DoesNotExist:
+            return Response({"detail": "Not found."}, status=404)
         user = request.user
 
         # Get employee (optional)
@@ -544,11 +542,11 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="during-work")
     def during_work(self, request, pk=None):
-        """Employee provides progress update - During Work action.
-
-        All fields are optional — photo, GPS, and notes are optional.
-        """
-        task = self.get_object()
+        """Employee provides progress update - During Work action."""
+        try:
+            task = Task.objects.get(pk=pk)
+        except Task.DoesNotExist:
+            return Response({"detail": "Not found."}, status=404)
         user = request.user
 
         # Get employee (optional)
@@ -601,11 +599,11 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="complete-work")
     def complete_work(self, request, pk=None):
-        """Employee completes the task - Complete Work action.
-
-        Required: photo, latitude, longitude, completion_notes
-        """
-        task = self.get_object()
+        """Employee completes the task - Complete Work action."""
+        try:
+            task = Task.objects.get(pk=pk)
+        except Task.DoesNotExist:
+            return Response({"detail": "Not found."}, status=404)
         user = request.user
 
         # Get employee (optional)
