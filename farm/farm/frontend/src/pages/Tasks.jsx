@@ -719,29 +719,59 @@ export default function Tasks() {
               <Button variant="secondary" onClick={() => setWorkModal(null)} disabled={workSaving}>
                 {t("common.cancel")}
               </Button>
-              <Button
-                onClick={submitWork}
-                disabled={
-                  workSaving ||
-                  ((workModal.phase === "BEFORE" || workModal.phase === "COMPLETED") && (!workPos || !workPhoto)) ||
-                  (workModal.phase === "COMPLETED" && completeConfirm && !workNotes.trim())
-                }
-              >
-                {workSaving ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 size={16} className="animate-spin" />
-                    {t("common.saving")}
-                  </span>
+
+              {/* BEFORE: show Submit only when both photo and location are ready */}
+              {workModal.phase === "BEFORE" && (
+                workPos && workPhoto ? (
+                  <Button onClick={submitWork} disabled={workSaving}>
+                    {workSaving ? (
+                      <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" />{t("common.saving")}</span>
+                    ) : (
+                      <span className="flex items-center gap-2"><CheckCircle size={16} />Submit</span>
+                    )}
+                  </Button>
                 ) : (
-                  <span className="flex items-center gap-2">
-                    {workModal.phase === "BEFORE" && <><Camera size={16} />{t("gps.beforeWork")}</>}
-                    {workModal.phase === "DURING_WORK" && <><Camera size={16} />{t("gps.duringWork")}</>}
-                    {workModal.phase === "BREAK_START" && <><Pause size={16} />{t("tasks.break")}</>}
-                    {workModal.phase === "BREAK_END" && <><Play size={16} />{t("tasks.resumeWork")}</>}
-                    {workModal.phase === "COMPLETED" && (completeConfirm ? <><CheckCircle size={16} />{t("common.yes")}</> : <><CheckCircle size={16} />{t("gps.completedWork")}</>)}
+                  <span className="text-xs text-gray-400 self-center">
+                    {!workPos && !workPhoto ? "Add photo & location to submit" :
+                     !workPos ? "Waiting for location..." : "Add a photo to submit"}
                   </span>
-                )}
-              </Button>
+                )
+              )}
+
+              {/* DURING_WORK: always show Submit (all optional) */}
+              {workModal.phase === "DURING_WORK" && (
+                <Button onClick={submitWork} disabled={workSaving}>
+                  {workSaving ? (
+                    <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" />{t("common.saving")}</span>
+                  ) : (
+                    <span className="flex items-center gap-2"><Camera size={16} />Submit</span>
+                  )}
+                </Button>
+              )}
+
+              {/* COMPLETED: show Submit only when photo + location + notes ready */}
+              {workModal.phase === "COMPLETED" && (
+                workPos && workPhoto ? (
+                  <Button
+                    onClick={submitWork}
+                    disabled={workSaving || (completeConfirm && !workNotes.trim())}
+                    className={completeConfirm ? "bg-green-700 hover:bg-green-800" : ""}
+                  >
+                    {workSaving ? (
+                      <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" />{t("common.saving")}</span>
+                    ) : completeConfirm ? (
+                      <span className="flex items-center gap-2"><CheckCircle size={16} />Confirm Complete</span>
+                    ) : (
+                      <span className="flex items-center gap-2"><CheckCircle size={16} />Submit</span>
+                    )}
+                  </Button>
+                ) : (
+                  <span className="text-xs text-gray-400 self-center">
+                    {!workPos && !workPhoto ? "Add photo & location to submit" :
+                     !workPos ? "Waiting for location..." : "Add a photo to submit"}
+                  </span>
+                )
+              )}
             </div>
           </div>
         </div>
