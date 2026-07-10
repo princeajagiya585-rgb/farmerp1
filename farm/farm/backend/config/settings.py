@@ -27,7 +27,7 @@ if not SECRET_KEY:
 DEBUG = env_bool("DEBUG", False)
 ALLOWED_HOSTS = env_list(
     "ALLOWED_HOSTS",
-    "localhost,127.0.0.1,.up.railway.app,.railway.app,farmerp-frontend.vercel.app"
+    "localhost,127.0.0.1,.up.railway.app,.railway.app,.vercel.app,farmerp-frontend.vercel.app"
 )
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
@@ -299,8 +299,16 @@ CORS_ALLOWED_ORIGINS = env_list(
     "CORS_ALLOWED_ORIGINS",
     "http://localhost:5173,http://localhost:5174,http://localhost:3000,https://farmerp1.vercel.app,https://farmerp-frontend.vercel.app"
 )
+# CORS_ALLOWED_ORIGINS does NOT support wildcards, so use regex for any
+# Vercel/Railway deployment that the CORS env var hasn't explicitly listed.
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.+vercel\.app$",
+    r"^https://.+railway\.app$",
+]
 CORS_ALLOW_CREDENTIALS = True
 # Required by Django for cross-origin POST (e.g. the admin) behind HTTPS.
+# Note: CSRF_TRUSTED_ORIGINS does NOT support wildcards either.
+# Add your exact frontend URL in the Railway dashboard env var.
 CSRF_TRUSTED_ORIGINS = env_list(
     "CSRF_TRUSTED_ORIGINS",
     "https://farmerp1.vercel.app,https://farmerp-frontend.vercel.app"
@@ -308,6 +316,20 @@ CSRF_TRUSTED_ORIGINS = env_list(
 # Behind Railway/Vercel's HTTPS proxy, trust the forwarded scheme header.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True
+
+# ── Production Security Settings ──────────────────────────────────────────
+# These are safe on Railway/Vercel because they terminate SSL at the edge.
+# Enable HSTS only if the entire site is HTTPS (it is on Railway/Vercel).
+SECURE_HSTS_SECONDS = 31536000  # 1 year
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+SECURE_SSL_REDIRECT = not DEBUG  # Redirect HTTP → HTTPS in production
+SESSION_COOKIE_SECURE = not DEBUG  # Secure cookie in production
+CSRF_COOKIE_SECURE = not DEBUG  # Secure CSRF cookie in production
+# Slight performance boost: don't send the cookie on every subrequest
+SESSION_COOKIE_HTTPONLY = True
+# Prevent clickjacking
+X_FRAME_OPTIONS = "DENY"
 
 # ---------------------------------------------------------------------------
 # Supabase Storage (replaces local MEDIA_ROOT / S3)
