@@ -127,12 +127,13 @@ export default function Tasks() {
   const handleQuickBreak = async (row, reload, updateRow) => {
     setWorkSaving(true);
     try {
-      await repo.action(row.id, "take-break", {});
+      await repo.action(row.id, "take-break", { reason: "Break" });
       updateRow(row.id, { status: "ON_BREAK" });
       if (reload) reload({ forceRefresh: true });
       addToast(t("tasks.breakStarted"), "success");
     } catch (err) {
-      addToast(err.response?.data?.detail || t("common.error"), "error");
+      const msg = err.response?.data?.detail || t("common.error");
+      addToast(msg, "error");
     } finally {
       setWorkSaving(false);
     }
@@ -146,7 +147,8 @@ export default function Tasks() {
       if (reload) reload({ forceRefresh: true });
       addToast(t("tasks.resumedSuccess"), "success");
     } catch (err) {
-      addToast(err.response?.data?.detail || t("common.error"), "error");
+      const msg = err.response?.data?.detail || t("common.error");
+      addToast(msg, "error");
     } finally {
       setWorkSaving(false);
     }
@@ -218,20 +220,20 @@ export default function Tasks() {
     const phase = workModal.phase;
     const { row, reload, updateRow } = workModal;
 
-    // For COMPLETED phase, require confirmation
+    // For COMPLETED phase, require confirmation first click
     if (phase === "COMPLETED" && !completeConfirm) {
       setCompleteConfirm(true);
       return;
     }
 
-    // GPS is required for BEFORE and COMPLETED (not for DURING_WORK)
-    if (!workPos && phase !== "DURING_WORK") {
+    // GPS required for BEFORE and COMPLETED only
+    if (!workPos && (phase === "BEFORE" || phase === "COMPLETED")) {
       setWorkError(t("gps.noLocation"));
       return;
     }
 
-    // Photo is required for BEFORE and COMPLETED (not for DURING_WORK)
-    if (!workPhoto && phase !== "DURING_WORK") {
+    // Photo required for BEFORE and COMPLETED only
+    if (!workPhoto && (phase === "BEFORE" || phase === "COMPLETED")) {
       setWorkError(t("tasks.photoRequired"));
       return;
     }
@@ -260,13 +262,12 @@ export default function Tasks() {
       // POST to the API endpoint
       await repo.action(row.id, action, workPhoto ? toFormData({ ...data, photo: workPhoto }) : data);
 
-      // IMMEDIATELY update local state so buttons change without waiting for reload
+      // Immediately update local state so buttons change without waiting for reload
       const newStatus = nextStatusAfterAction[phase];
       if (newStatus && updateRow) {
         updateRow(row.id, { status: newStatus });
       }
 
-      // Also trigger a background reload to sync with backend
       setWorkModal(null);
       if (reload) reload({ forceRefresh: true });
 
@@ -398,7 +399,7 @@ export default function Tasks() {
         console.log("Task row:", row.id, "phase:", phase, "status:", row.status);
 
         // ── Closed / terminal statuses: show completed badge ───────────
-        if (CLOSED_STATUSES.includes(phase) || phase === "COMPLETED") {
+        if (CLOSED_STATUSES.includes(phase) || CLOSED_STATUSES.includes(row.status)) {
             return (
                 <Badge color="green">
                     <span className="inline-flex items-center gap-1">
@@ -408,8 +409,8 @@ export default function Tasks() {
             );
         }
 
-        // ── IN_PROGRESS: show During Work (modal) + Break (one-click) + Complete Work (modal) ──
-        if (phase === "IN_PROGRESS") {
+        // ── IN_PROGRESS: During Work (optional modal) + Break (one-click) + Completed Work (modal) ──
+        if (phase === "IN_PROGRESS" || row.status === "IN_PROGRESS") {
             return (
                 <div className="flex items-center gap-1 flex-nowrap">
                     <button
@@ -441,8 +442,8 @@ export default function Tasks() {
             );
         }
 
-        // ── ON_BREAK: show only Start (Resume) button — one-click, no modal ──
-        if (phase === "ON_BREAK") {
+        // ── ON_BREAK: show only Resume button — one-click, no modal ──
+        if (phase === "ON_BREAK" || row.status === "ON_BREAK") {
             return (
                 <div className="flex items-center gap-1 flex-nowrap">
                     <button
@@ -723,7 +724,7 @@ export default function Tasks() {
                 disabled={
                   workSaving ||
                   ((workModal.phase === "BEFORE" || workModal.phase === "COMPLETED") && (!workPos || !workPhoto)) ||
-                  (workModal.phase === "COMPLETED" && (!completeConfirm || !workNotes.trim()))
+                  (workModal.phase === "COMPLETED" && completeConfirm && !workNotes.trim())
                 }
               >
                 {workSaving ? (
