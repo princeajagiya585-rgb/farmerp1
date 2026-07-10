@@ -71,7 +71,7 @@ class LocationPingAPITests(APITestCase):
         response_break = self.client.post(self.list_url, data_break, format='json')
         self.assertEqual(response_break.status_code, status.HTTP_201_CREATED)
         self.task.refresh_from_db()
-        self.assertEqual(self.task.status, Task.Status.IN_PROGRESS) # Status remains IN_PROGRESS, but work session stops
+        self.assertEqual(self.task.status, Task.Status.ON_BREAK) # Status becomes ON_BREAK, and work session stops
         self.assertFalse(TaskWorkSession.objects.filter(task=self.task, user=self.user, end_time__isnull=True).exists())
         self.assertTrue(LocationPing.objects.filter(activity=LocationPing.Activity.BREAK).exists())
 

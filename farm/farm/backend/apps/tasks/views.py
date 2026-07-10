@@ -123,7 +123,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     @action(detail=True, methods=["post"])
     def verify(self, request, pk=None):
         task = self.get_object()
-        task.status = Task.Status.VERIFIED
+        task.status = Task.Status.APPROVED
         task.verified_by = request.user
         task.verified_at = timezone.now()
         task.save(
@@ -180,7 +180,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                 {"detail": "You are not assigned to this task."},
                 status=403,
             )
-        if task.status in [Task.Status.COMPLETED, Task.Status.VERIFIED, Task.Status.CANCELLED]:
+        if task.status in [Task.Status.COMPLETED, Task.Status.APPROVED, Task.Status.CANCELLED]:
             return Response(
                 {"detail": "Task is already closed."},
                 status=400,
@@ -207,7 +207,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         if farm:
             qs = qs.filter(farm_id=farm)
         today = timezone.now().date()
-        closed = [Task.Status.COMPLETED, Task.Status.VERIFIED, Task.Status.CANCELLED]
+        closed = [Task.Status.COMPLETED, Task.Status.APPROVED, Task.Status.CANCELLED]
         delayed = qs.filter(due_date__lt=today).exclude(status__in=closed)
         return Response(
             {
@@ -216,7 +216,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                     status__in=[
                         Task.Status.IN_PROGRESS,
                         Task.Status.SUBMITTED,
-                        Task.Status.VERIFIED,
+                        Task.Status.APPROVED,
                     ]
                 ).count(),
                 "completed": qs.filter(status=Task.Status.COMPLETED).count(),

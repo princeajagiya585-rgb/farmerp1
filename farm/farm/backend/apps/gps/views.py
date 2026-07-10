@@ -124,8 +124,11 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
                     raise serializers.ValidationError(
                         {"detail": "Record Before Work first."}
                     )
-                # If there's already an unresolved BREAK (BREAK without RESUME), reject
-                if LocationPing.Activity.BREAK in existing and LocationPing.Activity.RESUME not in existing:
+                # If there's already an unresolved BREAK, reject
+                all_pings = list(task.location_pings.filter(
+                    activity__in=["BREAK", "RESUME"]
+                ).order_by("-recorded_at"))
+                if all_pings and all_pings[0].activity == "BREAK":
                     raise serializers.ValidationError(
                         {"detail": "Already on break. Resume work first."}
                     )
@@ -237,7 +240,7 @@ class LocationPingViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Base
             ).update(end_time=timezone.now())
             if task.status not in (
                 Task.Status.COMPLETED,
-                Task.Status.VERIFIED,
+                Task.Status.APPROVED,
                 Task.Status.CANCELLED,
             ):
                 task.status = Task.Status.COMPLETED
