@@ -123,6 +123,35 @@ export default function Tasks() {
   // Complete confirmation
   const [completeConfirm, setCompleteConfirm] = useState(false);
 
+  // ── Quick actions (one-click, NO modal) ─────────────────────────
+  const handleQuickBreak = async (row, reload, updateRow) => {
+    setWorkSaving(true);
+    try {
+      await repo.action(row.id, "take-break", {});
+      updateRow(row.id, { status: "ON_BREAK" });
+      if (reload) reload({ forceRefresh: true });
+      addToast(t("tasks.breakStarted"), "success");
+    } catch (err) {
+      addToast(err.response?.data?.detail || t("common.error"), "error");
+    } finally {
+      setWorkSaving(false);
+    }
+  };
+
+  const handleQuickResume = async (row, reload, updateRow) => {
+    setWorkSaving(true);
+    try {
+      await repo.action(row.id, "resume-work", {});
+      updateRow(row.id, { status: "IN_PROGRESS" });
+      if (reload) reload({ forceRefresh: true });
+      addToast(t("tasks.resumedSuccess"), "success");
+    } catch (err) {
+      addToast(err.response?.data?.detail || t("common.error"), "error");
+    } finally {
+      setWorkSaving(false);
+    }
+  };
+
   const fetchWorkLocation = () => {
     if (!navigator.geolocation) {
       setWorkError(t("gps.noLocation"));
@@ -195,21 +224,15 @@ export default function Tasks() {
       return;
     }
 
-    // GPS is required for all actions
-    if (!workPos) {
+    // GPS is required for BEFORE and COMPLETED (not for DURING_WORK)
+    if (!workPos && phase !== "DURING_WORK") {
       setWorkError(t("gps.noLocation"));
       return;
     }
 
-    // Photo is required for all phases
-    if (!workPhoto) {
+    // Photo is required for BEFORE and COMPLETED (not for DURING_WORK)
+    if (!workPhoto && phase !== "DURING_WORK") {
       setWorkError(t("tasks.photoRequired"));
-      return;
-    }
-
-    // Break reason required
-    if (phase === "BREAK_START" && !workReason.trim()) {
-      setWorkError(t("tasks.breakReasonRequired"));
       return;
     }
 
@@ -385,7 +408,7 @@ export default function Tasks() {
       );
     }
 
-    // ── IN_PROGRESS: show 3 buttons ────────────────────────────────
+    // ── IN_PROGRESS: show During Work (modal) + Break (one-click) + Complete Work (modal) ──
     if (status === "IN_PROGRESS") {
       return (
         <div className="flex items-center gap-1 flex-nowrap">
@@ -398,8 +421,9 @@ export default function Tasks() {
             {t("gps.duringWork")}
           </button>
           <button
-            onClick={() => openWorkModal(row, "BREAK_START", reload, updateRow)}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-amber-500 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600"
+            onClick={() => handleQuickBreak(row, reload, updateRow)}
+            disabled={workSaving}
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-amber-500 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600 disabled:opacity-50"
             title={t("tasks.break")}
           >
             <Pause size={13} />
@@ -417,21 +441,14 @@ export default function Tasks() {
       );
     }
 
-    // ── ON_BREAK: show Start (Resume) + During Work ────────────────
+    // ── ON_BREAK: show only Start (Resume) button — one-click, no modal ──
     if (status === "ON_BREAK") {
       return (
         <div className="flex items-center gap-1 flex-nowrap">
           <button
-            onClick={() => openWorkModal(row, "DURING_WORK", reload, updateRow)}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-indigo-600 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
-            title={t("gps.duringWork")}
-          >
-            <Camera size={13} />
-            {t("gps.duringWork")}
-          </button>
-          <button
-            onClick={() => openWorkModal(row, "BREAK_END", reload, updateRow)}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-green-600 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700"
+            onClick={() => handleQuickResume(row, reload, updateRow)}
+            disabled={workSaving}
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-green-600 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50"
             title={t("tasks.resumeWork")}
           >
             <Play size={13} />
@@ -441,8 +458,19 @@ export default function Tasks() {
       );
     }
 
-    // ── TODO / ASSIGNED / CONFIRMED / default: no action buttons ──
-    return null;
+    // ── TODO / ASSIGNED / CONFIRMED: show Before Work button ──
+    return (
+      <div className="flex items-center gap-1 flex-nowrap">
+        <button
+          onClick={() => openWorkModal(row, "BEFORE", reload, updateRow)}
+          className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-brand-600 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-700"
+          title={t("gps.beforeWork")}
+        >
+          <Camera size={13} />
+          {t("gps.beforeWork")}
+        </button>
+      </div>
+    );
   };
 
   return (
@@ -644,10 +672,15 @@ export default function Tasks() {
                 </div>
               )}
 
-              {/* Photo - required for all phases */}
+              {/* Photo - required for BEFORE and COMPLETED, optional for DURING_WORK */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
-                  {t("common.workPhoto")} <span className="text-red-500"> *</span>
+                  {t("common.workPhoto")}
+                  {workModal.phase !== "DURING_WORK" ? (
+                    <span className="text-red-500"> *</span>
+                  ) : (
+                    <span className="text-gray-400"> ({t("common.optional")})</span>
+                  )}
                 </label>
                 {workPhotoPreview ? (
                   <div className="relative">
@@ -689,9 +722,7 @@ export default function Tasks() {
                 onClick={submitWork}
                 disabled={
                   workSaving ||
-                  !workPos ||
-                  !workPhoto ||
-                  (workModal.phase === "BREAK_START" && !workReason.trim()) ||
+                  ((workModal.phase === "BEFORE" || workModal.phase === "COMPLETED") && (!workPos || !workPhoto)) ||
                   (workModal.phase === "COMPLETED" && (!completeConfirm || !workNotes.trim()))
                 }
               >

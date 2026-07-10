@@ -386,7 +386,8 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     def take_break(self, request, pk=None):
         """Employee takes a break - Break action.
 
-        Required: photo, latitude, longitude, reason
+        Photo and GPS are optional (for one-click quick actions from the UI).
+        Reason is optional — defaults to "Break".
         """
         task = self.get_object()
         user = request.user
@@ -415,20 +416,10 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                 status=400,
             )
 
-        # Validate required fields
+        # Optional fields — accept empty/missing for quick one-click break
         lat = request.data.get("latitude")
         lng = request.data.get("longitude")
-        reason = request.data.get("reason")
-        if not lat or not lng:
-            return Response(
-                {"detail": "GPS location is required (latitude, longitude)."},
-                status=400,
-            )
-        if not reason:
-            return Response(
-                {"detail": "Reason for break is required."},
-                status=400,
-            )
+        reason = request.data.get("reason", "Break")
 
         photo = request.FILES.get("photo")
 
@@ -466,7 +457,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     def resume_work(self, request, pk=None):
         """Employee resumes work after break - Resume action.
 
-        Required: photo, latitude, longitude
+        Photo and GPS are optional (for one-click quick actions from the UI).
         """
         task = self.get_object()
         user = request.user
@@ -495,15 +486,9 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                 status=400,
             )
 
-        # Validate required fields
+        # Optional fields — accept empty/missing for one-click resume
         lat = request.data.get("latitude")
         lng = request.data.get("longitude")
-        if not lat or not lng:
-            return Response(
-                {"detail": "GPS location is required (latitude, longitude)."},
-                status=400,
-            )
-
         photo = request.FILES.get("photo")
 
         # Calculate break duration
@@ -543,8 +528,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     def during_work(self, request, pk=None):
         """Employee provides progress update - During Work action.
 
-        Required: photo, latitude, longitude
-        Optional: notes
+        All fields are optional — photo, GPS, and notes are optional.
         """
         task = self.get_object()
         user = request.user
@@ -573,16 +557,11 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                 status=400,
             )
 
-        # Validate required fields
+        # Optional fields — all fields are optional for During Work
         lat = request.data.get("latitude")
         lng = request.data.get("longitude")
-        if not lat or not lng:
-            return Response(
-                {"detail": "GPS location is required (latitude, longitude)."},
-                status=400,
-            )
-
         photo = request.FILES.get("photo")
+        notes = request.data.get("notes", "")
 
         # Create TaskActivity record (progress is stored in activity)
         activity = TaskActivity.objects.create(
@@ -593,7 +572,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             photo=photo,
             latitude=lat,
             longitude=lng,
-            notes=request.data.get("notes", ""),
+            notes=notes,
             created_by=user,
         )
 
@@ -601,7 +580,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         TaskProgressLog.objects.create(
             task_execution=execution,
             progress_percentage=request.data.get("progress_percentage", 0),
-            remarks=request.data.get("notes", ""),
+            remarks=notes,
             photo=photo,
             gps_lat=lat,
             gps_lng=lng,
