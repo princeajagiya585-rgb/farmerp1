@@ -226,12 +226,8 @@ export default function Tasks() {
       return;
     }
 
-    // Every action requires a photo (per requirement: "Every action requires Camera Photo")
-    // DURING_WORK is the only exception — it's optional by design
-    if (!workPhoto && phase !== "DURING_WORK") {
-      setWorkError(t("tasks.photoRequired"));
-      return;
-    }
+    // Photo is optional for all phases — users can submit without it
+    // This is important for compatibility across devices and browsers
 
     // Require reason for break
     if (phase === "BREAK_START" && !workReason.trim()) {
@@ -733,15 +729,10 @@ export default function Tasks() {
                 </div>
               )}
 
-              {/* Photo - required for all phases except DURING_WORK */}
+              {/* Photo - optional for all phases */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
-                  {t("common.workPhoto")}
-                  {workModal.phase !== "DURING_WORK" ? (
-                    <span className="text-red-500"> *</span>
-                  ) : (
-                    <span className="text-gray-400"> ({t("common.optional")})</span>
-                  )}
+                  {t("common.workPhoto")} <span className="text-gray-400">({t("common.optional")})</span>
                 </label>
                 {workPhotoPreview ? (
                   <div className="relative">
@@ -757,15 +748,9 @@ export default function Tasks() {
                   <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
                     <Camera size={24} className="text-gray-400 mb-2" />
                     <p className="text-sm text-gray-500">{t("gps.clickPhoto")}</p>
-                    <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handleWorkPhotoChange} />
+                    <input type="file" className="hidden" accept="image/*" onChange={handleWorkPhotoChange} />
                   </label>
                 )}
-                {
-                  // Photo is required for all phases except DURING_WORK
-                  workModal.phase !== "DURING_WORK" && (
-                    <p className="text-xs font-medium text-red-500">{t("tasks.photoRequired")}</p>
-                  )
-                }
               </div>
 
               {/* Completion confirmation */}
@@ -786,11 +771,9 @@ export default function Tasks() {
                 {t("common.cancel")}
               </Button>
               <Button
-                onClick={submitWork}
-                disabled={
+                onClick={submitWork}                  disabled={
                   workSaving ||
                   !workPos ||
-                  (workModal.phase !== "DURING_WORK" && !workPhoto) ||
                   (workModal.phase === "BREAK_START" && !workReason.trim()) ||
                   (workModal.phase === "COMPLETED" && (!completeConfirm || !workNotes.trim()))
                 }
