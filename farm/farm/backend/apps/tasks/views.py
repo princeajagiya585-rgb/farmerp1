@@ -437,6 +437,10 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             "break_start_lat", "break_start_lng", "break_start_reason",
             "break_start_time", "break_start_photo", "status", "updated_at"
         ])
+        
+        # Update task status
+        task.status = Task.Status.ON_BREAK
+        task.save(update_fields=["status", "updated_at"])
 
         # Create TaskActivity record
         TaskActivity.objects.create(
@@ -509,6 +513,10 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             "break_end_lat", "break_end_lng", "break_end_time",
             "break_end_photo", "total_break_seconds", "status", "updated_at"
         ])
+        
+        # Update task status back to IN_PROGRESS
+        task.status = Task.Status.IN_PROGRESS
+        task.save(update_fields=["status", "updated_at"])
 
         # Create TaskActivity record
         TaskActivity.objects.create(

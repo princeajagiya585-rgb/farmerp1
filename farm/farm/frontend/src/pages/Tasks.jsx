@@ -390,88 +390,88 @@ export default function Tasks() {
     );
   };
 
-  // ── Action buttons based on task.status ──────────────────────────
-  // This is the ONLY place button rendering logic lives.
-  // It reads row.status directly from the backend.
-  const getActionButtons = (row, reload, updateRow) => {
-    const status = row.status;
-    console.log("Task row:", row.id, "status:", status);
+  // ── Action buttons based on task.work_phase or task.status ───────────
+    // This is the ONLY place button rendering logic lives.
+    const getActionButtons = (row, reload, updateRow) => {
+        // Use work_phase if available, otherwise fall back to status
+        const phase = row.work_phase || row.status;
+        console.log("Task row:", row.id, "phase:", phase, "status:", row.status);
 
-    // ── Closed / terminal statuses: show completed badge ───────────
-    if (CLOSED_STATUSES.includes(status)) {
-      return (
-        <Badge color="green">
-          <span className="inline-flex items-center gap-1">
-            <CheckCircle size={12} /> {t("tasks.statusCompleted")}
-          </span>
-        </Badge>
-      );
-    }
+        // ── Closed / terminal statuses: show completed badge ───────────
+        if (CLOSED_STATUSES.includes(phase) || phase === "COMPLETED") {
+            return (
+                <Badge color="green">
+                    <span className="inline-flex items-center gap-1">
+                        <CheckCircle size={12} /> Work Done
+                    </span>
+                </Badge>
+            );
+        }
 
-    // ── IN_PROGRESS: show During Work (modal) + Break (one-click) + Complete Work (modal) ──
-    if (status === "IN_PROGRESS") {
-      return (
-        <div className="flex items-center gap-1 flex-nowrap">
-          <button
-            onClick={() => openWorkModal(row, "DURING_WORK", reload, updateRow)}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-indigo-600 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
-            title={t("gps.duringWork")}
-          >
-            <Camera size={13} />
-            {t("gps.duringWork")}
-          </button>
-          <button
-            onClick={() => handleQuickBreak(row, reload, updateRow)}
-            disabled={workSaving}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-amber-500 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600 disabled:opacity-50"
-            title={t("tasks.break")}
-          >
-            <Pause size={13} />
-            {t("tasks.break")}
-          </button>
-          <button
-            onClick={() => openWorkModal(row, "COMPLETED", reload, updateRow)}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-green-700 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
-            title={t("gps.completedWork")}
-          >
-            <CheckCircle size={13} />
-            {t("gps.completedWork")}
-          </button>
-        </div>
-      );
-    }
+        // ── IN_PROGRESS: show During Work (modal) + Break (one-click) + Complete Work (modal) ──
+        if (phase === "IN_PROGRESS") {
+            return (
+                <div className="flex items-center gap-1 flex-nowrap">
+                    <button
+                        onClick={() => openWorkModal(row, "DURING_WORK", reload, updateRow)}
+                        className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-indigo-600 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
+                        title={t("gps.duringWork")}
+                    >
+                        <Camera size={13} />
+                        {t("gps.duringWork")}
+                    </button>
+                    <button
+                        onClick={() => handleQuickBreak(row, reload, updateRow)}
+                        disabled={workSaving}
+                        className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-amber-500 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-amber-600 disabled:opacity-50"
+                        title={t("tasks.break")}
+                    >
+                        <Pause size={13} />
+                        {t("tasks.break")}
+                    </button>
+                    <button
+                        onClick={() => openWorkModal(row, "COMPLETED", reload, updateRow)}
+                        className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-green-700 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-800"
+                        title={t("gps.completedWork")}
+                    >
+                        <CheckCircle size={13} />
+                        {t("gps.completedWork")}
+                    </button>
+                </div>
+            );
+        }
 
-    // ── ON_BREAK: show only Start (Resume) button — one-click, no modal ──
-    if (status === "ON_BREAK") {
-      return (
-        <div className="flex items-center gap-1 flex-nowrap">
-          <button
-            onClick={() => handleQuickResume(row, reload, updateRow)}
-            disabled={workSaving}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-green-600 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50"
-            title={t("tasks.resumeWork")}
-          >
-            <Play size={13} />
-            {t("tasks.resumeWork")}
-          </button>
-        </div>
-      );
-    }
+        // ── ON_BREAK: show only Start (Resume) button — one-click, no modal ──
+        if (phase === "ON_BREAK") {
+            return (
+                <div className="flex items-center gap-1 flex-nowrap">
+                    <button
+                        onClick={() => handleQuickResume(row, reload, updateRow)}
+                        disabled={workSaving}
+                        className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-green-600 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50"
+                        title={t("tasks.resumeWork")}
+                    >
+                        <Play size={13} />
+                        {t("tasks.resumeWork")}
+                    </button>
+                </div>
+            );
+        }
 
-    // ── TODO / ASSIGNED / CONFIRMED: show Before Work button ──
-    return (
-      <div className="flex items-center gap-1 flex-nowrap">
-        <button
-          onClick={() => openWorkModal(row, "BEFORE", reload, updateRow)}
-          className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-brand-600 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-700"
-          title={t("gps.beforeWork")}
-        >
-          <Camera size={13} />
-          {t("gps.beforeWork")}
-        </button>
-      </div>
-    );
-  };
+        // ── TODO / ASSIGNED / CONFIRMED / BEFORE: show Before Work button ──
+        return (
+            <div className="flex items-center gap-1 flex-nowrap">
+                <button
+                    onClick={() => openWorkModal(row, "BEFORE", reload, updateRow)}
+                    className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-brand-600 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-700"
+                    title={t("gps.beforeWork")}
+                >
+                    <Camera size={13} />
+                    {t("gps.beforeWork")}
+                </button>
+            </div>
+        );
+    };
 
   return (
     <>
