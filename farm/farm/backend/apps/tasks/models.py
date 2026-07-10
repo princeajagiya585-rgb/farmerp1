@@ -391,6 +391,8 @@ class TaskActivity(OwnedModel):
         "workforce.Employee",
         on_delete=models.CASCADE,
         related_name="task_activities",
+        null=True,
+        blank=True,
     )
     action_type = models.CharField(
         max_length=20, choices=ActionType.choices

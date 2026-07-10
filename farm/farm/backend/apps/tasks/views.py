@@ -302,38 +302,40 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         task = self.get_object()
         user = request.user
 
-        # Get employee
+        # Get employee (optional — task may be assigned via assigned_to user)
         from apps.workforce.models import Employee
         employee = Employee.objects.filter(user=user).first()
-        if not employee:
-            return Response(
-                {"detail": "Employee profile not found."},
-                status=400,
-            )
 
-        # Verify assignment
-        if task.assigned_employee_id != employee.id:
+        # Verify assignment — either via assigned_employee or assigned_to
+        is_assigned = (
+            task.assigned_to == user or
+            (employee and task.assigned_employee_id == employee.id) or
+            user.role in ["SUPER_ADMIN", "FARM_MANAGER"]
+        )
+        if not is_assigned:
             return Response(
                 {"detail": "You are not assigned to this task."},
                 status=403,
             )
 
-        # Get or create execution
-        execution = TaskExecution.objects.filter(task=task, employee=employee).first()
-        if not execution:
-            execution = TaskExecution.objects.create(
-                task=task,
-                employee=employee,
-                created_by=user,
-                status=TaskExecution.Status.IN_PROGRESS,
-            )
-        else:
-            # Check if already started
-            if execution.before_work_time:
-                return Response(
-                    {"detail": "Work already started on this task."},
-                    status=400,
+        # Get or create execution (only if employee profile exists)
+        execution = None
+        if employee:
+            execution = TaskExecution.objects.filter(task=task, employee=employee).first()
+            if not execution:
+                execution = TaskExecution.objects.create(
+                    task=task,
+                    employee=employee,
+                    created_by=user,
+                    status=TaskExecution.Status.IN_PROGRESS,
                 )
+            else:
+                # Check if already started
+                if execution.before_work_time:
+                    return Response(
+                        {"detail": "Work already started on this task."},
+                        status=400,
+                    )
 
         # Validate required fields
         lat = request.data.get("latitude")
@@ -346,24 +348,28 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
         photo = request.FILES.get("photo")
 
-        # Update execution with before work data
-        execution.before_work_latitude = lat
-        execution.before_work_longitude = lng
-        execution.before_work_address = request.data.get("address", "")
-        execution.before_work_time = timezone.now()
-        execution.status = TaskExecution.Status.IN_PROGRESS
-
-        if photo:
-            execution.before_work_photo = photo
-
-        execution.save(update_fields=[
-            "before_work_latitude", "before_work_longitude", "before_work_address",
-            "before_work_time", "before_work_photo", "status", "updated_at"
-        ])
-
-        # Update task status
-        task.before_work_time = execution.before_work_time
+        # Update task status (always)
         task.status = Task.Status.IN_PROGRESS
+
+        if execution:
+            # Update execution with before work data
+            execution.before_work_latitude = lat
+            execution.before_work_longitude = lng
+            execution.before_work_address = request.data.get("address", "")
+            execution.before_work_time = timezone.now()
+            execution.status = TaskExecution.Status.IN_PROGRESS
+
+            if photo:
+                execution.before_work_photo = photo
+
+            execution.save(update_fields=[
+                "before_work_latitude", "before_work_longitude", "before_work_address",
+                "before_work_time", "before_work_photo", "status", "updated_at"
+            ])
+            task.before_work_time = execution.before_work_time
+        else:
+            task.before_work_time = timezone.now()
+
         task.save(update_fields=["before_work_time", "status", "updated_at"])
 
         # Create TaskActivity record
@@ -380,7 +386,9 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             created_by=user,
         )
 
-        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+        if execution:
+            return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+        return Response({"detail": "Work started.", "status": "IN_PROGRESS"})
 
     @action(detail=True, methods=["post"], url_path="take-break")
     def take_break(self, request, pk=None):
@@ -392,29 +400,31 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         task = self.get_object()
         user = request.user
 
-        # Get employee
+        # Get employee (optional — assigned_to user may not have an employee profile)
         from apps.workforce.models import Employee
         employee = Employee.objects.filter(user=user).first()
-        if not employee:
-            return Response(
-                {"detail": "Employee profile not found."},
-                status=400,
-            )
 
-        # Get execution
-        execution = TaskExecution.objects.filter(task=task, employee=employee).first()
+        # Get execution — try by employee first, then by assigned_to user
+        execution = None
+        if employee:
+            execution = TaskExecution.objects.filter(task=task, employee=employee).first()
         if not execution:
-            return Response(
-                {"detail": "No active work session. Please start work first."},
-                status=400,
-            )
+            # Fallback: find any IN_PROGRESS execution for this task
+            execution = TaskExecution.objects.filter(
+                task=task, status=TaskExecution.Status.IN_PROGRESS
+            ).first()
+        if not execution:
+            # Task is IN_PROGRESS but no execution record — update task status directly
+            task.status = Task.Status.ON_BREAK
+            task.save(update_fields=["status", "updated_at"])
+            return Response({"detail": "Break started.", "status": "ON_BREAK"})
 
         # Validate not already on break
         if execution.status == TaskExecution.Status.ON_BREAK:
-            return Response(
-                {"detail": "Already on break. Please resume first."},
-                status=400,
-            )
+            # Task may already be on break — just update task status
+            task.status = Task.Status.ON_BREAK
+            task.save(update_fields=["status", "updated_at"])
+            return Response({"detail": "Already on break.", "status": "ON_BREAK"})
 
         # Optional fields — accept empty/missing for quick one-click break
         lat = request.data.get("latitude")
@@ -466,29 +476,29 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         task = self.get_object()
         user = request.user
 
-        # Get employee
+        # Get employee (optional)
         from apps.workforce.models import Employee
         employee = Employee.objects.filter(user=user).first()
-        if not employee:
-            return Response(
-                {"detail": "Employee profile not found."},
-                status=400,
-            )
 
-        # Get execution
-        execution = TaskExecution.objects.filter(task=task, employee=employee).first()
+        # Get execution — try by employee first, then any ON_BREAK execution
+        execution = None
+        if employee:
+            execution = TaskExecution.objects.filter(task=task, employee=employee).first()
         if not execution:
-            return Response(
-                {"detail": "No active work session. Please start work first."},
-                status=400,
-            )
+            execution = TaskExecution.objects.filter(
+                task=task, status=TaskExecution.Status.ON_BREAK
+            ).first()
+        if not execution:
+            # No execution — just update task status directly
+            task.status = Task.Status.IN_PROGRESS
+            task.save(update_fields=["status", "updated_at"])
+            return Response({"detail": "Work resumed.", "status": "IN_PROGRESS"})
 
-        # Validate on break
+        # If not on break, just update task status
         if execution.status != TaskExecution.Status.ON_BREAK:
-            return Response(
-                {"detail": "Not on break. Cannot resume."},
-                status=400,
-            )
+            task.status = Task.Status.IN_PROGRESS
+            task.save(update_fields=["status", "updated_at"])
+            return Response({"detail": "Work resumed.", "status": "IN_PROGRESS"})
 
         # Optional fields — accept empty/missing for one-click resume
         lat = request.data.get("latitude")
@@ -541,25 +551,16 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         task = self.get_object()
         user = request.user
 
-        # Get employee
+        # Get employee (optional)
         from apps.workforce.models import Employee
         employee = Employee.objects.filter(user=user).first()
-        if not employee:
-            return Response(
-                {"detail": "Employee profile not found."},
-                status=400,
-            )
 
-        # Get execution
-        execution = TaskExecution.objects.filter(task=task, employee=employee).first()
-        if not execution:
-            return Response(
-                {"detail": "No active work session. Please start work first."},
-                status=400,
-            )
+        # Get execution (optional)
+        execution = None
+        if employee:
+            execution = TaskExecution.objects.filter(task=task, employee=employee).first()
 
-        # Validate not completed
-        if execution.status in [TaskExecution.Status.COMPLETED, TaskExecution.Status.APPROVED, TaskExecution.Status.WAITING_APPROVAL]:
+        if execution and execution.status in [TaskExecution.Status.COMPLETED, TaskExecution.Status.APPROVED, TaskExecution.Status.WAITING_APPROVAL]:
             return Response(
                 {"detail": "Task is already completed."},
                 status=400,
@@ -584,16 +585,17 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             created_by=user,
         )
 
-        # Also create TaskProgressLog for backward compatibility
-        TaskProgressLog.objects.create(
-            task_execution=execution,
-            progress_percentage=request.data.get("progress_percentage", 0),
-            remarks=notes,
-            photo=photo,
-            gps_lat=lat,
-            gps_lng=lng,
-            created_by=user,
-        )
+        # Also create TaskProgressLog for backward compatibility (only if execution exists)
+        if execution:
+            TaskProgressLog.objects.create(
+                task_execution=execution,
+                progress_percentage=request.data.get("progress_percentage", 0),
+                remarks=notes,
+                photo=photo,
+                gps_lat=lat,
+                gps_lng=lng,
+                created_by=user,
+            )
 
         return Response(TaskActivitySerializer(activity, context={'request': request}).data)
 
@@ -606,32 +608,24 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         task = self.get_object()
         user = request.user
 
-        # Get employee
+        # Get employee (optional)
         from apps.workforce.models import Employee
         employee = Employee.objects.filter(user=user).first()
-        if not employee:
-            return Response(
-                {"detail": "Employee profile not found."},
-                status=400,
-            )
 
-        # Get execution
-        execution = TaskExecution.objects.filter(task=task, employee=employee).first()
-        if not execution:
-            return Response(
-                {"detail": "No active work session. Please start work first."},
-                status=400,
-            )
+        # Get execution (optional)
+        execution = None
+        if employee:
+            execution = TaskExecution.objects.filter(task=task, employee=employee).first()
 
         # Validate not already completed
-        if execution.status in [TaskExecution.Status.COMPLETED, TaskExecution.Status.APPROVED, TaskExecution.Status.WAITING_APPROVAL]:
+        if execution and execution.status in [TaskExecution.Status.COMPLETED, TaskExecution.Status.APPROVED, TaskExecution.Status.WAITING_APPROVAL]:
             return Response(
                 {"detail": "Task is already completed."},
                 status=400,
             )
 
         # If on break, end the break first
-        if execution.status == TaskExecution.Status.ON_BREAK:
+        if execution and execution.status == TaskExecution.Status.ON_BREAK:
             if execution.break_start_time:
                 break_duration = (timezone.now() - execution.break_start_time).total_seconds()
                 execution.total_break_seconds += int(break_duration)
@@ -654,30 +648,31 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
         photo = request.FILES.get("photo")
 
-        # Calculate final working time
-        if execution.before_work_time:
-            total_work = (timezone.now() - execution.before_work_time).total_seconds()
-            execution.total_work_seconds = int(total_work - execution.total_break_seconds)
+        if execution:
+            # Calculate final working time
+            if execution.before_work_time:
+                total_work = (timezone.now() - execution.before_work_time).total_seconds()
+                execution.total_work_seconds = int(total_work - execution.total_break_seconds)
 
-        # Update execution with completion data
-        execution.completion_lat = lat
-        execution.completion_lng = lng
-        execution.completion_notes = completion_notes
-        execution.completion_time = timezone.now()
-        execution.completed_at = timezone.now()
-        execution.status = TaskExecution.Status.WAITING_APPROVAL
+            # Update execution with completion data
+            execution.completion_lat = lat
+            execution.completion_lng = lng
+            execution.completion_notes = completion_notes
+            execution.completion_time = timezone.now()
+            execution.completed_at = timezone.now()
+            execution.status = TaskExecution.Status.WAITING_APPROVAL
 
-        if photo:
-            execution.completion_photo = photo
+            if photo:
+                execution.completion_photo = photo
 
-        execution.save(update_fields=[
-            "completion_lat", "completion_lng", "completion_notes",
-            "completion_time", "completed_at", "total_work_seconds",
-            "total_break_seconds", "completion_photo", "status", "updated_at"
-        ])
+            execution.save(update_fields=[
+                "completion_lat", "completion_lng", "completion_notes",
+                "completion_time", "completed_at", "total_work_seconds",
+                "total_break_seconds", "completion_photo", "status", "updated_at"
+            ])
 
         # Update task
-        task.completed_time = execution.completion_time
+        task.completed_time = timezone.now()
         task.status = Task.Status.WAITING_APPROVAL
         task.save(update_fields=["completed_time", "status", "updated_at"])
 
@@ -694,7 +689,9 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             created_by=user,
         )
 
-        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+        if execution:
+            return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+        return Response({"detail": "Work completed.", "status": "WAITING_APPROVAL"})
 
     @action(detail=True, methods=["get"], url_path="get-timer")
     def get_timer(self, request, pk=None):
