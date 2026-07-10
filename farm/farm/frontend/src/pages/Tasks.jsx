@@ -391,14 +391,24 @@ export default function Tasks() {
     );
   };
 
-  // ── Action buttons — driven purely by row.status ───────────────
+  // ── Action buttons — driven by row.work_phase ───────────────
   const getActionButtons = (row, reload, updateRow) => {
-    const status = row.status;
+    const workPhase = row.work_phase || "BEFORE";
 
-    if (CLOSED_STATUSES.includes(status))
+    if (workPhase === "COMPLETED" || CLOSED_STATUSES.includes(row.status))
       return <Badge color="green"><span className="inline-flex items-center gap-1"><CheckCircle size={12} /> Work Done</span></Badge>;
 
-    if (status === "IN_PROGRESS")
+    if (workPhase === "ON_BREAK")
+      return (
+        <div className="flex items-center gap-1 flex-nowrap">
+          <button onClick={() => handleQuickResume(row, reload, updateRow)} disabled={workSaving}
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-green-600 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50">
+            <Play size={13} />{t("tasks.resumeWork")}
+          </button>
+        </div>
+      );
+
+    if (workPhase === "IN_PROGRESS")
       return (
         <div className="flex items-center gap-1 flex-nowrap">
           <button onClick={() => openWorkModal(row, "DURING_WORK", reload, updateRow)}
@@ -416,17 +426,7 @@ export default function Tasks() {
         </div>
       );
 
-    if (status === "ON_BREAK")
-      return (
-        <div className="flex items-center gap-1 flex-nowrap">
-          <button onClick={() => handleQuickResume(row, reload, updateRow)} disabled={workSaving}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-green-600 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50">
-            <Play size={13} />{t("tasks.resumeWork")}
-          </button>
-        </div>
-      );
-
-    // TODO / ASSIGNED / CONFIRMED — Before Work
+    // BEFORE phase
     return (
       <div className="flex items-center gap-1 flex-nowrap">
         <button onClick={() => openWorkModal(row, "BEFORE", reload, updateRow)}
