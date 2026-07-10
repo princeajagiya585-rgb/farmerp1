@@ -750,7 +750,7 @@ export default function Tasks() {
                   <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
                     <Camera size={24} className="text-gray-400 mb-2" />
                     <p className="text-sm text-gray-500">{t("gps.clickPhoto")}</p>
-                    <input type="file" className="hidden" accept="image/*" capture="camera" onChange={handleWorkPhotoChange} />
+                    <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handleWorkPhotoChange} />
                   </label>
                 )}
                 {
