@@ -441,17 +441,8 @@ export default function Tasks() {
       );
     }
 
-    // ── TODO / ASSIGNED / CONFIRMED / any other startable status: show Before Work ──
-    return (
-      <button
-        onClick={() => openWorkModal(row, "BEFORE", reload, updateRow)}
-        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700"
-        title={t("gps.beforeWork")}
-      >
-        <Camera size={14} />
-        {t("gps.beforeWork")}
-      </button>
-    );
+    // ── TODO / ASSIGNED / CONFIRMED / default: no action buttons ──
+    return null;
   };
 
   return (
