@@ -21,6 +21,53 @@ from .serializers import (
 )
 
 
+def _log_work_ping(task, user, activity, request, lat, lng):
+    """Mirror a work-lifecycle action to a LocationPing so the entry shows up on
+    the Location Map page (map marker + the GPS activity table + filters).
+
+    Best-effort: a ping failure must never break the underlying work action.
+    """
+    from apps.gps.models import LocationPing
+
+    def _dec(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    try:
+        photo = request.FILES.get("photo")
+        if photo:
+            # The same upload is also saved on the TaskActivity/execution, so
+            # rewind before this second read.
+            try:
+                photo.seek(0)
+            except Exception:
+                pass
+        notes = (
+            request.data.get("notes")
+            or request.data.get("reason")
+            or request.data.get("completion_notes")
+            or ""
+        )
+        LocationPing.objects.create(
+            user=user,
+            farm=task.farm,
+            task=task,
+            latitude=_dec(lat),
+            longitude=_dec(lng),
+            accuracy=_dec(request.data.get("accuracy")),
+            activity=activity,
+            photo=photo,
+            notes=notes,
+            recorded_at=timezone.now(),
+            created_by=user,
+        )
+    except Exception:
+        # Location logging is secondary — never fail the work action over it.
+        pass
+
+
 def _add_period(d, recurrence):
     """Return the date one recurrence-step after `d`."""
     if d is None:
@@ -393,6 +440,8 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             created_by=user,
         )
 
+        _log_work_ping(task, user, "CHECKIN", request, lat, lng)
+
         if execution:
             return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
         return Response({"detail": "Work started.", "status": "IN_PROGRESS"})
@@ -471,6 +520,8 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             created_by=user,
         )
 
+        _log_work_ping(task, user, "BREAK", request, lat, lng)
+
         return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
 
     @action(detail=True, methods=["post"], url_path="resume-work")
@@ -546,6 +597,8 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             created_by=user,
         )
 
+        _log_work_ping(task, user, "RESUME", request, lat, lng)
+
         return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
 
     @action(detail=True, methods=["post"], url_path="during-work")
@@ -590,6 +643,8 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             notes=notes,
             created_by=user,
         )
+
+        _log_work_ping(task, user, "DURING_WORK", request, lat, lng)
 
         # Also create TaskProgressLog for backward compatibility (only if execution exists)
         if execution:
@@ -694,6 +749,8 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             notes=completion_notes,
             created_by=user,
         )
+
+        _log_work_ping(task, user, "CHECKOUT", request, lat, lng)
 
         if execution:
             return Response(TaskExecutionSerializer(execution, context={'request': request}).data)

@@ -489,7 +489,7 @@ export default function Tasks() {
         <div className="flex items-center gap-1 flex-nowrap">
           <button onClick={() => handleQuickResume(row, reload, updateRow)} disabled={workSaving}
             className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg bg-green-600 px-2 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-50">
-            <Play size={13} />{t("tasks.resumeWork")}
+            <Play size={13} />{t("tasks.startWork")}
           </button>
         </div>
       );
