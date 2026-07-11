@@ -30,6 +30,51 @@ from .serializers import (
 )
 
 
+def _advance_deduction_for(employee, farm, period):
+    """Advance amount to recover on this payslip.
+
+    Business rule (what admins expect): when an advance is recorded for an
+    employee it must show in the Advances column of that employee's CURRENT
+    payslip and reduce Net Pay — regardless of the exact date of the advance
+    or how much the employee earned that month.
+
+    So we recover the FULL outstanding advance balance on the employee's
+    LATEST payslip period (highest year, month) and 0 on any older payslip —
+    the advance shows exactly once, on the most recent payslip the admin is
+    working with. There is deliberately no "cap at earned wage": the whole
+    advance is shown and Net Pay may drop to/below zero (the worker owes it).
+
+    Recovery moves forward automatically: once a newer period is generated,
+    the advance is recovered there instead and older payslips recompute to 0.
+    """
+    latest = (
+        PayrollPeriod.objects
+        .filter(farm=farm, payslips__employee=employee)
+        .order_by("-year", "-month")
+        .first()
+    )
+    # `period` counts as the latest if no payslip exists yet (e.g. during
+    # generate(), before the row is written) or it is >= the newest existing
+    # payslip period.
+    is_latest = (
+        latest is None
+        or (period.year, period.month) >= (latest.year, latest.month)
+    )
+    if not is_latest:
+        return Decimal("0")
+
+    total = Decimal("0")
+    for adv in Advance.objects.filter(
+        employee=employee,
+        farm=farm,
+        status=Advance.Status.OUTSTANDING,
+    ):
+        balance = adv.balance
+        if balance > 0:
+            total += balance
+    return total
+
+
 def _sync_payslip(employee, farm, month, year):
     """Sync the employee's payslip for the given pay period after an
     advance / incentive / deduction is created, updated or deleted.
@@ -74,25 +119,9 @@ def _sync_payslip(employee, farm, month, year):
     ):
         other_deductions += ded.amount or Decimal("0")
 
-    # Recalculate advance deduction from all outstanding advances
-    gross_total = gross_wage + overtime_amount + incentive_amount
-    available = gross_total - other_deductions
-    advance_deduction = Decimal("0")
-    period_end = date(year, month, monthrange(year, month)[1])
-    for adv in Advance.objects.filter(
-        employee=employee,
-        farm=farm,
-        status=Advance.Status.OUTSTANDING,
-        date__lte=period_end,  # don't deduct advances dated after this period
-    ):
-        if available <= 0:
-            break
-        balance = adv.balance
-        if balance <= 0:
-            continue
-        deduct = min(balance, available)
-        advance_deduction += deduct
-        available -= deduct
+    # Recover the full outstanding advance on the employee's latest payslip
+    # (see _advance_deduction_for). No wage cap — the advance always shows.
+    advance_deduction = _advance_deduction_for(employee, farm, period)
 
     # Same formula as payroll generation: wage + OT + incentive − advance − deductions
     net_pay = gross_wage + overtime_amount + incentive_amount - advance_deduction - other_deductions
@@ -114,16 +143,13 @@ def _sync_payslip(employee, farm, month, year):
 
 def _resync_advance_payslips(employee, farm):
     """Re-sync every existing payslip for this employee+farm after an advance
-    changes.
+    is created, edited or deleted.
 
-    An advance is recovered from any period whose end date is on/after the
-    advance date (``generate()`` uses ``date__lte=period_end`` over *all*
-    outstanding advances, not just those dated in the period's own month).
-    Matching only the advance's own month — as ``_sync_payslip`` does when
-    called with a fixed month/year — silently misses the payslip whenever the
-    advance's date month differs from the payroll period's month, so the
-    Advances column and Net Pay never move. Re-syncing every payslip the
-    employee has keeps each one consistent with the generation formula.
+    Each payslip recomputes its advance via ``_advance_deduction_for`` (full
+    outstanding balance on the latest payslip, 0 on older ones), so the
+    Advances column and Net Pay update immediately no matter what date the
+    advance has — matching only the advance's own month used to miss the
+    payslip whenever the months differed.
     """
     periods = (
         PayrollPeriod.objects.filter(farm=farm, payslips__employee=employee)
@@ -216,26 +242,12 @@ class PayrollPeriodViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                 ):
                     other_deductions += ded.amount or Decimal("0")
 
-                # Outstanding advances: deduct up to remaining balance
-                gross_total = gross_wage + overtime_amount + incentive_amount
-                available = gross_total - other_deductions
-                advance_deduction = Decimal("0")
-                period_end = date(period.year, period.month, monthrange(period.year, period.month)[1])
-                outstanding = Advance.objects.filter(
-                    employee=employee,
-                    farm=period.farm,
-                    status=Advance.Status.OUTSTANDING,
-                    date__lte=period_end,  # ignore advances dated after this period
+                # Outstanding advances: recover the full balance on the
+                # employee's latest payslip (same rule as _sync_payslip so
+                # generation and live edits always agree).
+                advance_deduction = _advance_deduction_for(
+                    employee, period.farm, period
                 )
-                for adv in outstanding:
-                    if available <= 0:
-                        break
-                    balance = adv.balance
-                    if balance <= 0:
-                        continue
-                    deduct = min(balance, available)
-                    advance_deduction += deduct
-                    available -= deduct
 
                 net_pay = (
                     gross_wage
