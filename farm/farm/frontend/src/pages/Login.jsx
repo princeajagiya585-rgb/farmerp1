@@ -44,7 +44,7 @@ export default function Login() {
     setError("");
 
     try {
-      await login(username, password);
+      await login(username, password, { blockSuperAdmin: true });
       navigate("/");
     } catch (err) {
       if (!err.response) {
@@ -65,7 +65,7 @@ export default function Login() {
     setError("");
 
     try {
-      await login(superAdminUsername, superAdminPassword);
+      await login(superAdminUsername, superAdminPassword, { superAdminOnly: true });
       navigate("/");
     } catch (err) {
       if (!err.response) {

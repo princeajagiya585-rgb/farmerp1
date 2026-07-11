@@ -123,8 +123,37 @@ export function AuthProvider({ children }) {
   }, []);
 
   // Standard username/password login
-  const login = async (username, password) => {
+  //
+  // opts.superAdminOnly  — only allow SUPER_ADMIN accounts (used by the
+  //                        dedicated "Super Administrator Login" form).
+  // opts.blockSuperAdmin — reject SUPER_ADMIN accounts (used by the normal
+  //                        user login form). This keeps the two entry points
+  //                        strictly separated: super admins sign in only via
+  //                        the super admin form, everyone else via the normal
+  //                        form. Credentials are still verified by the server;
+  //                        we just refuse to open the session on the wrong form
+  //                        and never store any token for it.
+  const login = async (username, password, opts = {}) => {
     const { data } = await api.post("/auth/login/", { username, password });
+    const role = data?.user?.role;
+
+    if (opts.superAdminOnly && role !== "SUPER_ADMIN") {
+      throw {
+        response: {
+          status: 403,
+          data: { detail: "This login is for Super Administrators only. Please use the normal login." },
+        },
+      };
+    }
+    if (opts.blockSuperAdmin && role === "SUPER_ADMIN") {
+      throw {
+        response: {
+          status: 403,
+          data: { detail: "Super Administrators must sign in via the Super Administrator Login." },
+        },
+      };
+    }
+
     tokenStore.set({ access: data.access, refresh: data.refresh });
     localStorage.setItem("user", JSON.stringify(data.user));
     setUser(data.user);
