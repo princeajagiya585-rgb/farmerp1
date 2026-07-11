@@ -11,6 +11,23 @@ import { useAuth } from "../context/AuthContext";
 
 const repo = resource("tasks");
 
+// Robust action caller: DRF exposes @action methods with UNDERSCORES by default
+// (e.g. /tasks/1/before_work/). If a hyphenated URL 404s, retry the underscore
+// form automatically (and vice versa), so it works with either backend style.
+const taskAction = async (id, action, data) => {
+  try {
+    return await repo.action(id, action, data);
+  } catch (err) {
+    if (err?.response?.status === 404 && /[-_]/.test(action)) {
+      const alt = action.includes("-")
+        ? action.replace(/-/g, "_")
+        : action.replace(/_/g, "-");
+      return repo.action(id, alt, data);
+    }
+    throw err;
+  }
+};
+
 // Action config mapping: phase -> API action name + label
 const workPhaseConfig = {
   BEFORE: { action: "before-work", labelKey: "gps.beforeWork" },
@@ -127,7 +144,7 @@ export default function Tasks() {
   const handleQuickBreak = async (row, reload, updateRow) => {
     setWorkSaving(true);
     try {
-      await repo.action(row.id, "take-break", { reason: "Break" });
+      await taskAction(row.id, "take-break", { reason: "Break" });
       updateRow(row.id, { status: "ON_BREAK" });
       if (reload) reload({ forceRefresh: true });
       addToast(t("tasks.breakStarted"), "success");
@@ -142,7 +159,7 @@ export default function Tasks() {
   const handleQuickResume = async (row, reload, updateRow) => {
     setWorkSaving(true);
     try {
-      await repo.action(row.id, "resume-work", {});
+      await taskAction(row.id, "resume-work", {});
       updateRow(row.id, { status: "IN_PROGRESS" });
       if (reload) reload({ forceRefresh: true });
       addToast(t("tasks.resumedSuccess"), "success");
@@ -260,7 +277,7 @@ export default function Tasks() {
       };
 
       // POST to the API endpoint
-      await repo.action(row.id, action, workPhoto ? toFormData({ ...data, photo: workPhoto }) : data);
+      await taskAction(row.id, action, workPhoto ? toFormData({ ...data, photo: workPhoto }) : data);
 
       // Immediately update local state so buttons change without waiting for reload
       const newStatus = nextStatusAfterAction[phase];
@@ -282,7 +299,11 @@ export default function Tasks() {
       addToast(t(successKey), "success");
 
     } catch (err) {
-      setWorkError(err.response?.data?.detail || err.message);
+      setWorkError(
+        err?.response?.status === 404
+          ? "API endpoint not found (404) \u2014 backend action URL mismatch. Check the task action routes."
+          : err.response?.data?.detail || err.message
+      );
     } finally {
       setWorkSaving(false);
     }

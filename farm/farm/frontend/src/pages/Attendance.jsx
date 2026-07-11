@@ -489,7 +489,7 @@ export default function Attendance() {
                       openCheckInModal(myProfile);
                     } else {
                       if (empId) {
-                        const emp = employees.find((e) => e.id === empId);
+                        const emp = employees.find((e) => String(e.id) === String(empId));
                         if (emp) openCheckInModal(emp);
                       } else if (employees.length) {
                         openCheckInModal(employees[0]);
@@ -555,7 +555,7 @@ export default function Attendance() {
             </div>
             <Button
               onClick={() => {
-                const emp = employees.find((e) => e.id === empId);
+                const emp = employees.find((e) => String(e.id) === String(empId));
                 if (!emp) return setMsg(t("common.selectEmployeeFirst"));
                 openCheckInModal(emp);
               }}
@@ -1009,9 +1009,7 @@ export default function Attendance() {
                 <input
                   type="datetime-local"
                   value={
-                    editForm.check_in_time
-                      ? new Date(editForm.check_in_time).toISOString().slice(0, 16)
-                      : ""
+                    toLocalInput(editForm.check_in_time)
                   }
                   onChange={(e) => setEditForm({ ...editForm, check_in_time: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
@@ -1022,9 +1020,7 @@ export default function Attendance() {
                 <input
                   type="datetime-local"
                   value={
-                    editForm.check_out_time
-                      ? new Date(editForm.check_out_time).toISOString().slice(0, 16)
-                      : ""
+                    toLocalInput(editForm.check_out_time)
                   }
                   onChange={(e) => setEditForm({ ...editForm, check_out_time: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
@@ -1170,6 +1166,16 @@ export default function Attendance() {
       )}
     </div>
   );
+}
+
+// Format a datetime for <input type="datetime-local"> in LOCAL time
+// (toISOString() shifts to UTC, showing wrong times for IST users)
+function toLocalInput(dt) {
+  if (!dt) return "";
+  const d = new Date(dt);
+  if (isNaN(d)) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 function fmt(dt) {
