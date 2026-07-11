@@ -177,18 +177,9 @@ export default function GPS() {
     }
   }, []);
 
-  // Load users list for the User filter dropdown
+  // Build the task→farm lookup used by the Task Work Entries table.
   useEffect(() => {
     if (!currentUser?.id) return;
-    resource("auth/users")
-      .list({ page_size: 200 })
-      .then((d) => {
-        const all = Array.isArray(d) ? d : d.results || [];
-        setUsersList(all);
-      })
-      .catch(() => {});
-
-    // Build the Work column maps (pending tasks + live active task per user)
     loadWorkTasks();
   }, [currentUser, loadWorkTasks]);
 
@@ -213,13 +204,7 @@ export default function GPS() {
       .collectionAction("live")
       .then((d) => setLive(Array.isArray(d) ? d : d.results || []))
       .catch(() => {});
-    // Load ALL recent pings (today's) — shown in the Live Locations table
-    const today = new Date().toISOString().slice(0, 10);
-    pingRepo
-      .list({ date_from: today, ordering: "-recorded_at", page_size: 100 })
-      .then((d) => setAllRecentPings(Array.isArray(d) ? d : d.results || []))
-      .catch(() => {});
-    // Load full history (unfiltered) — also feeds the task-wise work entries
+    // Load full history (unfiltered) — feeds the task-wise work entries
     pingRepo
       .list({ page_size: 200, ordering: "-recorded_at" })
       .then((d) => setHistoryPings(Array.isArray(d) ? d : d.results || []))
@@ -565,8 +550,9 @@ export default function GPS() {
 
       </Card>
 
-      {/* Live Locations Table — admin only */}
-      {!isEmployee && (
+      {/* Live Locations Table removed per request — all work entries now live in
+          the "Task Work Entries" table below (grouped per task). */}
+      {false && (
         <Card
           title={t("common.liveLocations", { count: live.length, plural: live.length !== 1 ? "s" : "" })}
           className="mb-5"

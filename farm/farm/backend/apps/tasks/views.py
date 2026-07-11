@@ -692,20 +692,11 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                 execution.total_break_seconds += int(break_duration)
             execution.break_end_time = timezone.now()
 
-        # Validate required fields
+        # Completion fields are all optional — capture whatever the worker
+        # provides (photo/GPS/notes) so finishing a task never hard-fails.
         lat = request.data.get("latitude")
         lng = request.data.get("longitude")
         completion_notes = request.data.get("completion_notes", "")
-        if not lat or not lng:
-            return Response(
-                {"detail": "GPS location is required (latitude, longitude)."},
-                status=400,
-            )
-        if not completion_notes:
-            return Response(
-                {"detail": "Completion notes are required."},
-                status=400,
-            )
 
         photo = request.FILES.get("photo")
 

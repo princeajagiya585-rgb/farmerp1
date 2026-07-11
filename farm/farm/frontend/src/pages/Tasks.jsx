@@ -254,21 +254,20 @@ export default function Tasks() {
       return;
     }
 
-    // GPS required for BEFORE and COMPLETED only
-    if (!workPos && (phase === "BEFORE" || phase === "COMPLETED")) {
+    // BEFORE work: require both GPS and photo (proof of starting on site).
+    if (phase === "BEFORE" && !workPos) {
       setWorkError(t("gps.noLocation"));
       return;
     }
-
-    // Photo required for BEFORE and COMPLETED only
-    if (!workPhoto && (phase === "BEFORE" || phase === "COMPLETED")) {
+    if (phase === "BEFORE" && !workPhoto) {
       setWorkError(t("tasks.photoRequired"));
       return;
     }
 
-    // Completion notes required
-    if (phase === "COMPLETED" && !workNotes.trim()) {
-      setWorkError(t("tasks.completionNotesRequired"));
+    // COMPLETED work: accept photo OR location (notes optional) so completing
+    // never hard-fails — only block if the worker attached neither proof.
+    if (phase === "COMPLETED" && !workPhoto && !workPos) {
+      setWorkError(t("tasks.photoRequired"));
       return;
     }
 
