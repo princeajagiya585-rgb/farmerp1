@@ -148,8 +148,6 @@ export default function Tasks() {
   // Timer refresh state
   const [timerRefresh, setTimerRefresh] = useState(0);
 
-  // Complete confirmation
-  const [completeConfirm, setCompleteConfirm] = useState(false);
 
   // ── Quick actions (one-click, NO modal) ─────────────────────────
   const handleQuickBreak = async (row, reload, updateRow) => {
@@ -229,7 +227,6 @@ export default function Tasks() {
     setWorkAddress("");
     setWorkReason("");
     setWorkPos(null);
-    setCompleteConfirm(false);
     fetchWorkLocation();
   };
 
@@ -247,12 +244,6 @@ export default function Tasks() {
 
     const phase = workModal.phase;
     const { row, reload, updateRow } = workModal;
-
-    // For COMPLETED phase, require confirmation first click
-    if (phase === "COMPLETED" && !completeConfirm) {
-      setCompleteConfirm(true);
-      return;
-    }
 
     // BEFORE work: require both GPS and photo (proof of starting on site).
     if (phase === "BEFORE" && !workPos) {
@@ -753,18 +744,6 @@ export default function Tasks() {
                 )}
               </div>
 
-              {/* Completion confirmation */}
-              {completeConfirm && workModal.phase === "COMPLETED" && (
-                <div className="p-4 rounded-lg bg-amber-50 border border-amber-200">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle size={20} className="text-amber-600 mt-0.5" />
-                    <div>
-                      <p className="font-medium text-amber-800">{t("tasks.confirmComplete")}</p>
-                      <p className="text-sm text-amber-700 mt-1">{t("tasks.cannotUndo")}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
             <div className="p-6 border-t flex gap-3 justify-end">
               <Button variant="secondary" onClick={() => setWorkModal(null)} disabled={workSaving}>
@@ -800,26 +779,20 @@ export default function Tasks() {
                 </Button>
               )}
 
-              {/* COMPLETED: show Submit only when photo + location + notes ready */}
+              {/* COMPLETED: submit directly (no confirm step) once a photo OR a
+                  location is attached. */}
               {workModal.phase === "COMPLETED" && (
-                workPos && workPhoto ? (
-                  <Button
-                    onClick={submitWork}
-                    disabled={workSaving || (completeConfirm && !workNotes.trim())}
-                    className={completeConfirm ? "bg-green-700 hover:bg-green-800" : ""}
-                  >
+                workPos || workPhoto ? (
+                  <Button onClick={submitWork} disabled={workSaving}>
                     {workSaving ? (
                       <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" />{t("common.saving")}</span>
-                    ) : completeConfirm ? (
-                      <span className="flex items-center gap-2"><CheckCircle size={16} />Confirm Complete</span>
                     ) : (
                       <span className="flex items-center gap-2"><CheckCircle size={16} />Submit</span>
                     )}
                   </Button>
                 ) : (
                   <span className="text-xs text-gray-400 self-center">
-                    {!workPos && !workPhoto ? "Add photo & location to submit" :
-                     !workPos ? "Waiting for location..." : "Add a photo to submit"}
+                    Add a photo or location to submit
                   </span>
                 )
               )}
