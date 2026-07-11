@@ -52,6 +52,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
     name = serializers.CharField(required=False)
     farm_name = serializers.CharField(source="farm.name", read_only=True)
     assigned_farms = serializers.SerializerMethodField()
+    assigned_farm_details = serializers.SerializerMethodField()
     department_name = serializers.CharField(source="department.name", read_only=True)
     skill_names = serializers.SerializerMethodField()
     skill_ids = serializers.SerializerMethodField()
@@ -68,7 +69,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         fields = [
     "id", "name", "employee_code", "first_name", "last_name", "phone",
     "role",                     # <-- ADD THIS
-    "employment_type", "designation", "farm", "farm_name", "assigned_farms",
+    "employment_type", "designation", "farm", "farm_name", "assigned_farms", "assigned_farm_details",
     "department", "department_name", "skills", "skill_names", "skill_ids",
     "address", "photo", "photo_url", "is_active", "category", "user",
     "created_at", "updated_at", "daily_wage", "monthly_salary",
@@ -94,6 +95,18 @@ class EmployeeSerializer(serializers.ModelSerializer):
         if obj.user:
             return [farm.name for farm in obj.user.farms.all()]
         return []
+
+    @extend_schema_field(serializers.ListField())
+    def get_assigned_farm_details(self, obj):
+        """Farms the worker can check into: their primary farm plus any farms
+        assigned to their user account. Used by the check-in farm picker."""
+        seen = {}
+        if obj.farm_id and obj.farm:
+            seen[str(obj.farm_id)] = {"id": str(obj.farm_id), "name": obj.farm.name}
+        if obj.user_id:
+            for farm in obj.user.farms.all():
+                seen[str(farm.id)] = {"id": str(farm.id), "name": farm.name}
+        return list(seen.values())
 
     @extend_schema_field(serializers.ListField(child=serializers.IntegerField()))
     def get_skill_ids(self, obj):

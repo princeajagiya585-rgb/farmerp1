@@ -98,6 +98,8 @@ export default function Attendance() {
   const [checkInPreview, setCheckInPreview] = useState(null);
   const [checkInPos, setCheckInPos] = useState(null);
   const [checkInNotes, setCheckInNotes] = useState("");
+  // Which farm the worker is checking into (for multi-farm workers).
+  const [checkInFarm, setCheckInFarm] = useState("");
   // Admin/manager only: optionally back-date a check-in. Blank = live (now).
   const [checkInDate, setCheckInDate] = useState("");
   const [checkInTime, setCheckInTime] = useState("");
@@ -217,6 +219,8 @@ export default function Attendance() {
     setCheckInPreview(null);
     setCheckInPos(null);
     setCheckInNotes("");
+    // Default to the worker's primary farm (or first assigned farm).
+    setCheckInFarm(emp?.farm || emp?.assigned_farm_details?.[0]?.id || "");
     setCheckInDate("");
     setCheckInTime("");
     setMsg("");
@@ -244,7 +248,7 @@ export default function Attendance() {
     try {
       const payload = {
         employee: checkInTarget.id,
-        farm: checkInTarget.farm,
+        farm: checkInFarm || checkInTarget.farm,
         check_in_lat: loc?.lat,
         check_in_lng: loc?.lng,
         check_in_notes: checkInNotes,
@@ -904,6 +908,25 @@ export default function Attendance() {
               ) : (
                 <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 ring-1 ring-red-200">
                   {t("common.locationUnavailable")}
+                </div>
+              )}
+
+              {/* Multi-farm workers pick which farm they are checking into.
+                  The geofence (Present/Absent) is evaluated against THIS farm. */}
+              {(checkInTarget?.assigned_farm_details?.length || 0) > 1 && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    {t("attendance.selectFarm", "Select Farm")}
+                  </label>
+                  <select
+                    value={checkInFarm}
+                    onChange={(e) => setCheckInFarm(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+                  >
+                    {checkInTarget.assigned_farm_details.map((f) => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
                 </div>
               )}
 

@@ -298,6 +298,24 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         with transaction.atomic():
             att_date, check_in_dt = self._resolve_attendance_datetime(request)
 
+            # Resolve which farm the worker is checking into. Workers can be
+            # assigned to multiple farms (user.farms); honour the farm they
+            # picked, but only if it is one they are actually assigned to,
+            # otherwise fall back to their primary farm.
+            selected_farm = employee.farm
+            req_farm_id = request.data.get("farm")
+            if req_farm_id:
+                from apps.farms.models import Farm
+                cand = Farm.objects.filter(pk=req_farm_id).first()
+                if cand:
+                    allowed = set()
+                    if employee.farm_id:
+                        allowed.add(str(employee.farm_id))
+                    if employee.user_id:
+                        allowed |= {str(fid) for fid in employee.user.farms.values_list("id", flat=True)}
+                    if not allowed or str(cand.id) in allowed:
+                        selected_farm = cand
+
             # Check if attendance already exists for this date
             existing = Attendance.objects.filter(employee=employee, date=att_date).first()
             if existing and existing.check_in_time is not None:
@@ -307,12 +325,12 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             # Create or get attendance record
             if existing:
                 attendance = existing
-                attendance.farm = employee.farm
+                attendance.farm = selected_farm
                 attendance.created_by = request.user
             else:
                 attendance = Attendance.objects.create(
                     employee=employee,
-                    farm=employee.farm,
+                    farm=selected_farm,
                     date=att_date,
                     created_by=request.user,
                 )
@@ -335,7 +353,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             lng = request.data.get("check_in_lng")
             if lat is not None and lng is not None:
                 lat, lng = float(lat), float(lng)
-                farm = employee.farm
+                farm = selected_farm
 
                 # Calculate distance from farm centre for display
                 if farm.latitude is not None and farm.longitude is not None:
@@ -416,7 +434,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             out_lng = request.data.get("check_out_lng")
             if out_lat is not None and out_lng is not None:
                 out_lat, out_lng = float(out_lat), float(out_lng)
-                farm = attendance.employee.farm
+                farm = attendance.farm or attendance.employee.farm
 
                 # Calculate distance from farm centre for display
                 if farm.latitude is not None and farm.longitude is not None:
