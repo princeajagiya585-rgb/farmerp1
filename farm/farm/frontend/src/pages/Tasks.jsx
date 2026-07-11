@@ -249,21 +249,18 @@ export default function Tasks() {
     const phase = workModal.phase;
     const { row, reload, updateRow } = workModal;
 
-    // BEFORE work: require both GPS and photo (proof of starting on site).
-    if (phase === "BEFORE" && !workPos) {
-      setWorkError(t("gps.noLocation"));
-      return;
-    }
-    if (phase === "BEFORE" && !workPhoto) {
-      setWorkError(t("tasks.photoRequired"));
-      return;
-    }
-
-    // COMPLETED work: accept photo OR location (notes optional) so completing
-    // never hard-fails — only block if the worker attached neither proof.
-    if (phase === "COMPLETED" && !workPhoto && !workPos) {
-      setWorkError(t("tasks.photoRequired"));
-      return;
+    // Before / During / Completed work: require BOTH a location and a photo
+    // (proof the worker was on-site at each stage) before the entry can be
+    // submitted. Break phases keep their own rules.
+    if (["BEFORE", "DURING_WORK", "COMPLETED"].includes(phase)) {
+      if (!workPos) {
+        setWorkError(t("gps.noLocation"));
+        return;
+      }
+      if (!workPhoto) {
+        setWorkError(t("tasks.photoRequired"));
+        return;
+      }
     }
 
     setWorkSaving(true);
@@ -719,15 +716,11 @@ export default function Tasks() {
                 </div>
               )}
 
-              {/* Photo - required for BEFORE and COMPLETED, optional for DURING_WORK */}
+              {/* Photo - required for BEFORE, DURING_WORK and COMPLETED */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
                   {t("common.workPhoto")}
-                  {workModal.phase !== "DURING_WORK" ? (
-                    <span className="text-red-500"> *</span>
-                  ) : (
-                    <span className="text-gray-400"> ({t("common.optional")})</span>
-                  )}
+                  <span className="text-red-500"> *</span>
                 </label>
                 {workPhotoPreview ? (
                   <div className="relative">
@@ -762,8 +755,9 @@ export default function Tasks() {
                 {t("common.cancel")}
               </Button>
 
-              {/* BEFORE: show Submit only when both photo and location are ready */}
-              {workModal.phase === "BEFORE" && (
+              {/* BEFORE / DURING_WORK / COMPLETED: Submit is enabled only once
+                  BOTH a photo and a location are attached. */}
+              {["BEFORE", "DURING_WORK", "COMPLETED"].includes(workModal.phase) && (
                 workPos && workPhoto ? (
                   <Button onClick={submitWork} disabled={workSaving}>
                     {workSaving ? (
@@ -776,35 +770,6 @@ export default function Tasks() {
                   <span className="text-xs text-gray-400 self-center">
                     {!workPos && !workPhoto ? "Add photo & location to submit" :
                      !workPos ? "Waiting for location..." : "Add a photo to submit"}
-                  </span>
-                )
-              )}
-
-              {/* DURING_WORK: always show Submit (all optional) */}
-              {workModal.phase === "DURING_WORK" && (
-                <Button onClick={submitWork} disabled={workSaving}>
-                  {workSaving ? (
-                    <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" />{t("common.saving")}</span>
-                  ) : (
-                    <span className="flex items-center gap-2"><Camera size={16} />Submit</span>
-                  )}
-                </Button>
-              )}
-
-              {/* COMPLETED: submit directly (no confirm step) once a photo OR a
-                  location is attached. */}
-              {workModal.phase === "COMPLETED" && (
-                workPos || workPhoto ? (
-                  <Button onClick={submitWork} disabled={workSaving}>
-                    {workSaving ? (
-                      <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" />{t("common.saving")}</span>
-                    ) : (
-                      <span className="flex items-center gap-2"><CheckCircle size={16} />Submit</span>
-                    )}
-                  </Button>
-                ) : (
-                  <span className="text-xs text-gray-400 self-center">
-                    Add a photo or location to submit
                   </span>
                 )
               )}
