@@ -15,7 +15,7 @@ from apps.farms.views import FarmScopedQuerysetMixin
 
 from .models import Task, TaskUpdate, TaskWorkSession, TaskExecution, TaskBreakLog, TaskProgressLog, TaskActivity
 from .serializers import (
-    TaskSerializer, TaskUpdateSerializer, TaskWorkSessionSerializer,
+    TaskSerializer, TaskListSerializer, TaskUpdateSerializer, TaskWorkSessionSerializer,
     TaskExecutionSerializer, TaskBreakLogSerializer, TaskProgressLogSerializer,
     TaskActivitySerializer
 )
@@ -103,6 +103,14 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     farm_lookup = "farm_id"
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = [Role.EMPLOYEE]
+
+    def get_serializer_class(self):
+        # The list view uses a lighter serializer that omits the large
+        # location_pings array (unused by the list UI) to keep the response
+        # small and fast. Detail/other actions keep the full serializer.
+        if self.action == "list":
+            return TaskListSerializer
+        return super().get_serializer_class()
     filterset_fields = [
         "farm",
         "field",

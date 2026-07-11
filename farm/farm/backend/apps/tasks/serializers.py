@@ -390,3 +390,18 @@ class TaskSerializer(serializers.ModelSerializer):
             if s.end_time is not None:
                 total += (s.end_time - s.start_time).total_seconds() / 60
         return round(total, 1)
+
+
+class TaskListSerializer(TaskSerializer):
+    """Lighter serializer for the task LIST endpoint.
+
+    Drops the per-task ``location_pings`` array: it can hold hundreds of GPS
+    points per task, the list UI (web + mobile) never reads it, and serializing
+    it for every row bloats the response and makes the Tasks page slow to load
+    — especially on mobile data. The detail endpoint still returns the full
+    TaskSerializer with location_pings.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields.pop("location_pings", None)
