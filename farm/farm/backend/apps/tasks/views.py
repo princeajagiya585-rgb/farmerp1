@@ -448,66 +448,51 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="take-break")
     def take_break(self, request, pk=None):
-        """Employee takes a break - Break action."""
+        """Pause work on a task. Works for ANY user — the task status and the
+        BREAK_START activity are always written even when the caller has no
+        Employee profile / TaskExecution (so the buttons + timer stay correct)."""
         try:
             task = Task.objects.get(pk=pk)
         except Task.DoesNotExist:
             return Response({"detail": "Not found."}, status=404)
         user = request.user
 
-        # Get employee (optional — assigned_to user may not have an employee profile)
         from apps.workforce.models import Employee
         employee = Employee.objects.filter(user=user).first()
 
-        # Get execution — try by employee first, then by assigned_to user
+        # Find an execution to update (optional).
         execution = None
         if employee:
             execution = TaskExecution.objects.filter(task=task, employee=employee).first()
         if not execution:
-            # Fallback: find any IN_PROGRESS execution for this task
             execution = TaskExecution.objects.filter(
                 task=task, status=TaskExecution.Status.IN_PROGRESS
             ).first()
-        if not execution:
-            # Task is IN_PROGRESS but no execution record — update task status directly
-            task.status = Task.Status.ON_BREAK
-            task.save(update_fields=["status", "updated_at"])
-            return Response({"detail": "Break started.", "status": "ON_BREAK"})
 
-        # Validate not already on break
-        if execution.status == TaskExecution.Status.ON_BREAK:
-            # Task may already be on break — just update task status
-            task.status = Task.Status.ON_BREAK
-            task.save(update_fields=["status", "updated_at"])
-            return Response({"detail": "Already on break.", "status": "ON_BREAK"})
-
-        # Optional fields — accept empty/missing for quick one-click break
         lat = request.data.get("latitude")
         lng = request.data.get("longitude")
         reason = request.data.get("reason", "Break")
-
         photo = request.FILES.get("photo")
 
-        # Update execution with break start data
-        execution.break_start_lat = lat
-        execution.break_start_lng = lng
-        execution.break_start_reason = reason
-        execution.break_start_time = timezone.now()
-        execution.status = TaskExecution.Status.ON_BREAK
+        # Update the execution timer if one exists and isn't already paused.
+        if execution and execution.status != TaskExecution.Status.ON_BREAK:
+            execution.break_start_lat = lat
+            execution.break_start_lng = lng
+            execution.break_start_reason = reason
+            execution.break_start_time = timezone.now()
+            execution.status = TaskExecution.Status.ON_BREAK
+            if photo:
+                execution.break_start_photo = photo
+            execution.save(update_fields=[
+                "break_start_lat", "break_start_lng", "break_start_reason",
+                "break_start_time", "break_start_photo", "status", "updated_at"
+            ])
 
-        if photo:
-            execution.break_start_photo = photo
-
-        execution.save(update_fields=[
-            "break_start_lat", "break_start_lng", "break_start_reason",
-            "break_start_time", "break_start_photo", "status", "updated_at"
-        ])
-        
-        # Update task status
+        # Always pause the task and log the activity — this is what drives the
+        # action buttons (work_phase) and the timer for every user.
         task.status = Task.Status.ON_BREAK
         task.save(update_fields=["status", "updated_at"])
 
-        # Create TaskActivity record
         TaskActivity.objects.create(
             task=task,
             task_execution=execution,
@@ -519,25 +504,25 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             reason=reason,
             created_by=user,
         )
-
         _log_work_ping(task, user, "BREAK", request, lat, lng)
 
-        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+        if execution:
+            return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+        return Response({"detail": "Break started.", "status": "ON_BREAK"})
 
     @action(detail=True, methods=["post"], url_path="resume-work")
     def resume_work(self, request, pk=None):
-        """Employee resumes work after break - Resume action."""
+        """Resume work after a break. Works for ANY user — the task status and
+        the BREAK_END activity are always written even without an execution."""
         try:
             task = Task.objects.get(pk=pk)
         except Task.DoesNotExist:
             return Response({"detail": "Not found."}, status=404)
         user = request.user
 
-        # Get employee (optional)
         from apps.workforce.models import Employee
         employee = Employee.objects.filter(user=user).first()
 
-        # Get execution — try by employee first, then any ON_BREAK execution
         execution = None
         if employee:
             execution = TaskExecution.objects.filter(task=task, employee=employee).first()
@@ -545,43 +530,28 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             execution = TaskExecution.objects.filter(
                 task=task, status=TaskExecution.Status.ON_BREAK
             ).first()
-        if not execution:
-            # No execution — just update task status directly
-            task.status = Task.Status.IN_PROGRESS
-            task.save(update_fields=["status", "updated_at"])
-            return Response({"detail": "Work resumed.", "status": "IN_PROGRESS"})
 
-        # If not on break, just update task status
-        if execution.status != TaskExecution.Status.ON_BREAK:
-            task.status = Task.Status.IN_PROGRESS
-            task.save(update_fields=["status", "updated_at"])
-            return Response({"detail": "Work resumed.", "status": "IN_PROGRESS"})
-
-        # Optional fields — accept empty/missing for one-click resume
         lat = request.data.get("latitude")
         lng = request.data.get("longitude")
         photo = request.FILES.get("photo")
 
-        # Calculate break duration
-        if execution.break_start_time:
-            break_duration = (timezone.now() - execution.break_start_time).total_seconds()
-            execution.total_break_seconds += int(break_duration)
+        # Close the break on the execution timer if one is paused.
+        if execution and execution.status == TaskExecution.Status.ON_BREAK:
+            if execution.break_start_time:
+                break_duration = (timezone.now() - execution.break_start_time).total_seconds()
+                execution.total_break_seconds += int(break_duration)
+            execution.break_end_lat = lat
+            execution.break_end_lng = lng
+            execution.break_end_time = timezone.now()
+            execution.status = TaskExecution.Status.IN_PROGRESS
+            if photo:
+                execution.break_end_photo = photo
+            execution.save(update_fields=[
+                "break_end_lat", "break_end_lng", "break_end_time",
+                "break_end_photo", "total_break_seconds", "status", "updated_at"
+            ])
 
-        # Update execution with break end data
-        execution.break_end_lat = lat
-        execution.break_end_lng = lng
-        execution.break_end_time = timezone.now()
-        execution.status = TaskExecution.Status.IN_PROGRESS
-
-        if photo:
-            execution.break_end_photo = photo
-
-        execution.save(update_fields=[
-            "break_end_lat", "break_end_lng", "break_end_time",
-            "break_end_photo", "total_break_seconds", "status", "updated_at"
-        ])
-        
-        # Update task status back to IN_PROGRESS
+        # Always resume the task and log the activity.
         task.status = Task.Status.IN_PROGRESS
         task.save(update_fields=["status", "updated_at"])
 
@@ -599,7 +569,9 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
         _log_work_ping(task, user, "RESUME", request, lat, lng)
 
-        return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+        if execution:
+            return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
+        return Response({"detail": "Work resumed.", "status": "IN_PROGRESS"})
 
     @action(detail=True, methods=["post"], url_path="during-work")
     def during_work(self, request, pk=None):

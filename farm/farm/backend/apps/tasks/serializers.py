@@ -235,6 +235,7 @@ class TaskSerializer(serializers.ModelSerializer):
     active_session = serializers.SerializerMethodField()
     total_tracked_minutes = serializers.SerializerMethodField()
     work_phase = serializers.SerializerMethodField()
+    work_timer = serializers.SerializerMethodField()
     during_work_count = serializers.SerializerMethodField()
     location_pings = serializers.SerializerMethodField()
 
@@ -281,42 +282,76 @@ class TaskSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField())
     def get_work_phase(self, obj):
-        """Determine the current work phase based on TaskActivity model.
+        """Current work phase that drives the action buttons.
 
-        BEFORE      → no activities yet; show the "Before Work" button.
-        IN_PROGRESS → BEFORE_WORK exists and latest activity is not BREAK_START.
-                      Show "During Work", "Break", "Complete Work" buttons.
-        ON_BREAK    → latest activity is BREAK_START (no BREAK_END after it).
-                      Show "Resume" and "Complete Work" buttons.
-        COMPLETED   → latest activity is COMPLETED; task is done.
+        Derived from task.status, which every work action updates (even for
+        callers without a TaskExecution), so the buttons stay consistent for
+        ALL users:
+        BEFORE      → not started → "Before Work" button.
+        IN_PROGRESS → working → "During Work" / "Break" / "Complete Work".
+        ON_BREAK    → paused → "Start Work" button.
+        COMPLETED   → done/closed → "Work Done".
         """
-        # First check TaskActivity model
-        activities = list(obj.activities.values_list("action_type", "timestamp").order_by("-timestamp"))
-        if activities:
-            latest = activities[0][0]
-            if latest == TaskActivity.ActionType.COMPLETED:
-                return "COMPLETED"
-            if latest == TaskActivity.ActionType.BREAK_START:
-                return "ON_BREAK"
-            if latest in (TaskActivity.ActionType.BEFORE_WORK, TaskActivity.ActionType.DURING_WORK, TaskActivity.ActionType.BREAK_END):
-                return "IN_PROGRESS"
-            return "BEFORE"
-
-        # Fallback: compute from location_pings (legacy)
-        pings = list(obj.location_pings.values_list("activity", "recorded_at"))
-        if not pings:
-            return "BEFORE"
-        # Sort by recorded_at descending to get the latest activity
-        pings.sort(key=lambda x: x[1] or "", reverse=True)
-        latest = pings[0][0]
-
-        if latest == "CHECKOUT":
+        status = obj.status
+        if status in (
+            Task.Status.WAITING_APPROVAL, Task.Status.COMPLETED,
+            Task.Status.APPROVED, Task.Status.CANCELLED,
+        ):
             return "COMPLETED"
-        if latest == "BREAK":
+        if status == Task.Status.ON_BREAK:
             return "ON_BREAK"
-        if latest in ("CHECKIN", "DURING_WORK", "RESUME"):
+        if status == Task.Status.IN_PROGRESS:
             return "IN_PROGRESS"
         return "BEFORE"
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_work_timer(self, obj):
+        """Timer derived from TaskActivity records so it works for EVERY user,
+        including those with no Employee profile / TaskExecution. Returns the
+        anchors the frontend needs to tick the timer live (start_time,
+        accumulated break seconds, current break start, and completion)."""
+        from django.utils import timezone
+        A = TaskActivity.ActionType
+        acts = sorted(obj.activities.all(), key=lambda a: a.timestamp)
+        start = None
+        break_seconds = 0.0
+        on_break_since = None
+        completed_at = None
+        for a in acts:
+            ts = a.timestamp
+            if a.action_type == A.BEFORE_WORK and start is None:
+                start = ts
+            elif a.action_type == A.BREAK_START:
+                on_break_since = ts
+            elif a.action_type == A.BREAK_END:
+                if on_break_since:
+                    break_seconds += (ts - on_break_since).total_seconds()
+                    on_break_since = None
+            elif a.action_type == A.COMPLETED:
+                completed_at = ts
+        if start is None:
+            return None
+        is_completed = completed_at is not None
+        is_on_break = (on_break_since is not None) and not is_completed
+        if is_completed:
+            end = completed_at
+        elif is_on_break:
+            end = on_break_since  # freeze the timer at the moment the break began
+        else:
+            end = timezone.now()
+        net = max(0, int((end - start).total_seconds() - break_seconds))
+        return {
+            "start_time": start.isoformat(),
+            "accumulated_break_seconds": int(break_seconds),
+            "break_start_time": on_break_since.isoformat() if is_on_break else None,
+            "is_running": (not is_on_break and not is_completed),
+            "is_on_break": is_on_break,
+            "is_completed": is_completed,
+            "completion_time": completed_at.isoformat() if completed_at else None,
+            "final_work_seconds": net,
+            "working_seconds": net,
+            "net_work_seconds": net,
+        }
 
     @extend_schema_field(serializers.IntegerField())
     def get_during_work_count(self, obj):

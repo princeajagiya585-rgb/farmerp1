@@ -328,7 +328,10 @@ export default function Tasks() {
   const TaskTimer = ({ row }) => {
     const status = row.status;
     const execution = row.my_execution;
-    const timerData = execution?.timer_data;
+    // Prefer the task-level work_timer (computed from activities → works for
+    // every user, incl. admins with no Employee profile); fall back to the
+    // execution timer.
+    const timerData = row.work_timer || execution?.timer_data;
     const session = row.active_session;
     const tracked = row.total_tracked_minutes;
 

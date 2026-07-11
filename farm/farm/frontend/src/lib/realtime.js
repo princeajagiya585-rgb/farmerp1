@@ -87,8 +87,16 @@ export function connectNotificationStream({ onMessage, onStatus, signal }) {
     stopped = true;
     if (timer) clearTimeout(timer);
     if (ws) {
-      ws.onopen = ws.onclose = ws.onmessage = ws.onerror = null;
-      try { ws.close(); } catch { /* ignore */ }
+      const sock = ws;
+      sock.onclose = sock.onmessage = sock.onerror = null;
+      // Avoid the "closed before the connection is established" console warning
+      // by deferring close of a still-CONNECTING socket until it opens.
+      if (sock.readyState === WebSocket.CONNECTING) {
+        sock.onopen = () => { try { sock.close(); } catch { /* ignore */ } };
+      } else {
+        sock.onopen = null;
+        try { sock.close(); } catch { /* ignore */ }
+      }
       ws = null;
     }
   }
@@ -204,11 +212,16 @@ export function connectLocationStream({ onMessage, onStatus, signal }) {
     stopped = true;
     if (timer) clearTimeout(timer);
     if (ws) {
-      ws.onopen = ws.onclose = ws.onmessage = ws.onerror = null;
-      try {
-        ws.close();
-      } catch (e) {
-        // Ignore any close errors
+      const sock = ws;
+      sock.onclose = sock.onmessage = sock.onerror = null;
+      // Closing a socket that is still CONNECTING logs a noisy console warning
+      // ("WebSocket is closed before the connection is established"). Defer the
+      // close until it actually opens in that case.
+      if (sock.readyState === WebSocket.CONNECTING) {
+        sock.onopen = () => { try { sock.close(); } catch { /* ignore */ } };
+      } else {
+        sock.onopen = null;
+        try { sock.close(); } catch { /* ignore */ }
       }
       ws = null;
     }
