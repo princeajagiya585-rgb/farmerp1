@@ -436,6 +436,14 @@ export default function Payroll() {
                 return days;
               },
             },
+            {
+              key: "employee_monthly_salary",
+              header: t("payroll.monthlySalary"),
+              render: (r) => {
+                const ms = Number(r.employee_monthly_salary || 0);
+                return ms > 0 ? `₹${ms.toLocaleString("en-IN")}` : "-";
+              },
+            },
             { key: "gross_wage", header: t("header.gross") },
             { key: "overtime_amount", header: t("header.ot") },
             { key: "advance_deduction", header: t("header.advances") },

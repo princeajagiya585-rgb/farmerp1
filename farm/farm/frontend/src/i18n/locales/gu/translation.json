@@ -1658,6 +1658,7 @@
   "gps.noTasksAssigned": "તમને કોઈ કાર્ય સોંપાયું નથી.",
   "payroll.netPayRemaining": "બાકી ચોખ્ખો પગાર",
   "payroll.accountClosed": "ખાતું બંધ",
+  "payroll.monthlySalary": "માસિક પગાર",
   "payroll.alreadyPaid": "પહેલેથી ચૂકવેલ",
   "payroll.amountToPay": "ચૂકવવાની રકમ (₹)",
   "header.totalTime": "કુલ સમય",
