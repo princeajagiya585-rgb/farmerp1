@@ -122,7 +122,7 @@ export default function CameraCapture({ open, onClose, onCapture, title = "Take 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/70 p-4">
       <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-lift">
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
           <h3 className="flex items-center gap-2 font-semibold text-gray-800">
