@@ -144,13 +144,18 @@ class TaskExecutionSerializer(serializers.ModelSerializer):
             current_break = int((now - obj.break_start_time).total_seconds())
             break_seconds += current_break
 
-        # Net working time (total - break)
-        net_work_seconds = max(0, working_seconds - break_seconds)
+        # working_seconds is already net of breaks (see calculate_current_duration).
+        net_work_seconds = working_seconds
 
         # Timer display
         hours = working_seconds // 3600
         minutes = (working_seconds % 3600) // 60
         secs = working_seconds % 60
+
+        # Anchor + raw components so the frontend can tick the timer live
+        # (compute elapsed from start_time client-side) instead of showing a
+        # value frozen at fetch time.
+        anchor = obj.before_work_time or obj.started_at
 
         return {
             "working_seconds": working_seconds,
@@ -160,10 +165,15 @@ class TaskExecutionSerializer(serializers.ModelSerializer):
             "is_running": obj.status == obj.Status.IN_PROGRESS,
             "is_on_break": obj.status == obj.Status.ON_BREAK,
             "is_completed": obj.status in [obj.Status.COMPLETED, obj.Status.APPROVED, obj.Status.WAITING_APPROVAL],
+            # Live-timer inputs (ISO strings; break accumulator excludes the
+            # in-progress break so the client can add it live).
+            "start_time": anchor.isoformat() if anchor else None,
+            "accumulated_break_seconds": obj.total_break_seconds or 0,
+            "break_start_time": obj.break_start_time.isoformat() if obj.break_start_time else None,
+            "final_work_seconds": working_seconds,
             "started_at": obj.started_at,
             "before_work_time": obj.before_work_time,
-            "break_start_time": obj.break_start_time,
-            "completed_time": obj.completed_at,
+            "completed_time": obj.completion_time or obj.completed_at,
         }
 
 
@@ -242,10 +252,28 @@ class TaskSerializer(serializers.ModelSerializer):
         if not user or not user.is_authenticated:
             return None
 
-        # Try to find execution by assigned_employee.user
+        # Resolve the caller's Employee profile once per request (cached on the
+        # shared serializer context to avoid an N+1 across the task list).
+        if 'user_employee' not in self.context:
+            from apps.workforce.models import Employee
+            self.context['user_employee'] = Employee.objects.filter(user=user).first()
+        employee = self.context['user_employee']
+
+        # Find the caller's execution by their own Employee profile — the Before
+        # Work flow creates the execution keyed on that, regardless of whether
+        # the task was assigned via assigned_to (user) or assigned_employee.
         execution = None
-        if obj.assigned_employee and obj.assigned_employee.user_id == user.id:
-            execution = obj.executions.filter(employee=obj.assigned_employee).first()
+        if employee:
+            execution = next(
+                (e for e in obj.executions.all() if e.employee_id == employee.id),
+                None,
+            )
+        # Fallback: task assigned directly to an employee that is this user.
+        if not execution and obj.assigned_employee and obj.assigned_employee.user_id == user.id:
+            execution = next(
+                (e for e in obj.executions.all() if e.employee_id == obj.assigned_employee_id),
+                None,
+            )
 
         if execution:
             return TaskExecutionSerializer(execution, context=self.context).data

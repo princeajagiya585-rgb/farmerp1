@@ -309,25 +309,36 @@ class TaskExecution(OwnedModel):
         return self.status == self.Status.APPROVED
 
     def calculate_current_duration(self):
-        """Calculate current working duration in seconds (excluding breaks)."""
-        if not self.started_at:
+        """Net working seconds = elapsed since work started, minus break time.
+
+        Anchors on ``before_work_time`` (the Before-Work lifecycle flow used by
+        the Tasks page); falls back to ``started_at`` for the older execution
+        flow. Break time comes from ``total_break_seconds`` (completed breaks)
+        plus any break currently in progress. Freezes at ``completion_time``.
+        """
+        anchor = self.before_work_time or self.started_at
+        if not anchor:
             return 0
 
         now = timezone.now()
-        total_seconds = (now - self.started_at).total_seconds()
+        end = self.completion_time or self.completed_at or now
+        gross_seconds = (end - anchor).total_seconds()
 
-        # Subtract break time
-        break_logs = self.break_logs.all()
-        for log in break_logs:
-            if log.break_ended_at:
-                duration = (log.break_ended_at - log.break_started_at).total_seconds()
-                total_seconds -= duration
-            elif self.status == self.Status.ON_BREAK:
-                # Currently on break
-                duration = (now - log.break_started_at).total_seconds()
-                total_seconds -= duration
+        # Completed breaks already accumulated on the execution.
+        break_seconds = self.total_break_seconds or 0
+        # A break in progress keeps growing until the worker resumes.
+        if self.status == self.Status.ON_BREAK and self.break_start_time:
+            break_seconds += (now - self.break_start_time).total_seconds()
 
-        return max(0, int(total_seconds))
+        # Legacy execution flow tracks breaks as TaskBreakLog rows instead.
+        if not self.total_break_seconds:
+            for log in self.break_logs.all():
+                if log.break_ended_at:
+                    break_seconds += (log.break_ended_at - log.break_started_at).total_seconds()
+                elif self.status == self.Status.ON_BREAK and log.break_started_at:
+                    break_seconds += (now - log.break_started_at).total_seconds()
+
+        return max(0, int(gross_seconds - break_seconds))
 
 
 class TaskBreakLog(OwnedModel):

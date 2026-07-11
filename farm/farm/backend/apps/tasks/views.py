@@ -360,6 +360,10 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             execution.before_work_longitude = lng
             execution.before_work_address = request.data.get("address", "")
             execution.before_work_time = timezone.now()
+            # Anchor the timer; started_at is the fallback anchor used by
+            # calculate_current_duration and the legacy execution flow.
+            if not execution.started_at:
+                execution.started_at = execution.before_work_time
             execution.status = TaskExecution.Status.IN_PROGRESS
 
             if photo:
@@ -367,7 +371,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
             execution.save(update_fields=[
                 "before_work_latitude", "before_work_longitude", "before_work_address",
-                "before_work_time", "before_work_photo", "status", "updated_at"
+                "before_work_time", "started_at", "before_work_photo", "status", "updated_at"
             ])
             task.before_work_time = execution.before_work_time
         else:

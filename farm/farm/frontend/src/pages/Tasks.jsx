@@ -46,6 +46,17 @@ const nextStatusAfterAction = {
   COMPLETED: "WAITING_APPROVAL",
 };
 
+// New work_phase after each action — the action buttons are driven by
+// work_phase, so update it immediately for instant button switching
+// (the forced reload then confirms it from the server).
+const nextPhaseAfterAction = {
+  BEFORE: "IN_PROGRESS",
+  BREAK_START: "ON_BREAK",
+  BREAK_END: "IN_PROGRESS",
+  DURING_WORK: null, // stays IN_PROGRESS
+  COMPLETED: "COMPLETED",
+};
+
 const prioColor = { LOW: "gray", MEDIUM: "blue", HIGH: "yellow", URGENT: "red" };
 const statusColor = {
   TODO: "gray", ASSIGNED: "yellow", CONFIRMED: "blue",
@@ -145,7 +156,7 @@ export default function Tasks() {
     setWorkSaving(true);
     try {
       await taskAction(row.id, "take-break", { reason: "Break" });
-      updateRow(row.id, { status: "ON_BREAK" });
+      updateRow(row.id, { status: "ON_BREAK", work_phase: "ON_BREAK" });
       if (reload) reload({ forceRefresh: true });
       addToast(t("tasks.breakStarted"), "success");
     } catch (err) {
@@ -160,7 +171,7 @@ export default function Tasks() {
     setWorkSaving(true);
     try {
       await taskAction(row.id, "resume-work", {});
-      updateRow(row.id, { status: "IN_PROGRESS" });
+      updateRow(row.id, { status: "IN_PROGRESS", work_phase: "IN_PROGRESS" });
       if (reload) reload({ forceRefresh: true });
       addToast(t("tasks.resumedSuccess"), "success");
     } catch (err) {
@@ -281,8 +292,12 @@ export default function Tasks() {
 
       // Immediately update local state so buttons change without waiting for reload
       const newStatus = nextStatusAfterAction[phase];
-      if (newStatus && updateRow) {
-        updateRow(row.id, { status: newStatus });
+      const newPhase = nextPhaseAfterAction[phase];
+      if (updateRow && (newStatus || newPhase)) {
+        updateRow(row.id, {
+          ...(newStatus ? { status: newStatus } : {}),
+          ...(newPhase ? { work_phase: newPhase } : {}),
+        });
       }
 
       setWorkModal(null);
@@ -317,6 +332,56 @@ export default function Tasks() {
     const timerData = execution?.timer_data;
     const session = row.active_session;
     const tracked = row.total_tracked_minutes;
+
+    const fmt = (secs) => {
+      const v = Math.max(0, Math.floor(secs || 0));
+      const h = Math.floor(v / 3600);
+      const m = Math.floor((v % 3600) / 60);
+      const s = v % 60;
+      return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    };
+
+    // Live timer computed from the execution's anchors — ticks off `now`
+    // (updated every second), counts up while working, freezes during a break.
+    if (timerData && timerData.start_time) {
+      const anchor = new Date(timerData.start_time).getTime();
+      const accBreak = timerData.accumulated_break_seconds || 0;
+
+      if (timerData.is_completed || CLOSED_STATUSES.includes(status)) {
+        return (
+          <div className="flex items-center gap-1.5">
+            <CheckCircle size={12} className="text-green-500" />
+            <span className="text-xs font-medium text-green-700">{fmt(timerData.final_work_seconds)}</span>
+          </div>
+        );
+      }
+
+      if (timerData.is_on_break || status === "ON_BREAK") {
+        const breakStart = timerData.break_start_time ? new Date(timerData.break_start_time).getTime() : now;
+        const frozen = (breakStart - anchor) / 1000 - accBreak;
+        return (
+          <div className="flex items-center gap-1.5">
+            <span className="relative flex h-2 w-2">
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400" />
+            </span>
+            <span className="text-xs font-medium text-amber-700" title={t("tasks.onBreak")}>
+              {`${fmt(frozen)} ⏸`}
+            </span>
+          </div>
+        );
+      }
+
+      const net = (now - anchor) / 1000 - accBreak;
+      return (
+        <div className="flex items-center gap-1.5">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+          </span>
+          <span className="text-xs font-medium text-green-700">{fmt(net)}</span>
+        </div>
+      );
+    }
 
     // Completed/closed tasks: show final time
     if (CLOSED_STATUSES.includes(status)) {
