@@ -6,6 +6,77 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+# ── Postgres-safe bigint → uuid primary-key conversion ────────────────────────
+# The original migration altered the id columns of TaskExecution / TaskBreakLog /
+# TaskProgressLog straight from BigAutoField (bigint) to UUIDField. Django emits
+# `ALTER COLUMN id TYPE uuid USING id::uuid`, which Postgres REJECTS:
+#     django.db.utils.ProgrammingError: cannot cast type bigint to uuid
+# (SQLite is typeless so it never surfaced locally.)
+#
+# These three tables are introduced in 0004 and are always empty at this point
+# (the execution workflow only starts writing rows in later releases), so we can
+# recreate the columns as fresh uuids with gen_random_uuid() instead of casting.
+# We drop the inbound FK constraints first (Postgres won't ALTER TYPE a column an
+# FK depends on), convert every id + FK column, then re-add the constraints.
+#
+# Wrapped in SeparateDatabaseAndState so Django's migration STATE still records
+# the fields as UUIDField (identical end state to the original migration); only
+# the DATABASE step is replaced. Non-Postgres backends (SQLite dev) keep working
+# via column affinity, so the raw DDL is a no-op there.
+def _convert_pks_to_uuid(apps, schema_editor):
+    if schema_editor.connection.vendor != "postgresql":
+        return
+    statements = [
+        # Drop every FK constraint that points at tasks_taskexecution.
+        """
+        DO $$
+        DECLARE r record;
+        BEGIN
+            FOR r IN
+                SELECT conrelid::regclass::text AS tbl, conname
+                FROM pg_constraint
+                WHERE contype = 'f'
+                  AND confrelid = 'tasks_taskexecution'::regclass
+            LOOP
+                EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', r.tbl, r.conname);
+            END LOOP;
+        END $$;
+        """,
+        # Convert primary keys (empty tables -> generate fresh uuids).
+        # BigAutoField PKs are IDENTITY columns on modern Postgres (and were
+        # plain serial/nextval defaults on older ones); drop whichever applies
+        # before retyping, since neither is compatible with a uuid column.
+        "ALTER TABLE tasks_taskexecution ALTER COLUMN id DROP IDENTITY IF EXISTS",
+        "ALTER TABLE tasks_taskexecution ALTER COLUMN id DROP DEFAULT",
+        "ALTER TABLE tasks_taskexecution ALTER COLUMN id TYPE uuid USING (gen_random_uuid())",
+        "ALTER TABLE tasks_taskbreaklog ALTER COLUMN id DROP IDENTITY IF EXISTS",
+        "ALTER TABLE tasks_taskbreaklog ALTER COLUMN id DROP DEFAULT",
+        "ALTER TABLE tasks_taskbreaklog ALTER COLUMN id TYPE uuid USING (gen_random_uuid())",
+        "ALTER TABLE tasks_taskprogresslog ALTER COLUMN id DROP IDENTITY IF EXISTS",
+        "ALTER TABLE tasks_taskprogresslog ALTER COLUMN id DROP DEFAULT",
+        "ALTER TABLE tasks_taskprogresslog ALTER COLUMN id TYPE uuid USING (gen_random_uuid())",
+        # Convert the FK columns to match the new uuid primary keys.
+        "ALTER TABLE tasks_taskbreaklog ALTER COLUMN task_execution_id TYPE uuid USING (gen_random_uuid())",
+        "ALTER TABLE tasks_taskprogresslog ALTER COLUMN task_execution_id TYPE uuid USING (gen_random_uuid())",
+        # Re-add the FK constraints (deferrable, matching Django's defaults).
+        """
+        ALTER TABLE tasks_taskbreaklog
+            ADD CONSTRAINT tasks_taskbreaklog_task_execution_id_fk
+            FOREIGN KEY (task_execution_id) REFERENCES tasks_taskexecution (id)
+            DEFERRABLE INITIALLY DEFERRED
+        """,
+        """
+        ALTER TABLE tasks_taskprogresslog
+            ADD CONSTRAINT tasks_taskprogresslog_task_execution_id_fk
+            FOREIGN KEY (task_execution_id) REFERENCES tasks_taskexecution (id)
+            DEFERRABLE INITIALLY DEFERRED
+        """,
+    ]
+    with schema_editor.connection.cursor() as cursor:
+        for sql in statements:
+            cursor.execute(sql)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -48,28 +119,37 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(app_label)s_%(class)s_created', to=settings.AUTH_USER_MODEL),
         ),
         migrations.AlterField(
-            model_name='taskbreaklog',
-            name='id',
-            field=models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False),
-        ),
-        migrations.AlterField(
             model_name='taskexecution',
             name='created_by',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(app_label)s_%(class)s_created', to=settings.AUTH_USER_MODEL),
-        ),
-        migrations.AlterField(
-            model_name='taskexecution',
-            name='id',
-            field=models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False),
         ),
         migrations.AlterField(
             model_name='taskprogresslog',
             name='created_by',
             field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='%(app_label)s_%(class)s_created', to=settings.AUTH_USER_MODEL),
         ),
-        migrations.AlterField(
-            model_name='taskprogresslog',
-            name='id',
-            field=models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False),
+        # bigint -> uuid primary keys. State stays identical to the original
+        # migration; only the database step is Postgres-safe (see helper above).
+        migrations.SeparateDatabaseAndState(
+            state_operations=[
+                migrations.AlterField(
+                    model_name='taskbreaklog',
+                    name='id',
+                    field=models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False),
+                ),
+                migrations.AlterField(
+                    model_name='taskexecution',
+                    name='id',
+                    field=models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False),
+                ),
+                migrations.AlterField(
+                    model_name='taskprogresslog',
+                    name='id',
+                    field=models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False),
+                ),
+            ],
+            database_operations=[
+                migrations.RunPython(_convert_pks_to_uuid, migrations.RunPython.noop),
+            ],
         ),
     ]
