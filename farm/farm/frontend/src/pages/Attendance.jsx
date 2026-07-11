@@ -722,6 +722,22 @@ export default function Attendance() {
                 return <span className="text-gray-400">—</span>;
               },
             },
+            // Distance from the farm — how far the worker is from the farm centre.
+            // Only shown to managers / super admins.
+            ...(canApprove ? [{
+              key: "check_in_distance",
+              header: t("attendance.distance", "Distance"),
+              render: (r) => {
+                const d = r.check_in_distance;
+                if (d == null) return <span className="text-gray-400">—</span>;
+                const outside = r.geofence_status === false || r.geofence_status_display === "NO";
+                return (
+                  <Badge color={outside ? "red" : "green"}>
+                    {outside ? t("gps.outside") : t("gps.inFence")} ({Math.round(Number(d))}m)
+                  </Badge>
+                );
+              },
+            }] : []),
             {
               key: "check_in_coords",
               header: t("attendance.gpsIn"),
@@ -742,7 +758,14 @@ export default function Attendance() {
             {
               key: "approval_status",
               header: t("attendance.approval"),
-              render: (r) => <Badge color={apprColor[r.approval_status]}>{t(`attendance.${apprLabelMap[r.approval_status] || r.approval_status}`)}</Badge>,
+              render: (r) => {
+                // Outside the farm → not approved; show "—".
+                const outside = r.geofence_status === false || r.geofence_status_display === "NO";
+                if (outside && r.approval_status !== "APPROVED") {
+                  return <span className="text-gray-400">—</span>;
+                }
+                return <Badge color={apprColor[r.approval_status]}>{t(`attendance.${apprLabelMap[r.approval_status] || r.approval_status}`)}</Badge>;
+              },
             },
             {
               key: "overtime_hours",

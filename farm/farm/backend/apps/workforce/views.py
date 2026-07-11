@@ -349,8 +349,15 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
                 # then farm center+radius. Records whether check-in is inside the
                 # farm geofence (shown in the "In Geofence" column). Approval is
                 # granted at CHECK-OUT, so stay PENDING here regardless.
-                attendance.geofence_status = location_inside_farm(farm, lat, lng)
+                is_inside = location_inside_farm(farm, lat, lng)
+                attendance.geofence_status = is_inside
                 attendance.approval_status = Attendance.ApprovalStatus.PENDING
+                # Outside the farm geofence → the worker is not on site, so mark
+                # them Absent (Status column shows "Absent", Approval stays "-").
+                if is_inside is False:
+                    attendance.status = Attendance.Status.ABSENT
+                else:
+                    attendance.status = Attendance.Status.PRESENT
 
                 # ── Auto-detect address from GPS ───────────────────────────────
                 try:
@@ -383,9 +390,14 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             if attendance.check_out_time is not None:
                 return Response({"detail": "Already checked out today."}, status=400)
             attendance.check_out_time = timezone.now()
-            attendance.status = Attendance.Status.PRESENT_DONE
-            # Auto-approve the attendance once the worker checks out.
-            attendance.approval_status = Attendance.ApprovalStatus.APPROVED
+            # Auto-approve on check-out ONLY when the check-in was inside the
+            # farm geofence. If the worker checked in from outside, keep them
+            # Absent and unapproved (Approval column shows "-").
+            if attendance.geofence_status is False:
+                attendance.status = Attendance.Status.ABSENT
+            else:
+                attendance.status = Attendance.Status.PRESENT_DONE
+                attendance.approval_status = Attendance.ApprovalStatus.APPROVED
             if request.data.get("overtime_hours") is not None:
                 attendance.overtime_hours = request.data.get("overtime_hours")
             if request.data.get("check_out_lat") is not None:
