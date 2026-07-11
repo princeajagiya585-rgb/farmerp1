@@ -29,7 +29,15 @@ if (import.meta.env.PROD && import.meta.env.VITE_API_URL) {
   );
 }
 
-export const api = axios.create({ baseURL: API_BASE });
+export const api = axios.create({
+  baseURL: API_BASE,
+  // Generous default timeout: long enough for the backend to answer even when
+  // it is waking from idle, short enough that a genuinely stuck request gives
+  // up and hits the retry-with-backoff logic below instead of hanging forever.
+  // File uploads (FormData) override this with a much longer timeout — see
+  // getConfig() — so large photos on slow mobile networks are not cut off.
+  timeout: 30000,
+});
 
 // ── Photo/Media URL Normalizer ────────────────────────────────────────
 // Converts various URL formats to absolute URLs for rendering <img> tags.
@@ -342,28 +350,38 @@ api.interceptors.response.use(
       }
     }
 
-    // ── 502/503/504 (Bad Gateway / Service Unavailable / Gateway Timeout)
-    // These mean Railway is waking up, the backend is restarting, or
-    // the DB connection dropped.  Retry ONCE with a 3s delay because
-    // Railway free-tier sleeps after inactivity — the first request
-    // after a sleep will fail, and a retry usually succeeds.
+    // ── Transient failures: retry with backoff ─────────────────────
+    // A 502/503/504 (Railway waking/restarting, gateway) or a network error
+    // (no response — a flaky mobile signal, or the backend waking from idle)
+    // is almost always temporary. Retry a few times with increasing delays so
+    // a login or page load recovers on its own instead of instantly showing
+    // "Cannot connect to server" on the first blip.
+    //
+    // A request that reached the server and came back 4xx (e.g. a 401 for a
+    // wrong password) HAS a response and is NOT retried here.
+    //
+    // GET requests and auth calls (login / refresh / OTP) have no side
+    // effects, so they can be retried several times safely. Mutating requests
+    // (create / update / delete) get a single retry so a lost response can't
+    // apply the same change twice.
     const isServerError = [502, 503, 504].includes(error.response?.status);
-    if (isServerError && original && !original._retryServer) {
-      original._retryServer = true;
-      console.warn(`[API] Server error ${error.response.status}, retrying once after 3s...`);
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-      return originalRequest(original);
-    }
-
-    // ── Network error (no response at all) — Railway wake-up retry ─
-    // Axios throws a network error when the backend is unreachable.
-    // On Railway free tier this happens when the server is sleeping.
-    // Retry ONCE with a 5s delay.
-    if (!error.response && !original._retryNetwork) {
-      original._retryNetwork = true;
-      console.warn("[API] Network error (server may be sleeping), retrying once after 5s...");
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-      return originalRequest(original);
+    const isNetworkError = !error.response && error.code !== "ERR_CANCELED";
+    if ((isServerError || isNetworkError) && original) {
+      const method = (original.method || "get").toLowerCase();
+      const safeToRetryMany =
+        method === "get" || (original.url || "").includes("/auth/");
+      const maxRetries = safeToRetryMany ? 3 : 1;
+      original._transientRetries = original._transientRetries || 0;
+      if (original._transientRetries < maxRetries) {
+        original._transientRetries++;
+        const delay = 1500 * original._transientRetries; // 1.5s, 3s, 4.5s
+        console.warn(
+          `[API] ${isNetworkError ? "Network" : "Server"} error — retry ` +
+          `${original._transientRetries}/${maxRetries} in ${delay}ms`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        return originalRequest(original);
+      }
     }
 
     // ── 401 Unauthorized: Try token refresh ────────────────────────
@@ -425,7 +443,12 @@ export const resource = (path) => {
 
 /** Detect FormData payloads so Axios auto-sets multipart header. */
 function getConfig(data) {
-  // Don't set Content-Type for FormData - Axios sets it automatically with boundary
+  // Don't set Content-Type for FormData - Axios sets it automatically with boundary.
+  // File uploads (photos/bills) can be several MB and slow on mobile data, so
+  // give them a much longer timeout than the 30s default to avoid cut-offs.
+  if (typeof FormData !== "undefined" && data instanceof FormData) {
+    return { timeout: 120000 };
+  }
   return {};
 }
 
