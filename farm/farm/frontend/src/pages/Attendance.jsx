@@ -881,6 +881,25 @@ export default function Attendance() {
               </button>
             </div>
             <div className="space-y-4 p-5">
+              {/* Multi-farm workers pick which farm they are at — shown first so
+                  it's unmistakable. Present/Absent is checked against the
+                  worker's assigned farms' geofences. */}
+              {(checkInTarget?.assigned_farm_details?.length || 0) > 1 && (
+                <div className="rounded-lg bg-brand-50 p-3 ring-1 ring-brand-200">
+                  <label className="mb-1 block text-sm font-semibold text-brand-800">
+                    {t("attendance.selectFarm", "Select Farm")}
+                  </label>
+                  <select
+                    value={checkInFarm}
+                    onChange={(e) => setCheckInFarm(e.target.value)}
+                    className="w-full rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500"
+                  >
+                    {checkInTarget.assigned_farm_details.map((f) => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {posLoading ? (
                 <div className="flex items-center gap-2 rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
                 <Loader2 size={16} className="animate-spin text-brand-600" /> {t("common.gettingLocation")}
@@ -908,25 +927,6 @@ export default function Attendance() {
               ) : (
                 <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700 ring-1 ring-red-200">
                   {t("common.locationUnavailable")}
-                </div>
-              )}
-
-              {/* Multi-farm workers pick which farm they are checking into.
-                  The geofence (Present/Absent) is evaluated against THIS farm. */}
-              {(checkInTarget?.assigned_farm_details?.length || 0) > 1 && (
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    {t("attendance.selectFarm", "Select Farm")}
-                  </label>
-                  <select
-                    value={checkInFarm}
-                    onChange={(e) => setCheckInFarm(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
-                  >
-                    {checkInTarget.assigned_farm_details.map((f) => (
-                      <option key={f.id} value={f.id}>{f.name}</option>
-                    ))}
-                  </select>
                 </div>
               )}
 
