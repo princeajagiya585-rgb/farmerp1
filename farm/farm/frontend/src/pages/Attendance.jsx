@@ -451,7 +451,7 @@ export default function Attendance() {
                   )}
                   {todayAttendance?.check_in_distance != null && (
                     <Badge color={todayAttendance.geofence_status ? "green" : "red"}>
-                      <MapPin size={10} /> {todayAttendance.geofence_status ? t("gps.inFence") : t("gps.outside")} ({Math.round(todayAttendance.check_in_distance)}m)
+                      <MapPin size={10} /> {todayAttendance.geofence_status ? (todayAttendance.farm_name || t("gps.inFence")) : t("gps.outside")} ({Math.round(todayAttendance.check_in_distance)}m)
                     </Badge>
                   )}
                   {todayAttendance?.status && (
@@ -512,8 +512,8 @@ export default function Attendance() {
                 </Button>
               )}
               {todayAttendance?.check_in_time && todayAttendance?.check_out_time && (
-                <Button disabled className="bg-gray-300 text-gray-500 cursor-not-allowed shadow-sm">
-                  <Check size={16} /> {t("attendance.checkedOut")}
+                <Button disabled className="bg-purple-100 text-purple-700 cursor-not-allowed shadow-sm">
+                  <Check size={16} /> {t("attendance.doneAttendance", "Done Attendance")}
                 </Button>
               )}
             </div>
@@ -706,17 +706,18 @@ export default function Attendance() {
                 const outInside = checkOutStatus === "YES" || checkOutStatus === true;
                 const outOutside = checkOutStatus === "NO" || checkOutStatus === false;
 
-                // Show combined status: track if they checked in from inside but out from outside
+                // Inside the geofence → show the farm name; outside → "Outside".
+                const farmLabel = r.farm_name || t("gps.inFence");
                 if (isInside && outOutside) {
                   return (
                     <div className="flex items-center gap-1">
-                      <Badge color="green">{t("gps.inFence")}</Badge>
+                      <Badge color="green">{farmLabel}</Badge>
                       <span className="text-xs text-gray-400">→</span>
                       <Badge color="red">{t("gps.outside")}</Badge>
                     </div>
                   );
                 }
-                if (isInside) return <Badge color="green">{t("gps.inFence")}</Badge>;
+                if (isInside) return <Badge color="green">{farmLabel}</Badge>;
                 if (isOutside) return <Badge color="red">{t("gps.outside")}</Badge>;
                 return <span className="text-gray-400">—</span>;
               },
