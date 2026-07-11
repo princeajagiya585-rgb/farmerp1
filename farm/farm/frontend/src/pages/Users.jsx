@@ -1,8 +1,9 @@
 import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Clock, Lock, Play, LogIn, Square, CheckCircle, Plus, Pencil, Trash2, Search, Filter, X, AlertTriangle, UserMinus } from "lucide-react";
+import { Clock, Lock, Play, LogIn, Square, CheckCircle, Plus, Pencil, Trash2, Search, Filter, X, AlertTriangle, UserMinus, Camera } from "lucide-react";
 import LoadingSpinner from "../components/LoadingSpinner";
+import CameraCapture from "../components/CameraCapture";
 import { api, resource, toFormData, normalizePhotoUrl } from "../lib/api";
 import { Badge, Button, Card, Input, Modal, MultiSelect, PhotoThumb, Select, ToastContainer, useToast } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
@@ -52,6 +53,7 @@ export default function Users() {
   // Modal state
   const [modalOpen, setModalOpen] = useState(null); // 'create' or { edit: id }
   const [formData, setFormData] = useState({});
+  const [aadhaarCameraOpen, setAadhaarCameraOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toasts, addToast, removeToast] = useToast();
   const [suspendConfirm, setSuspendConfirm] = useState(null); // user to suspend
@@ -1118,12 +1120,23 @@ export default function Users() {
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">{t("users.aadhaarPhoto")}</label>
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={(e) => setFormData({ ...formData, aadhaar_photo: e.target.files[0] || null })}
-                  className="w-full rounded-lg border border-gray-300 text-sm file:mr-3 file:rounded-l-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    capture="environment"
+                    onChange={(e) => setFormData({ ...formData, aadhaar_photo: e.target.files[0] || null })}
+                    className="w-full rounded-lg border border-gray-300 text-sm file:mr-3 file:rounded-l-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setAadhaarCameraOpen(true)}
+                    title={t("common.takePhoto")}
+                    className="flex shrink-0 items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-100"
+                  >
+                    <Camera size={16} /> {t("common.takePhoto")}
+                  </button>
+                </div>
                 {formData.aadhaar_photo instanceof File && <p className="mt-1 text-xs text-gray-500">{formData.aadhaar_photo.name}</p>}
               </div>
             </div>
@@ -1138,6 +1151,16 @@ export default function Users() {
           </form>
         </Modal>
       )}
+
+      <CameraCapture
+        open={aadhaarCameraOpen}
+        title={t("users.aadhaarPhoto")}
+        onClose={() => setAadhaarCameraOpen(false)}
+        onCapture={(file) => {
+          setFormData((prev) => ({ ...prev, aadhaar_photo: file }));
+          setAadhaarCameraOpen(false);
+        }}
+      />
     </div>
   );
 }

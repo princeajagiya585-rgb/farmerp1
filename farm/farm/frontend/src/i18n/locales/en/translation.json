@@ -122,6 +122,8 @@
   "common.checkOutPhoto": "Check-out Photo",
   "common.workPhoto": "Work Photo",
   "common.clickPhoto": "Click to take photo or upload",
+  "common.takePhoto": "Take Photo",
+  "common.orChooseFile": "or choose a file",
   "common.couldNotGetLocation": "Could not get your location. Please allow location access and try again.",
   "common.locationUnavailable": "Location unavailable — you can still submit, or allow location access and reopen.",
   "common.editAttendance": "Edit Attendance",

@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Plus, Pencil, Trash2, Search, Download, Printer, ChevronLeft, ChevronRight, ChevronDown, Filter,
+  Plus, Pencil, Trash2, Search, Download, Printer, ChevronLeft, ChevronRight, ChevronDown, Filter, Camera,
 } from "lucide-react";
 import LoadingSpinner from "./LoadingSpinner";
+import CameraCapture from "./CameraCapture";
 import { resource } from "../lib/api";
 import { formatApiError } from "../lib/errors";
 import { exportExcel, printTable } from "../lib/export";
@@ -84,6 +85,8 @@ export default function CrudResource({
   const [fkData, setFkData] = useState({}); // stores full records { fieldName: { id: record } }
   const [currentRow, setCurrentRow] = useState(null);
   const [showCreateDropdown, setShowCreateDropdown] = useState(false);
+  // Name of the file field whose "Take Photo" camera modal is open (or null).
+  const [cameraField, setCameraField] = useState(null);
 
   // Immediately update a single row in local state (no API call)
   const updateRow = useCallback((id, updates) => {
@@ -715,14 +718,25 @@ export default function CrudResource({
               return (
                 <div key={fl.name}>
                   <label className="mb-1 block text-sm font-medium text-gray-700">{fl.label}</label>
-                  <input
-                    type="file"
-                    accept={t("crud.fileAccept")}
-                    onChange={(e) =>
-                      setForm({ ...form, [fl.name]: e.target.files[0] || "" })
-                    }
-                    className="w-full rounded-lg border border-gray-300 text-sm file:mr-3 file:rounded-l-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      accept={t("crud.fileAccept")}
+                      capture="environment"
+                      onChange={(e) =>
+                        setForm({ ...form, [fl.name]: e.target.files[0] || "" })
+                      }
+                      className="w-full rounded-lg border border-gray-300 text-sm file:mr-3 file:rounded-l-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCameraField(fl.name)}
+                      title={t("common.takePhoto")}
+                      className="flex shrink-0 items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-100"
+                    >
+                      <Camera size={16} /> {t("common.takePhoto")}
+                    </button>
+                  </div>
                   {form[fl.name] && form[fl.name] instanceof File && (
                     <p className="mt-1 text-xs text-gray-500">{t("crud.fileHint", { name: form[fl.name].name })}</p>
                   )}
@@ -770,6 +784,16 @@ export default function CrudResource({
           </div>
         </form>
       </Modal>
+
+      <CameraCapture
+        open={!!cameraField}
+        title={t("common.takePhoto")}
+        onClose={() => setCameraField(null)}
+        onCapture={(file) => {
+          if (cameraField) setForm((prev) => ({ ...prev, [cameraField]: file }));
+          setCameraField(null);
+        }}
+      />
     </div>
   );
 }

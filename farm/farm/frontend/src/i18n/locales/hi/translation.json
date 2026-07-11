@@ -839,6 +839,8 @@
   "common.checkInPhoto": "चेक इन फ़ोटो",
   "common.checkOutPhoto": "चेक आउट फ़ोटो",
   "common.clickPhoto": "फ़ोटो लेने या अपलोड करने के लिए क्लिक करें",
+  "common.takePhoto": "फ़ोटो लें",
+  "common.orChooseFile": "या फ़ाइल चुनें",
   "common.couldNotGetLocation": "आपका स्थान प्राप्त नहीं हो सका। कृपया स्थान एक्सेस की अनुमति दें और पुनः प्रयास करें।",
   "common.locationUnavailable": "स्थान अनुपलब्ध — आप फिर भी सबमिट कर सकते हैं, या स्थान एक्सेस की अनुमति देकर पुनः खोलें।",
   "common.editAttendance": "उपस्थिति संपादित करें",

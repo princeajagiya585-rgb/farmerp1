@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, FileText, Download, GitBranch } from "lucide-react";
+import { Plus, FileText, Download, GitBranch, Camera } from "lucide-react";
 import { api, resource } from "../lib/api";
+import CameraCapture from "../components/CameraCapture";
 import { Badge, Button, Card, Input, Modal, PageHeader, Select, Table, Textarea } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 
@@ -20,6 +21,8 @@ export default function Documents() {
   const [ver, setVer] = useState(null); // {doc, file, notes} for the add-version modal
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const [docCameraOpen, setDocCameraOpen] = useState(false);
+  const [verCameraOpen, setVerCameraOpen] = useState(false);
 
   const load = () => repo.list().then((d) => setRows(Array.isArray(d) ? d : d.results || []));
   useEffect(() => {
@@ -121,13 +124,23 @@ export default function Documents() {
           <Input label="Tags (comma separated)" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} />
           <Textarea label="Description" rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           <Input label="Expiry Date" type="date" value={form.expiry_date} onChange={(e) => setForm({ ...form, expiry_date: e.target.value })} />
-          <label className="block text-sm">
+          <div className="text-sm">
             <span className="mb-1 block font-medium text-gray-600">File</span>
-            <input type="file" onChange={(e) => setForm({ ...form, file: e.target.files[0] })} required className="text-sm" />
-          </label>
+            <div className="flex items-center gap-2">
+              <input type="file" accept="image/*,.pdf" capture="environment" onChange={(e) => setForm({ ...form, file: e.target.files[0] })} className="text-sm" />
+              <button
+                type="button"
+                onClick={() => setDocCameraOpen(true)}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-100"
+              >
+                <Camera size={16} /> {t("common.takePhoto")}
+              </button>
+            </div>
+            {form.file instanceof File && <p className="mt-1 text-xs text-gray-500">{form.file.name}</p>}
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" disabled={saving}>{saving ? "Uploading…" : "Upload"}</Button>
+            <Button type="submit" disabled={saving || !form.file}>{saving ? "Uploading…" : "Upload"}</Button>
           </div>
         </form>
       </Modal>
@@ -138,10 +151,20 @@ export default function Documents() {
             {err && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{err}</p>}
             <p className="text-sm text-gray-500">Current: v{ver.doc.version}. The existing file is archived and the version bumps to v{ver.doc.version + 1}.</p>
             <Input label="Version notes" value={ver.notes} onChange={(e) => setVer({ ...ver, notes: e.target.value })} />
-            <label className="block text-sm">
+            <div className="text-sm">
               <span className="mb-1 block font-medium text-gray-600">New file</span>
-              <input type="file" onChange={(e) => setVer({ ...ver, file: e.target.files[0] })} required className="text-sm" />
-            </label>
+              <div className="flex items-center gap-2">
+                <input type="file" accept="image/*,.pdf" capture="environment" onChange={(e) => setVer({ ...ver, file: e.target.files[0] })} className="text-sm" />
+                <button
+                  type="button"
+                  onClick={() => setVerCameraOpen(true)}
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-100"
+                >
+                  <Camera size={16} /> {t("common.takePhoto")}
+                </button>
+              </div>
+              {ver.file instanceof File && <p className="mt-1 text-xs text-gray-500">{ver.file.name}</p>}
+            </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="secondary" onClick={() => setVer(null)}>Cancel</Button>
               <Button type="submit" disabled={saving || !ver.file}>{saving ? "Uploading…" : "Upload Version"}</Button>
@@ -149,6 +172,19 @@ export default function Documents() {
           </form>
         )}
       </Modal>
+
+      <CameraCapture
+        open={docCameraOpen}
+        title={t("common.takePhoto")}
+        onClose={() => setDocCameraOpen(false)}
+        onCapture={(file) => { setForm((prev) => ({ ...prev, file })); setDocCameraOpen(false); }}
+      />
+      <CameraCapture
+        open={verCameraOpen}
+        title={t("common.takePhoto")}
+        onClose={() => setVerCameraOpen(false)}
+        onCapture={(file) => { setVer((prev) => (prev ? { ...prev, file } : prev)); setVerCameraOpen(false); }}
+      />
     </div>
   );
 }

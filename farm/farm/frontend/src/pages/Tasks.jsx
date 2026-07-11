@@ -5,6 +5,7 @@ import {
   X, AlertCircle
 } from "lucide-react";
 import CrudResource from "../components/CrudResource";
+import CameraCapture from "../components/CameraCapture";
 import { Badge, Button, ToastContainer, useToast } from "../components/ui";
 import { resource, toFormData } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -137,6 +138,7 @@ export default function Tasks() {
   const [workModal, setWorkModal] = useState(null);
   const [workPhoto, setWorkPhoto] = useState(null);
   const [workPhotoPreview, setWorkPhotoPreview] = useState(null);
+  const [workCameraOpen, setWorkCameraOpen] = useState(false);
   const [workPos, setWorkPos] = useState(null);
   const [workPosLoading, setWorkPosLoading] = useState(false);
   const [workSaving, setWorkSaving] = useState(false);
@@ -230,14 +232,16 @@ export default function Tasks() {
     fetchWorkLocation();
   };
 
-  const handleWorkPhotoChange = (e) => {
-    const file = e.target.files[0];
+  // Shared by the file picker and the camera: store the file and build a preview.
+  const applyWorkPhoto = (file) => {
     if (!file) return;
     setWorkPhoto(file);
     const reader = new FileReader();
     reader.onloadend = () => setWorkPhotoPreview(reader.result);
     reader.readAsDataURL(file);
   };
+
+  const handleWorkPhotoChange = (e) => applyWorkPhoto(e.target.files[0]);
 
   const submitWork = async () => {
     if (!workModal) return;
@@ -736,11 +740,19 @@ export default function Tasks() {
                     </button>
                   </div>
                 ) : (
-                  <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
-                    <Camera size={24} className="text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-500">{t("gps.clickPhoto")}</p>
-                    <input type="file" className="hidden" accept="image/*" onChange={handleWorkPhotoChange} />
-                  </label>
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setWorkCameraOpen(true)}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 py-3 text-sm font-semibold text-white hover:bg-brand-700"
+                    >
+                      <Camera size={18} /> {t("common.takePhoto")}
+                    </button>
+                    <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                      <p className="text-sm text-gray-500">{t("common.orChooseFile")}</p>
+                      <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handleWorkPhotoChange} />
+                    </label>
+                  </div>
                 )}
               </div>
 
@@ -800,6 +812,13 @@ export default function Tasks() {
           </div>
         </div>
       )}
+
+      <CameraCapture
+        open={workCameraOpen}
+        title={t("common.workPhoto")}
+        onClose={() => setWorkCameraOpen(false)}
+        onCapture={(file) => { applyWorkPhoto(file); setWorkCameraOpen(false); }}
+      />
 
       <ToastContainer toasts={toasts} onClose={removeToast} />
     </>

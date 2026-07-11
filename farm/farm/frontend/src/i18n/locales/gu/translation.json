@@ -120,6 +120,8 @@
   "common.checkOutPhoto": "ચેક-આઉટ ફોટો",
   "common.workPhoto": "કામનો ફોટો",
   "common.clickPhoto": "ફોટો લેવા અથવા અપલોડ કરવા ક્લિક કરો",
+  "common.takePhoto": "ફોટો લો",
+  "common.orChooseFile": "અથવા ફાઇલ પસંદ કરો",
   "common.couldNotGetLocation": "તમારું સ્થાન મેળવી શક્યા નથી. કૃપા કરીને સ્થાન એક્સેસની મંજૂરી આપો અને ફરી પ્રયાસ કરો.",
   "common.locationUnavailable": "સ્થાન ઉપલબ્ધ નથી — તમે હજુ પણ સબમિટ કરી શકો છો, અથવા સ્થાન એક્સેસની મંજૂરી આપો અને ફરી ખોલો.",
   "common.editAttendance": "હાજરી સંપાદિત કરો",

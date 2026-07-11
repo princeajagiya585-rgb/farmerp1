@@ -4,6 +4,7 @@ import { Download, MapPin, Check, X, LogIn, LogOut, Clock, Navigation, Camera, L
 import { openMapUrl, hasValidCoords } from "../lib/maps";
 import { api, resource, toFormData, normalizePhotoUrl } from "../lib/api";
 import { Badge, Button, Card, PageHeader, PhotoThumb, Table, Select, ToastContainer, useToast } from "../components/ui";
+import CameraCapture from "../components/CameraCapture";
 import { exportExcel } from "../lib/export";
 import { useAuth } from "../context/AuthContext";
 
@@ -96,6 +97,7 @@ export default function Attendance() {
   const [checkInTarget, setCheckInTarget] = useState(null);
   const [checkInPhoto, setCheckInPhoto] = useState(null);
   const [checkInPreview, setCheckInPreview] = useState(null);
+  const [checkInCameraOpen, setCheckInCameraOpen] = useState(false);
   const [checkInPos, setCheckInPos] = useState(null);
   const [checkInNotes, setCheckInNotes] = useState("");
   // Which farm the worker is checking into (for multi-farm workers).
@@ -108,6 +110,7 @@ export default function Attendance() {
   const [checkOutTarget, setCheckOutTarget] = useState(null);
   const [checkOutPhoto, setCheckOutPhoto] = useState(null);
   const [checkOutPreview, setCheckOutPreview] = useState(null);
+  const [checkOutCameraOpen, setCheckOutCameraOpen] = useState(false);
   const [checkOutPos, setCheckOutPos] = useState(null);
   const [checkOutNotes, setCheckOutNotes] = useState("");
   // Timer state for live duration display
@@ -231,14 +234,14 @@ export default function Attendance() {
     setPosLoading(false);
   };
 
-  const handleCheckInPhoto = (e) => {
-    const file = e.target.files[0];
+  const applyCheckInPhoto = (file) => {
     if (!file) return;
     setCheckInPhoto(file);
     const reader = new FileReader();
     reader.onloadend = () => setCheckInPreview(reader.result);
     reader.readAsDataURL(file);
   };
+  const handleCheckInPhoto = (e) => applyCheckInPhoto(e.target.files[0]);
 
   const submitCheckIn = async () => {
     if (!checkInTarget) return;
@@ -293,14 +296,14 @@ export default function Attendance() {
     setPosLoading(false);
   };
 
-  const handleCheckOutPhoto = (e) => {
-    const file = e.target.files[0];
+  const applyCheckOutPhoto = (file) => {
     if (!file) return;
     setCheckOutPhoto(file);
     const reader = new FileReader();
     reader.onloadend = () => setCheckOutPreview(reader.result);
     reader.readAsDataURL(file);
   };
+  const handleCheckOutPhoto = (e) => applyCheckOutPhoto(e.target.files[0]);
 
   const submitCheckOut = async () => {
     if (!checkOutTarget) return;
@@ -972,11 +975,19 @@ export default function Attendance() {
                     </button>
                   </div>
                 ) : (
-                  <label className="flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100">
-                    <Camera size={24} className="mb-2 text-gray-400" />
-                    <span className="text-sm text-gray-500">{t("common.clickPhoto")}</span>
-                    <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handleCheckInPhoto} />
-                  </label>
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setCheckInCameraOpen(true)}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 py-3 text-sm font-semibold text-white hover:bg-brand-700"
+                    >
+                      <Camera size={18} /> {t("common.takePhoto")}
+                    </button>
+                    <label className="flex h-24 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100">
+                      <span className="text-sm text-gray-500">{t("common.orChooseFile")}</span>
+                      <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handleCheckInPhoto} />
+                    </label>
+                  </div>
                 )}
               </div>
 
@@ -1171,11 +1182,19 @@ export default function Attendance() {
                     </button>
                   </div>
                 ) : (
-                  <label className="flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100">
-                    <Camera size={24} className="mb-2 text-gray-400" />
-                    <span className="text-sm text-gray-500">{t("common.clickPhoto")}</span>
-                    <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handleCheckOutPhoto} />
-                  </label>
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setCheckOutCameraOpen(true)}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 py-3 text-sm font-semibold text-white hover:bg-brand-700"
+                    >
+                      <Camera size={18} /> {t("common.takePhoto")}
+                    </button>
+                    <label className="flex h-24 w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100">
+                      <span className="text-sm text-gray-500">{t("common.orChooseFile")}</span>
+                      <input type="file" className="hidden" accept="image/*" capture="environment" onChange={handleCheckOutPhoto} />
+                    </label>
+                  </div>
                 )}
               </div>
 
@@ -1211,6 +1230,19 @@ export default function Attendance() {
           </div>
         </div>
       )}
+
+      <CameraCapture
+        open={checkInCameraOpen}
+        title={t("common.checkInPhoto")}
+        onClose={() => setCheckInCameraOpen(false)}
+        onCapture={(file) => { applyCheckInPhoto(file); setCheckInCameraOpen(false); }}
+      />
+      <CameraCapture
+        open={checkOutCameraOpen}
+        title={t("common.checkOutPhoto")}
+        onClose={() => setCheckOutCameraOpen(false)}
+        onCapture={(file) => { applyCheckOutPhoto(file); setCheckOutCameraOpen(false); }}
+      />
     </div>
   );
 }
