@@ -115,17 +115,8 @@ export default function Tasks() {
   const { hasRole } = useAuth();
   const canManage = hasRole("SUPER_ADMIN", "FARM_MANAGER");
   const isEmployee = hasRole("EMPLOYEE");
-  const [now, setNow] = useState(Date.now());
   const [myTasksOnly, setMyTasksOnly] = useState(false);
   const [toasts, addToast, removeToast] = useToast();
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      setNow(Date.now());
-      setTimerRefresh(r => r + 1);
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
 
   const assignFields = isEmployee
     ? []
@@ -146,10 +137,6 @@ export default function Tasks() {
   const [workNotes, setWorkNotes] = useState("");
   const [workAddress, setWorkAddress] = useState("");
   const [workReason, setWorkReason] = useState("");
-
-  // Timer refresh state
-  const [timerRefresh, setTimerRefresh] = useState(0);
-
 
   // ── Quick actions (one-click, NO modal) ─────────────────────────
   const handleQuickBreak = async (row, reload, updateRow) => {
@@ -326,6 +313,22 @@ export default function Tasks() {
     const timerData = row.work_timer || execution?.timer_data;
     const session = row.active_session;
     const tracked = row.total_tracked_minutes;
+
+    // Tick a local `now` ONCE PER SECOND, but only while THIS row's timer is
+    // actively counting up. Previously a single interval on the parent
+    // re-rendered the entire Tasks page + table every second; scoping it here
+    // means static rows never re-render and only running timers update.
+    const isTicking =
+      !CLOSED_STATUSES.includes(status) &&
+      status !== "ON_BREAK" &&
+      ((timerData && timerData.start_time && !timerData.is_completed) ||
+        status === "IN_PROGRESS");
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+      if (!isTicking) return undefined;
+      const id = setInterval(() => setNow(Date.now()), 1000);
+      return () => clearInterval(id);
+    }, [isTicking]);
 
     const fmt = (secs) => {
       const v = Math.max(0, Math.floor(secs || 0));

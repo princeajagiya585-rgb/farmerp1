@@ -97,6 +97,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         "work_sessions",
         "executions",
         "activities",
+        "updates",
     ).all()
     serializer_class = TaskSerializer
     farm_lookup = "farm_id"

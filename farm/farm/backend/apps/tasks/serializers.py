@@ -228,9 +228,7 @@ class TaskSerializer(serializers.ModelSerializer):
         source="verified_by.get_full_name", read_only=True
     )
     created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
-    update_count = serializers.IntegerField(
-        source="updates.count", read_only=True
-    )
+    update_count = serializers.SerializerMethodField()
     is_overdue = serializers.BooleanField(read_only=True)
     active_session = serializers.SerializerMethodField()
     total_tracked_minutes = serializers.SerializerMethodField()
@@ -354,8 +352,17 @@ class TaskSerializer(serializers.ModelSerializer):
         }
 
     @extend_schema_field(serializers.IntegerField())
+    def get_update_count(self, obj):
+        # Uses the prefetched `updates` (len of the cached list) instead of
+        # `updates.count`, which would run one COUNT query per row.
+        return len(obj.updates.all())
+
+    @extend_schema_field(serializers.IntegerField())
     def get_during_work_count(self, obj):
-        return obj.location_pings.filter(activity="DURING_WORK").count()
+        # Use the prefetched location_pings (obj.location_pings.all()) and count
+        # in Python. Calling .filter().count() here would ignore the prefetch
+        # cache and fire one extra query per task row (N+1) across the list.
+        return sum(1 for p in obj.location_pings.all() if p.activity == "DURING_WORK")
 
     @extend_schema_field(serializers.ListField())
     def get_location_pings(self, obj):
@@ -366,16 +373,20 @@ class TaskSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(TaskWorkSessionSerializer(allow_null=True))
     def get_active_session(self, obj):
-        session = obj.work_sessions.filter(end_time__isnull=True).first()
+        # Read from the prefetched work_sessions instead of .filter().first(),
+        # which would re-query per row (N+1) across the task list.
+        session = next(
+            (s for s in obj.work_sessions.all() if s.end_time is None), None
+        )
         if session:
             return TaskWorkSessionSerializer(session).data
         return None
 
     @extend_schema_field(serializers.FloatField())
     def get_total_tracked_minutes(self, obj):
-        sessions = obj.work_sessions.filter(end_time__isnull=False)
+        # Iterate the prefetched work_sessions (no per-row query).
         total = 0
-        for s in sessions:
-            delta = s.end_time - s.start_time
-            total += delta.total_seconds() / 60
+        for s in obj.work_sessions.all():
+            if s.end_time is not None:
+                total += (s.end_time - s.start_time).total_seconds() / 60
         return round(total, 1)
