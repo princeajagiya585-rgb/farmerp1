@@ -684,7 +684,9 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             execution.completion_notes = completion_notes
             execution.completion_time = timezone.now()
             execution.completed_at = timezone.now()
-            execution.status = TaskExecution.Status.WAITING_APPROVAL
+            # Work is finished — mark it Completed directly (no separate approval
+            # step) so the task's Status column reads "Completed".
+            execution.status = TaskExecution.Status.COMPLETED
 
             if photo:
                 execution.completion_photo = photo
@@ -695,10 +697,11 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                 "total_break_seconds", "completion_photo", "status", "updated_at"
             ])
 
-        # Update task
+        # Update task — auto-complete so the Status column shows "Completed".
         task.completed_time = timezone.now()
-        task.status = Task.Status.WAITING_APPROVAL
-        task.save(update_fields=["completed_time", "status", "updated_at"])
+        task.status = Task.Status.COMPLETED
+        task.progress = 100
+        task.save(update_fields=["completed_time", "status", "progress", "updated_at"])
 
         # Create TaskActivity record
         TaskActivity.objects.create(
@@ -717,7 +720,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
         if execution:
             return Response(TaskExecutionSerializer(execution, context={'request': request}).data)
-        return Response({"detail": "Work completed.", "status": "WAITING_APPROVAL"})
+        return Response({"detail": "Work completed.", "status": "COMPLETED"})
 
     @action(detail=True, methods=["get"], url_path="get-timer")
     def get_timer(self, request, pk=None):

@@ -43,7 +43,7 @@ const nextStatusAfterAction = {
   BREAK_START: "ON_BREAK",
   BREAK_END: "IN_PROGRESS",
   DURING_WORK: null, // stays same
-  COMPLETED: "WAITING_APPROVAL",
+  COMPLETED: "COMPLETED",
 };
 
 // New work_phase after each action — the action buttons are driven by
