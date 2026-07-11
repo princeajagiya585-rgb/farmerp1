@@ -41,35 +41,35 @@ class PayslipDoneAutoBalanceTests(TestCase):
             **kwargs,
         )
 
-    def test_marking_done_zeros_net_remaining(self):
-        slip = self._make_slip(status=Payslip.Status.DRAFT)
-        self.assertEqual(slip.net_remaining, Decimal("1000"))
-
-        slip = _update_status(slip, Payslip.Status.PAID)
-
-        self.assertEqual(slip.status, Payslip.Status.PAID)
-        self.assertEqual(slip.half_paid, Decimal("1000"))
-        self.assertEqual(slip.net_remaining, Decimal("0"))
-
-    def test_marking_due_again_restores_net_pay(self):
-        slip = self._make_slip(status=Payslip.Status.DRAFT)
-        slip = _update_status(slip, Payslip.Status.PAID)
-        self.assertEqual(slip.net_remaining, Decimal("0"))
-
-        slip = _update_status(slip, Payslip.Status.DRAFT)
-
-        self.assertEqual(slip.status, Payslip.Status.DRAFT)
-        self.assertEqual(slip.half_paid, Decimal("0"))
-        self.assertEqual(slip.net_remaining, Decimal("1000"))
-
-    def test_partial_half_pay_then_done_settles_full(self):
+    def test_marking_done_keeps_actual_half_pay(self):
+        # Closing the account (Done) must NOT bump half_paid up to net_pay —
+        # the Half Pay column keeps showing only what the worker actually got.
         slip = self._make_slip(status=Payslip.Status.DRAFT, half_paid=Decimal("400"))
         self.assertEqual(slip.net_remaining, Decimal("600"))
 
         slip = _update_status(slip, Payslip.Status.PAID)
 
-        self.assertEqual(slip.half_paid, Decimal("1000"))
-        self.assertEqual(slip.net_remaining, Decimal("0"))
+        self.assertEqual(slip.status, Payslip.Status.PAID)
+        self.assertEqual(slip.half_paid, Decimal("400"))
+
+    def test_marking_done_with_no_half_pay_stays_zero(self):
+        slip = self._make_slip(status=Payslip.Status.DRAFT)
+
+        slip = _update_status(slip, Payslip.Status.PAID)
+
+        self.assertEqual(slip.status, Payslip.Status.PAID)
+        self.assertEqual(slip.half_paid, Decimal("0"))
+
+    def test_marking_due_again_preserves_actual_half_pay(self):
+        slip = self._make_slip(status=Payslip.Status.DRAFT, half_paid=Decimal("400"))
+        slip = _update_status(slip, Payslip.Status.PAID)
+        self.assertEqual(slip.half_paid, Decimal("400"))
+
+        slip = _update_status(slip, Payslip.Status.DRAFT)
+
+        self.assertEqual(slip.status, Payslip.Status.DRAFT)
+        self.assertEqual(slip.half_paid, Decimal("400"))
+        self.assertEqual(slip.net_remaining, Decimal("600"))
 
 
 class PayslipGenerationAbsenceTests(TestCase):

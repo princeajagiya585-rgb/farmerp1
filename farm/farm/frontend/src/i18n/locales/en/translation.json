@@ -1652,6 +1652,7 @@
   "gps.noTaskSelected": "— No task —",
   "gps.noTasksAssigned": "No tasks assigned to you.",
   "payroll.netPayRemaining": "Net pay remaining",
+  "payroll.accountClosed": "Account closed",
   "payroll.alreadyPaid": "Already paid",
   "payroll.amountToPay": "Amount to pay (₹)",
   "header.totalTime": "Total Time",

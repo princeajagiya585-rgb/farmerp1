@@ -1615,6 +1615,7 @@
   "gps.noTaskSelected": "— कोई कार्य नहीं —",
   "gps.noTasksAssigned": "आपको कोई कार्य नहीं सौंपा गया।",
   "payroll.netPayRemaining": "शेष शुद्ध वेतन",
+  "payroll.accountClosed": "खाता बंद",
   "payroll.alreadyPaid": "पहले से भुगतान",
   "payroll.amountToPay": "भुगतान राशि (₹)",
   "header.totalTime": "कुल समय",

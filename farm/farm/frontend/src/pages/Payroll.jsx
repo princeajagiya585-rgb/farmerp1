@@ -439,7 +439,21 @@ export default function Payroll() {
             { key: "gross_wage", header: t("header.gross") },
             { key: "overtime_amount", header: t("header.ot") },
             { key: "advance_deduction", header: t("header.advances") },
-            { key: "net_remaining", header: t("header.netPay"), render: (r) => <b>₹{Number(r.net_remaining || 0).toLocaleString("en-IN")}</b> },
+            {
+              key: "net_remaining",
+              header: t("header.netPay"),
+              render: (r) => (
+                <div>
+                  <b>₹{Number(r.net_remaining || 0).toLocaleString("en-IN")}</b>
+                  {r.status === "PAID" && (
+                    <div className="whitespace-nowrap text-xs font-medium text-green-600">
+                      {t("payroll.accountClosed")}
+                      {r.period_month ? ` · ${months[r.period_month - 1]?.label} ${r.period_year}` : ""}
+                    </div>
+                  )}
+                </div>
+              ),
+            },
             {
               key: "status",
               header: t("header.status"),
@@ -458,7 +472,7 @@ export default function Payroll() {
                 return (
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-medium text-indigo-700">₹{paid.toLocaleString("en-IN")}</span>
-                    {canRun && remaining > 0 && (
+                    {canRun && remaining > 0 && r.status !== "PAID" && (
                       <button onClick={() => openHalfPay(r)} className="rounded bg-indigo-500 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-600" title={t("payroll.halfPayTitle")}>
                         {t("payroll.halfPay")}
                       </button>
@@ -496,7 +510,7 @@ export default function Payroll() {
           ]}
           rows={slips
             .filter((s) => (!slipFilterMonth || String(s.period_month) === String(slipFilterMonth)) && (!slipFilterYear || String(s.period_year) === String(slipFilterYear)))
-            .map((s) => ({ ...s, net_remaining: Number(s.net_pay || 0) - Number(s.half_paid || 0) }))}
+            .map((s) => ({ ...s, net_remaining: s.status === "PAID" ? 0 : Number(s.net_pay || 0) - Number(s.half_paid || 0) }))}
           empty={t("payroll.noPayslips")}
         />
       </Card>

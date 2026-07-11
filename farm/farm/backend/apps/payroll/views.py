@@ -396,25 +396,17 @@ class PayslipViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
     def perform_update(self, serializer):
         old_status = serializer.instance.status
         payslip = serializer.save()
-        # When a payslip is marked PAID (the "Done" action), the super admin has
-        # paid the worker in full (typically in cash), so the net pay is fully
-        # settled → set half_paid to net_pay so the Net Pay column auto-balances
-        # to 0. Moving it back to an unpaid status reverses that.
+        # When a payslip is marked PAID (the "Done" action), the account for that
+        # month is CLOSED: the Net Pay column shows ₹0 and the Half Pay column keeps
+        # showing only the amount the worker actually received as partial pay — we
+        # do NOT bump half_paid up to net_pay. Closing simply settles the balance.
         if (
             payslip.status == Payslip.Status.PAID
             and old_status != Payslip.Status.PAID
         ):
-            payslip.half_paid = payslip.net_pay or Decimal("0")
-            payslip.save(update_fields=["half_paid"])
             # The advance amount deducted on it is realised as a repayment →
             # clear those advances so they drop out of the Outstanding list.
             self._settle_advances(payslip)
-        elif (
-            old_status == Payslip.Status.PAID
-            and payslip.status != Payslip.Status.PAID
-        ):
-            payslip.half_paid = Decimal("0")
-            payslip.save(update_fields=["half_paid"])
 
     def _settle_advances(self, payslip):
         remaining = payslip.advance_deduction or Decimal("0")
