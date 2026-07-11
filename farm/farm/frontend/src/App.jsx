@@ -21,7 +21,6 @@ import WorkforceMonitor from "./pages/WorkforceMonitor";
 import Attendance from "./pages/Attendance";
 import Payroll from "./pages/Payroll";
 import PayrollAdvances from "./pages/PayrollAdvances";
-import PayrollDeductions from "./pages/PayrollDeductions";
 import PayrollPayments from "./pages/PayrollPayments";
 import PayrollReports from "./pages/PayrollReports";
 import Tasks from "./pages/Tasks";
@@ -104,7 +103,6 @@ export default function App() {
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/payroll" element={R(["FARM_MANAGER", "EMPLOYEE"], <Payroll />)} />
         <Route path="/payroll/advances" element={R(["FARM_MANAGER"], <PayrollAdvances />)} />
-        <Route path="/payroll/deductions" element={R(["FARM_MANAGER"], <PayrollDeductions />)} />
         <Route path="/payroll/payments" element={R(["FARM_MANAGER"], <PayrollPayments />)} />
         <Route path="/payroll/reports" element={R(["FARM_MANAGER"], <PayrollReports />)} />
         <Route path="/tasks" element={<Tasks />} />

@@ -70,7 +70,6 @@ export const navGroups = [
     children: [
       { to: "/payroll", label: "Periods & Payslips", roles: [FM, EM] },
       { to: "/payroll/advances", label: "Advances", roles: [FM] },
-      { to: "/payroll/deductions", label: "Deductions", roles: [FM] },
       { to: "/payroll/payments", label: "Employee Payments", roles: [FM] },
       { to: "/payroll/reports", label: "Reports", roles: [FM] },
     ],
