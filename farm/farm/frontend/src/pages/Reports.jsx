@@ -18,6 +18,8 @@ function toArray(obj) {
 }
 
 const money = (v) => `₹${Number(v || 0).toLocaleString("en-IN")}`;
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const periodLabel = (m, y) => (m ? `${MONTHS_SHORT[(m - 1) % 12]} ${y || ""}`.trim() : "—");
 
 export default function Reports() {
   const { t } = useTranslation();
@@ -29,6 +31,9 @@ export default function Reports() {
   const [users, setUsers] = useState([]);
   const [userFilter, setUserFilter] = useState("");
   const [appliedUserFilter, setAppliedUserFilter] = useState("");
+  // Closed (Done / PAID) payslips → the Net Pay report table.
+  const [paidSlips, setPaidSlips] = useState([]);
+  const canSeePayroll = hasRole("SUPER_ADMIN", "FARM_MANAGER");
 
   useEffect(() => {
     if (hasRole("SUPER_ADMIN", "FARM_MANAGER")) {
@@ -49,6 +54,16 @@ export default function Reports() {
     api.get("/reporting/crops/").then((r) => setCrops(r.data)).catch(() => {});
     api.get("/reporting/attendance/").then((r) => setAttendance(r.data)).catch(() => {});
   }, [appliedUserFilter]);
+
+  // Load closed (PAID) payslips for the Net Pay report. Runs whenever the page
+  // opens so a freshly-closed account shows up immediately.
+  useEffect(() => {
+    if (!canSeePayroll) return;
+    resource("payroll/payslips")
+      .list({ status: "PAID", page_size: 500 })
+      .then((d) => setPaidSlips(Array.isArray(d) ? d : d.results || []))
+      .catch(() => {});
+  }, [canSeePayroll]);
 
   // Normalise API shapes to {name, value} so the charts always render —
   // the finance report sends {category, total} and the crop report sends
@@ -77,6 +92,30 @@ export default function Reports() {
       ],
       "expenses-by-category.xlsx",
       "Expenses by Category"
+    );
+  };
+
+  const netPayTotal = paidSlips.reduce((s, r) => s + Number(r.net_pay || 0), 0);
+  const exportNetPay = () => {
+    if (!paidSlips.length) return;
+    const rows = paidSlips.map((r) => ({
+      employee: r.employee_name || "—",
+      farm: r.farm_name || "—",
+      period: periodLabel(r.period_month, r.period_year),
+      net_pay: Number(r.net_pay || 0),
+      half_paid: Number(r.half_paid || 0),
+    }));
+    exportExcel(
+      [...rows, { employee: "Total", farm: "", period: "", net_pay: netPayTotal, half_paid: "" }],
+      [
+        { key: "employee", header: "Employee" },
+        { key: "farm", header: "Farm" },
+        { key: "period", header: "Period" },
+        { key: "net_pay", header: "Net Pay (₹)" },
+        { key: "half_paid", header: "Paid (₹)" },
+      ],
+      "net-pay-closed-accounts.xlsx",
+      "Net Pay - Closed Accounts"
     );
   };
 
@@ -198,6 +237,33 @@ export default function Reports() {
           )}
         </Card>
       </div>
+
+      {canSeePayroll && (
+        <div className="mt-4">
+          <Card title={t("reports.netPayClosed")}>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm text-gray-600">
+                {t("reports.netPayClosedHint")}
+              </p>
+              <Button variant="secondary" onClick={exportNetPay} disabled={!paidSlips.length}>
+                <Download size={14} /> Excel
+              </Button>
+            </div>
+            <Table
+              footerColumns={["net_pay", "half_paid"]}
+              columns={[
+                { key: "employee_name", header: t("header.employee"), render: (r) => r.employee_name || "—" },
+                { key: "farm_name", header: t("header.farm"), render: (r) => r.farm_name || "—" },
+                { key: "period", header: t("header.month"), render: (r) => periodLabel(r.period_month, r.period_year) },
+                { key: "net_pay", header: t("header.netPay"), render: (r) => <b>{money(r.net_pay)}</b> },
+                { key: "half_paid", header: t("payroll.halfPay"), render: (r) => money(r.half_paid) },
+              ]}
+              rows={paidSlips}
+              empty={t("reports.netPayEmpty")}
+            />
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
