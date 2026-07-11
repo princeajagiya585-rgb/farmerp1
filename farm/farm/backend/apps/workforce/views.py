@@ -353,29 +353,50 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             lng = request.data.get("check_in_lng")
             if lat is not None and lng is not None:
                 lat, lng = float(lat), float(lng)
-                farm = selected_farm
 
-                # Calculate distance from farm centre for display
-                if farm.latitude is not None and farm.longitude is not None:
+                # Build the list of farms the worker is assigned to (the picked
+                # farm first, then any other farms on their user account). The
+                # worker counts as PRESENT if they are inside the geofence of
+                # ANY assigned farm — we then record the farm they were actually
+                # found at. Only when they are inside NONE of their farms are
+                # they marked Absent.
+                candidate_farms = [selected_farm] if selected_farm else []
+                if employee.user_id:
+                    for f2 in employee.user.farms.all():
+                        if not any(cf and cf.id == f2.id for cf in candidate_farms):
+                            candidate_farms.append(f2)
+
+                matched_farm = None
+                for cf in candidate_farms:
+                    if cf and location_inside_farm(cf, lat, lng) is True:
+                        matched_farm = cf
+                        break
+
+                attendance.approval_status = Attendance.ApprovalStatus.PENDING
+                if matched_farm is not None:
+                    # Present at one of the assigned farms → record that farm.
+                    farm = matched_farm
+                    attendance.farm = matched_farm
+                    attendance.geofence_status = True
+                    attendance.status = Attendance.Status.PRESENT
+                else:
+                    # Inside none of the farms. Use the picked farm to decide:
+                    # a real "outside" (fence exists) → Absent; no fence config
+                    # (cannot verify) → Present (benefit of the doubt).
+                    farm = selected_farm
+                    sel_inside = location_inside_farm(selected_farm, lat, lng) if selected_farm else None
+                    attendance.geofence_status = sel_inside  # False or None
+                    attendance.status = (
+                        Attendance.Status.ABSENT if sel_inside is False
+                        else Attendance.Status.PRESENT
+                    )
+
+                # Distance from the matched/selected farm centre for display.
+                if farm and farm.latitude is not None and farm.longitude is not None:
                     distance = haversine_m(
                         float(farm.latitude), float(farm.longitude), lat, lng
                     )
                     attendance.check_in_distance = round(distance, 2)
-
-                # Use location_inside_farm for accurate geofence validation.
-                # Checks Geofence model polygons, center+radius, farm polygon,
-                # then farm center+radius. Records whether check-in is inside the
-                # farm geofence (shown in the "In Geofence" column). Approval is
-                # granted at CHECK-OUT, so stay PENDING here regardless.
-                is_inside = location_inside_farm(farm, lat, lng)
-                attendance.geofence_status = is_inside
-                attendance.approval_status = Attendance.ApprovalStatus.PENDING
-                # Outside the farm geofence → the worker is not on site, so mark
-                # them Absent (Status column shows "Absent", Approval stays "-").
-                if is_inside is False:
-                    attendance.status = Attendance.Status.ABSENT
-                else:
-                    attendance.status = Attendance.Status.PRESENT
 
                 # ── Auto-detect address from GPS ───────────────────────────────
                 try:
