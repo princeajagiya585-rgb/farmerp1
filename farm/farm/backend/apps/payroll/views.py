@@ -140,21 +140,33 @@ class PayrollPeriodViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                 )
 
                 days_worked = Decimal("0")
+                absent_days = Decimal("0")
                 overtime_hours = Decimal("0")
                 for att in attendances:
                     if att.status == Attendance.Status.PRESENT:
                         days_worked += Decimal("1")
                     elif att.status == Attendance.Status.HALF_DAY:
                         days_worked += Decimal("0.5")
+                        # Half day → half a day's salary is cut for a monthly wage.
+                        absent_days += Decimal("0.5")
+                    elif att.status == Attendance.Status.ABSENT:
+                        absent_days += Decimal("1")
                     overtime_hours += att.overtime_hours or Decimal("0")
 
                 daily_wage = employee.daily_wage or Decimal("0")
                 monthly_salary = employee.monthly_salary or Decimal("0")
-                # If monthly_salary is set, use it as the base wage regardless
-                # of employment type or attendance. Only fall back to
-                # daily_wage × days_worked when monthly_salary is not set.
+                # Days in this payroll month — one day's salary = monthly ÷ this.
+                days_in_month = Decimal(
+                    monthrange(period.year, period.month)[1]
+                )
+                # If monthly_salary is set, it is the base wage, but each absent
+                # day cuts one day's salary (monthly ÷ days-in-month). Only fall
+                # back to daily_wage × days_worked when monthly_salary is not set.
                 if monthly_salary > 0:
-                    gross_wage = monthly_salary
+                    daily_rate = monthly_salary / days_in_month
+                    gross_wage = monthly_salary - (absent_days * daily_rate)
+                    if gross_wage < 0:
+                        gross_wage = Decimal("0")
                 elif daily_wage > 0:
                     gross_wage = days_worked * daily_wage
                 else:
@@ -384,14 +396,25 @@ class PayslipViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
     def perform_update(self, serializer):
         old_status = serializer.instance.status
         payslip = serializer.save()
-        # When a payslip is marked PAID (the "Done" action), the advance amount
-        # deducted on it is realised as a repayment → clear those advances so
-        # they drop out of the Outstanding Advances list.
+        # When a payslip is marked PAID (the "Done" action), the super admin has
+        # paid the worker in full (typically in cash), so the net pay is fully
+        # settled → set half_paid to net_pay so the Net Pay column auto-balances
+        # to 0. Moving it back to an unpaid status reverses that.
         if (
             payslip.status == Payslip.Status.PAID
             and old_status != Payslip.Status.PAID
         ):
+            payslip.half_paid = payslip.net_pay or Decimal("0")
+            payslip.save(update_fields=["half_paid"])
+            # The advance amount deducted on it is realised as a repayment →
+            # clear those advances so they drop out of the Outstanding list.
             self._settle_advances(payslip)
+        elif (
+            old_status == Payslip.Status.PAID
+            and payslip.status != Payslip.Status.PAID
+        ):
+            payslip.half_paid = Decimal("0")
+            payslip.save(update_fields=["half_paid"])
 
     def _settle_advances(self, payslip):
         remaining = payslip.advance_deduction or Decimal("0")

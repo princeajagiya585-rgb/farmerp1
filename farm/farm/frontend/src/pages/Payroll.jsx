@@ -43,6 +43,8 @@ export default function Payroll() {
   // Payslip-specific filters
   const [slipFilterEmp, setSlipFilterEmp] = useState("");
   const [slipFilterStatus, setSlipFilterStatus] = useState("");
+  const [slipFilterMonth, setSlipFilterMonth] = useState("");
+  const [slipFilterYear, setSlipFilterYear] = useState("");
   const [employees, setEmployees] = useState([]);
   // Advances-specific filters
   const [advFilterStatus, setAdvFilterStatus] = useState("");
@@ -65,6 +67,18 @@ export default function Payroll() {
     value: i + 1,
     label: new Date(0, i).toLocaleString(i18n.language, { month: "long" }),
   }));
+
+  // Days in a given month (m is 1-12) — one day's salary = monthly ÷ this.
+  const daysInMonth = (m, y) => new Date(Number(y), Number(m), 0).getDate();
+
+  // One-day salary for a monthly-salaried payslip, else null.
+  const dailyRate = (r) => {
+    const ms = Number(r.employee_monthly_salary || 0);
+    if (ms > 0 && r.period_month && r.period_year) {
+      return ms / daysInMonth(r.period_month, r.period_year);
+    }
+    return null;
+  };
 
   const STATUS_OPTIONS = [
     { value: "DRAFT", label: t("payroll.statusDraft") },
@@ -259,16 +273,21 @@ export default function Payroll() {
           
           // Payslips sheet
           if (slips.length > 0) {
-            const slipRows = slips.map((r) => ({
-              [t("header.employee")]: r.employee_name,
-              [t("header.days")]: r.days_worked,
-              [t("header.gross")]: Number(r.gross_wage || 0),
-              [t("header.ot")]: Number(r.overtime_amount || 0),
-              [t("header.advances")]: Number(r.advance_deduction || 0),
-              [t("header.deductions")]: Number(r.other_deductions || 0),
-              [t("header.netPay")]: Number(r.net_pay || 0),
-              [t("header.status")]: r.status,
-            }));
+            const slipRows = slips.map((r) => {
+              const rate = dailyRate(r);
+              return {
+                [t("header.employee")]: r.employee_name,
+                [t("header.farm")]: r.farm_name || "",
+                [t("header.month")]: r.period_month ? `${months[r.period_month - 1]?.label} ${r.period_year}` : "",
+                [t("header.days")]: r.days_worked,
+                [t("payroll.dailyRate")]: rate != null ? Math.round(rate) : "",
+                [t("header.gross")]: Number(r.gross_wage || 0),
+                [t("header.ot")]: Number(r.overtime_amount || 0),
+                [t("header.advances")]: Number(r.advance_deduction || 0),
+                [t("header.netPay")]: Number(r.net_pay || 0),
+                [t("header.status")]: r.status,
+              };
+            });
             wbData.push({ name: t("payroll.payslips"), data: slipRows });
           }
           
@@ -369,6 +388,20 @@ export default function Payroll() {
               </Select>
             </div>
             <div className="min-w-[120px]">
+              <Select value={slipFilterMonth} onChange={(e) => setSlipFilterMonth(e.target.value)}>
+                <option value="">{t("payroll.allMonths")}</option>
+                {months.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </Select>
+            </div>
+            <div className="min-w-[110px]">
+              <Select value={slipFilterYear} onChange={(e) => setSlipFilterYear(e.target.value)}>
+                <option value="">{t("payroll.allYears")}</option>
+                {Array.from({ length: 7 }, (_, i) => new Date().getFullYear() + 1 - i).map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </Select>
+            </div>
+            <div className="min-w-[120px]">
               <Select value={slipFilterStatus} onChange={(e) => setSlipFilterStatus(e.target.value)}>
                 <option value="">{t("common.allStatus")}</option>
                 {SLIP_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -378,14 +411,34 @@ export default function Payroll() {
         }
       >
         <Table
-          footerColumns={["gross_wage", "overtime_amount", "advance_deduction", "other_deductions", "half_paid", "net_remaining"]}
+          footerColumns={["gross_wage", "overtime_amount", "advance_deduction", "half_paid", "net_remaining"]}
           columns={[
             { key: "employee_name", header: t("header.employee"), render: (r) => r.employee_name || r.employee },
-            { key: "days_worked", header: t("header.days") },
+            { key: "farm_name", header: t("header.farm"), render: (r) => r.farm_name || "-" },
+            {
+              key: "period_month",
+              header: t("header.month"),
+              render: (r) => (r.period_month ? `${months[r.period_month - 1]?.label} ${r.period_year}` : "-"),
+            },
+            {
+              key: "days_worked",
+              header: t("header.days"),
+              render: (r) => {
+                const rate = dailyRate(r);
+                const days = Number(r.days_worked || 0);
+                if (rate != null) {
+                  return (
+                    <span className="whitespace-nowrap">
+                      {days} <span className="text-xs text-gray-500">· ₹{Math.round(rate).toLocaleString("en-IN")}{t("payroll.perDay")}</span>
+                    </span>
+                  );
+                }
+                return days;
+              },
+            },
             { key: "gross_wage", header: t("header.gross") },
             { key: "overtime_amount", header: t("header.ot") },
             { key: "advance_deduction", header: t("header.advances") },
-            { key: "other_deductions", header: t("header.deductions") },
             { key: "net_remaining", header: t("header.netPay"), render: (r) => <b>₹{Number(r.net_remaining || 0).toLocaleString("en-IN")}</b> },
             {
               key: "status",
@@ -441,7 +494,9 @@ export default function Payroll() {
               ),
             },
           ]}
-          rows={slips.map((s) => ({ ...s, net_remaining: Number(s.net_pay || 0) - Number(s.half_paid || 0) }))}
+          rows={slips
+            .filter((s) => (!slipFilterMonth || String(s.period_month) === String(slipFilterMonth)) && (!slipFilterYear || String(s.period_year) === String(slipFilterYear)))
+            .map((s) => ({ ...s, net_remaining: Number(s.net_pay || 0) - Number(s.half_paid || 0) }))}
           empty={t("payroll.noPayslips")}
         />
       </Card>

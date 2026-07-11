@@ -55,6 +55,12 @@ class DeductionSerializer(serializers.ModelSerializer):
 
 class PayslipSerializer(serializers.ModelSerializer):
     employee_name = serializers.CharField(source="employee.name", read_only=True)
+    employee_monthly_salary = serializers.DecimalField(
+        source="employee.monthly_salary",
+        max_digits=12,
+        decimal_places=2,
+        read_only=True,
+    )
     farm_name = serializers.CharField(source="farm.name", read_only=True)
     period_month = serializers.IntegerField(source="period.month", read_only=True)
     period_year = serializers.IntegerField(source="period.year", read_only=True)
