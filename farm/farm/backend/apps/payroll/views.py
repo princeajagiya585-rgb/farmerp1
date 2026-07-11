@@ -112,6 +112,27 @@ def _sync_payslip(employee, farm, month, year):
     )
 
 
+def _resync_advance_payslips(employee, farm):
+    """Re-sync every existing payslip for this employee+farm after an advance
+    changes.
+
+    An advance is recovered from any period whose end date is on/after the
+    advance date (``generate()`` uses ``date__lte=period_end`` over *all*
+    outstanding advances, not just those dated in the period's own month).
+    Matching only the advance's own month — as ``_sync_payslip`` does when
+    called with a fixed month/year — silently misses the payslip whenever the
+    advance's date month differs from the payroll period's month, so the
+    Advances column and Net Pay never move. Re-syncing every payslip the
+    employee has keeps each one consistent with the generation formula.
+    """
+    periods = (
+        PayrollPeriod.objects.filter(farm=farm, payslips__employee=employee)
+        .distinct()
+    )
+    for period in periods:
+        _sync_payslip(employee, farm, period.month, period.year)
+
+
 class PayrollPeriodViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     queryset = PayrollPeriod.objects.select_related("farm").all()
     serializer_class = PayrollPeriodSerializer
@@ -281,20 +302,18 @@ class AdvanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
     def perform_create(self, serializer):
         advance = serializer.save()
         self._sync_status(advance)
-        _sync_payslip(advance.employee, advance.farm, advance.date.month, advance.date.year)
+        _resync_advance_payslips(advance.employee, advance.farm)
 
     def perform_update(self, serializer):
         advance = serializer.save()
         self._sync_status(advance)
-        _sync_payslip(advance.employee, advance.farm, advance.date.month, advance.date.year)
+        _resync_advance_payslips(advance.employee, advance.farm)
 
     def perform_destroy(self, instance):
         employee = instance.employee
         farm = instance.farm
-        month = instance.date.month
-        year = instance.date.year
         instance.delete()
-        _sync_payslip(employee, farm, month, year)
+        _resync_advance_payslips(employee, farm)
 
     @action(detail=False, methods=["get"])
     def outstanding(self, request):
@@ -328,7 +347,7 @@ class AdvanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
             advance.amount_repaid = advance.amount
             advance.status = Advance.Status.CLEARED
         advance.save()
-        _sync_payslip(advance.employee, advance.farm, advance.date.month, advance.date.year)
+        _resync_advance_payslips(advance.employee, advance.farm)
         return Response(self.get_serializer(advance).data, status=200)
 
 
