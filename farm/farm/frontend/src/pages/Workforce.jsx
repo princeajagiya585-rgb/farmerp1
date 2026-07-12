@@ -105,6 +105,7 @@ export default function Workforce() {
         path="workforce/employees"
         canWrite={canWrite}
         showFarmFilter
+        hideDateFilter
         listParams={listParams}
         defaultValues={{ employee_code: `EMP-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}` }}
         rowActions={(row) =>
