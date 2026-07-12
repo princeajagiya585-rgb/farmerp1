@@ -16,6 +16,7 @@ export default function Workforce() {
 
   // Filter state
   const [farmFilter, setFarmFilter] = useState("");
+  const [empFilter, setEmpFilter] = useState(""); // selected employee's unique code
   const [deptFilter, setDeptFilter] = useState("");
   const [empTypeFilter, setEmpTypeFilter] = useState("");
   const EMPLOYMENT_TYPES = [
@@ -25,12 +26,16 @@ export default function Workforce() {
     { value: "SEASONAL", label: t("workforce.seasonal") },
   ];
   const [farms, setFarms] = useState([]);
+  const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
 
   // Load filter options
   useEffect(() => {
     resource("farms").list({ page_size: 200 }).then((d) => {
       setFarms(Array.isArray(d) ? d : d.results || []);
+    }).catch(() => {});
+    resource("workforce/employees").list({ page_size: 500 }).then((d) => {
+      setEmployees(Array.isArray(d) ? d : d.results || []);
     }).catch(() => {});
     resource("workforce/departments").list({ page_size: 200 }).then((d) => {
       setDepartments(Array.isArray(d) ? d : d.results || []);
@@ -41,12 +46,14 @@ export default function Workforce() {
   const listParams = useMemo(() => {
     const params = {};
     if (farmFilter) params.farm = farmFilter;
+    // Employee dropdown filters by the employee's unique code via search.
+    if (empFilter) params.search = empFilter;
     if (deptFilter) params.department = deptFilter;
     if (empTypeFilter) params.employment_type = empTypeFilter;
     return params;
-  }, [farmFilter, deptFilter, empTypeFilter]);
+  }, [farmFilter, empFilter, deptFilter, empTypeFilter]);
 
-  const hasActiveFilters = farmFilter || deptFilter || empTypeFilter;
+  const hasActiveFilters = farmFilter || empFilter || deptFilter || empTypeFilter;
 
   return (
     <div>
@@ -62,6 +69,18 @@ export default function Workforce() {
           {farms.map((f) => (
             <option key={f.id} value={f.id}>
               {f.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={empFilter}
+          onChange={(e) => setEmpFilter(e.target.value)}
+          className="min-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+        >
+          <option value="">{t("workforce.allEmployees")}</option>
+          {employees.map((e) => (
+            <option key={e.id} value={e.employee_code}>
+              {e.name || e.employee_code}
             </option>
           ))}
         </select>
@@ -91,7 +110,7 @@ export default function Workforce() {
         </select>
         {hasActiveFilters && (
           <button
-            onClick={() => { setFarmFilter(""); setDeptFilter(""); setEmpTypeFilter(""); }}
+            onClick={() => { setFarmFilter(""); setEmpFilter(""); setDeptFilter(""); setEmpTypeFilter(""); }}
             className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-gray-500 hover:text-red-600"
           >
             <X size={15} /> {t("workforce.clear")}
