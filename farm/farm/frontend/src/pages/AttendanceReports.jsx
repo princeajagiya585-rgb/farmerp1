@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useEffect, useState } from "react";
-import { FileBarChart, Download } from "lucide-react";
+import { FileBarChart, Download, Pencil, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { resource } from "../lib/api";
 import { Button, Card, Input, PageHeader, Select, Table } from "../components/ui";
 import { exportExcel } from "../lib/export";
@@ -11,8 +12,11 @@ const empRepo = resource("workforce/employees");
 
 export default function AttendanceReports() {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, hasRole } = useAuth();
+  const navigate = useNavigate();
   const isEmployee = user?.role === "EMPLOYEE";
+  const canDelete = hasRole("SUPER_ADMIN"); // only super admin may delete
+  const [deletingEmp, setDeletingEmp] = useState(null); // employee name currently being deleted
   const [farms, setFarms] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [farm, setFarm] = useState("");
@@ -38,6 +42,68 @@ export default function AttendanceReports() {
     if (employee && !isEmployee) params.employee = employee;
     if (month) params.month = month;
     setReport(await att.collectionAction("report", params));
+  };
+
+  // Report rows are per-employee monthly summaries (no record id), so resolve the
+  // employee's id from the loaded employees list by name.
+  const findEmpId = (name) => employees.find((e) => e.name === name)?.id;
+
+  // Edit → open this employee's real day-by-day records on the Attendance page,
+  // where each record can be edited/deleted individually.
+  const openRecords = (row) => {
+    const id = findEmpId(row.employee);
+    navigate("/attendance", { state: { employeeId: id ? String(id) : "", employeeName: row.employee } });
+  };
+
+  const periodLabel = () => {
+    const m = MONTHS.find((mm) => String(mm.value) === String(month));
+    return month && m ? `${m.label} ${year}` : `${year}`;
+  };
+
+  // Delete → remove ALL of this employee's attendance for the selected month/year.
+  // Destructive: gated to super admin + explicit confirmation with the record count.
+  const deleteMonth = async (row) => {
+    const empId = findEmpId(row.employee);
+    if (!empId) {
+      window.alert(t("attendanceReports.empNotFound", "Could not resolve this employee. Please reload and try again."));
+      return;
+    }
+    try {
+      setDeletingEmp(row.employee);
+      const d = await att.list({ employee: empId, page_size: 1000 });
+      const recs = Array.isArray(d) ? d : d.results || [];
+      const y = Number(year);
+      const m = month ? Number(month) : null;
+      // Filter by the report's period using the raw date string (avoids timezone shifts).
+      const scoped = recs.filter((r) => {
+        if (!r.date) return false;
+        const [ry, rm] = String(r.date).split("-").map(Number);
+        if (ry !== y) return false;
+        if (m && rm !== m) return false;
+        return true;
+      });
+      if (scoped.length === 0) {
+        window.alert(t("attendanceReports.noRecordsToDelete", "No attendance records to delete for this employee in the selected period."));
+        return;
+      }
+      const ok = window.confirm(
+        t("attendanceReports.confirmDeleteMonth", {
+          count: scoped.length,
+          name: row.employee,
+          period: periodLabel(),
+          defaultValue: `This will permanently delete ${scoped.length} attendance record(s) for ${row.employee} (${periodLabel()}). This cannot be undone. Continue?`,
+        })
+      );
+      if (!ok) return;
+      for (const r of scoped) {
+        await att.remove(r.id);
+      }
+      await run();
+    } catch (e) {
+      window.alert(t("attendanceReports.deleteFailed", "Failed to delete attendance records."));
+    } finally {
+      setDeletingEmp(null);
+    }
   };
 
   const handleExport = () => {
@@ -116,6 +182,31 @@ export default function AttendanceReports() {
                 <b className={r.attendance_pct >= 75 ? "text-brand-700" : "text-amber-600"}>
                   {r.attendance_pct}%
                 </b>
+              ),
+            },
+            {
+              key: "_actions",
+              header: t("common.actions"),
+              render: (r) => (
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => openRecords(r)}
+                    className="rounded p-1.5 text-blue-600 hover:bg-blue-50"
+                    title={t("common.edit")}
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  {canDelete && (
+                    <button
+                      onClick={() => deleteMonth(r)}
+                      disabled={deletingEmp === r.employee}
+                      className="rounded p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-40"
+                      title={t("common.delete")}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                </div>
               ),
             },
           ]}

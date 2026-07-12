@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
 import { Download, MapPin, Check, X, LogIn, LogOut, Clock, Navigation, Camera, Loader2, Pencil, Trash2, Timer } from "lucide-react";
 import { openMapUrl, hasValidCoords } from "../lib/maps";
 import { api, resource, toFormData, normalizePhotoUrl } from "../lib/api";
@@ -67,6 +68,7 @@ function calculateElapsedSeconds(checkInTime) {
 
 export default function Attendance() {
   const { t } = useTranslation();
+  const location = useLocation();
   const { user: currentUser, hasRole } = useAuth();
   const isEmployee = currentUser?.role === "EMPLOYEE";
   const canApprove = hasRole("SUPER_ADMIN", "FARM_MANAGER");
@@ -86,7 +88,8 @@ export default function Attendance() {
   const [saveEditLoading, setSaveEditLoading] = useState(false);
   const [farms, setFarms] = useState([]);
   const [filters, setFilters] = useState({
-    employee: "",
+    // Pre-select an employee when arriving from the Attendance Reports "Edit" action.
+    employee: location.state?.employeeId ? String(location.state.employeeId) : "",
     farm: "",
     date_from: "",
     date_to: "",
