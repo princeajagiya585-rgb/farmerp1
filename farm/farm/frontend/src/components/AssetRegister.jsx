@@ -31,6 +31,34 @@ const statusColor = {
 const money = (v) =>
   v == null || v === "" ? "—" : `₹${Number(v).toLocaleString("en-IN")}`;
 
+// Straight-line depreciation: each period (day/month/year) since the purchase
+// date subtracts `percent`% of the purchase cost. Mirrors the backend so the
+// live form preview matches the saved value. e.g. ₹13,000 at 2%/day → ₹260/day.
+function computeCurrentValue(form) {
+  const cost = Number(form.purchase_cost) || 0;
+  const pct = Number(form.depreciation_percent) || 0;
+  const period = form.depreciation_period;
+  const pd = form.purchase_date;
+  if (!cost || !pct || !period || !pd) return cost || "";
+  const start = new Date(pd);
+  const now = new Date();
+  if (Number.isNaN(start.getTime()) || now <= start) return cost;
+  let periods = 0;
+  if (period === "DAY") {
+    periods = Math.floor((now - start) / 86400000);
+  } else if (period === "MONTH") {
+    periods = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+    if (now.getDate() < start.getDate()) periods -= 1;
+  } else if (period === "YEAR") {
+    periods = now.getFullYear() - start.getFullYear();
+    const beforeAnniv = now.getMonth() < start.getMonth() || (now.getMonth() === start.getMonth() && now.getDate() < start.getDate());
+    if (beforeAnniv) periods -= 1;
+  }
+  periods = Math.max(0, periods);
+  const value = cost - (cost * pct / 100) * periods;
+  return value > 0 ? Math.round(value * 100) / 100 : 0;
+}
+
 /** Reusable asset register. Pass listParams to scope the view (e.g. equipment only). */
 export default function AssetRegister({ title, subtitle, listParams }) {
   const { t } = useTranslation();
@@ -75,13 +103,38 @@ export default function AssetRegister({ title, subtitle, listParams }) {
         { name: "name", label: t("workforce.name"), required: true },
         { name: "asset_type", label: t("assets.type"), type: "select", options: ASSET_TYPES, required: true },
         { name: "farm", label: t("assets.farm"), optionsFrom: { path: "farms", label: (f) => f.name }, required: true },
-        { name: "manufacturer", label: "Manufacturer" },
         { name: "model_number", label: "Model Number" },
         { name: "serial_number", label: "Serial Number" },
+        {
+          name: "warranty_type",
+          label: "Guaranty / Warranty",
+          type: "select",
+          options: [
+            { value: "GUARANTY", label: "Guaranty" },
+            { value: "WARRANTY", label: "Warranty" },
+          ],
+        },
         { name: "purchase_date", label: t("assets.purchaseDate"), type: "date" },
         { name: "purchase_cost", label: "Purchase Cost (₹)", type: "number" },
-        { name: "current_value", label: "Current Value (₹)", type: "number" },
-        { name: "status", label: t("assets.status"), type: "select", options: ASSET_STATUS },
+        {
+          name: "depreciation_period",
+          label: "Depreciation",
+          type: "select",
+          options: [
+            { value: "DAY", label: "Per Day" },
+            { value: "MONTH", label: "Per Month" },
+            { value: "YEAR", label: "Per Year" },
+          ],
+        },
+        // Percentage box appears only once a depreciation period is chosen.
+        {
+          name: "depreciation_percent",
+          label: "Depreciation (%)",
+          type: "number",
+          hidden: (form) => !form.depreciation_period,
+        },
+        // Auto-computed from cost + depreciation; not editable.
+        { name: "current_value", label: "Current Value (₹) — auto", type: "number", readonly: true },
         {
           name: "assigned_to",
           label: "Assigned Operator",
@@ -89,6 +142,13 @@ export default function AssetRegister({ title, subtitle, listParams }) {
         },
         { name: "photo", label: t("header.photo"), type: "file" },
         { name: "notes", label: t("assets.notes"), type: "textarea" },
+      ]}
+      computedFields={[
+        {
+          dependsOn: ["purchase_cost", "depreciation_percent", "depreciation_period", "purchase_date"],
+          target: "current_value",
+          compute: computeCurrentValue,
+        },
       ]}
     />
   );

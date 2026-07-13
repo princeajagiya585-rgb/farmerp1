@@ -15,6 +15,8 @@ class AssetSerializer(serializers.ModelSerializer):
     assigned_to_name = serializers.CharField(source="assigned_to.name", read_only=True)
     photo_url = serializers.SerializerMethodField()
     created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
+    # Auto-computed from purchase cost + depreciation; never taken from input.
+    current_value = serializers.SerializerMethodField()
 
     class Meta:
         model = Asset
@@ -24,6 +26,10 @@ class AssetSerializer(serializers.ModelSerializer):
     @extend_schema_field(serializers.URLField(allow_null=True))
     def get_photo_url(self, obj):
         return build_absolute_photo_url(obj.photo, self.context.get('request'))
+
+    @extend_schema_field(serializers.DecimalField(max_digits=14, decimal_places=2))
+    def get_current_value(self, obj):
+        return obj.computed_current_value()
 
 
 class AssetMaintenanceSerializer(serializers.ModelSerializer):

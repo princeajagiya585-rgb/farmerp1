@@ -1,3 +1,6 @@
+from datetime import date
+from decimal import Decimal
+
 from django.db import models
 
 from apps.core.models import OwnedModel
@@ -21,6 +24,15 @@ class Asset(OwnedModel):
         UNDER_REPAIR = "UNDER_REPAIR", "Under Repair"
         RETIRED = "RETIRED", "Retired"
 
+    class WarrantyType(models.TextChoices):
+        GUARANTY = "GUARANTY", "Guaranty"
+        WARRANTY = "WARRANTY", "Warranty"
+
+    class DepreciationPeriod(models.TextChoices):
+        DAY = "DAY", "Per Day"
+        MONTH = "MONTH", "Per Month"
+        YEAR = "YEAR", "Per Year"
+
     # Asset types treated as "equipment & machinery" for that sub-module view.
     EQUIPMENT_KINDS = [AssetType.MACHINERY, AssetType.EQUIPMENT, AssetType.VEHICLE]
 
@@ -35,8 +47,20 @@ class Asset(OwnedModel):
     manufacturer = models.CharField(max_length=120, blank=True)
     model_number = models.CharField(max_length=120, blank=True)
     serial_number = models.CharField(max_length=120, blank=True)
+    warranty_type = models.CharField(
+        max_length=20, choices=WarrantyType.choices, blank=True,
+        help_text="Whether the asset is covered by a guaranty or a warranty",
+    )
     purchase_date = models.DateField(null=True, blank=True)
     purchase_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    depreciation_period = models.CharField(
+        max_length=10, choices=DepreciationPeriod.choices, blank=True,
+        help_text="Depreciate the asset per day, month or year",
+    )
+    depreciation_percent = models.DecimalField(
+        max_digits=6, decimal_places=2, default=0,
+        help_text="Percent of purchase cost lost each depreciation period",
+    )
     current_value = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.ACTIVE
@@ -56,6 +80,43 @@ class Asset(OwnedModel):
 
     def __str__(self):
         return f"{self.name} ({self.get_asset_type_display()})"
+
+    def computed_current_value(self, as_of=None):
+        """Current value after straight-line depreciation.
+
+        Each depreciation period (day / month / year) since the purchase date
+        subtracts ``depreciation_percent`` of the purchase cost. e.g. a ₹13,000
+        asset depreciating 2% per day loses ₹260/day, so after N days it is
+        worth ₹13,000 − 260×N (never below 0). When depreciation isn't
+        configured the stored current value (or the purchase cost) is kept.
+        """
+        cost = self.purchase_cost or Decimal("0")
+        pct = self.depreciation_percent or Decimal("0")
+        if not self.purchase_date or not self.depreciation_period or pct <= 0:
+            return self.current_value if self.current_value else cost
+
+        as_of = as_of or date.today()
+        if as_of <= self.purchase_date:
+            return cost
+
+        pd = self.purchase_date
+        if self.depreciation_period == self.DepreciationPeriod.DAY:
+            periods = (as_of - pd).days
+        elif self.depreciation_period == self.DepreciationPeriod.MONTH:
+            periods = (as_of.year - pd.year) * 12 + (as_of.month - pd.month)
+            if as_of.day < pd.day:
+                periods -= 1
+        elif self.depreciation_period == self.DepreciationPeriod.YEAR:
+            periods = as_of.year - pd.year
+            if (as_of.month, as_of.day) < (pd.month, pd.day):
+                periods -= 1
+        else:
+            return cost
+        periods = max(0, periods)
+
+        per_period = cost * pct / Decimal("100")
+        value = cost - per_period * periods
+        return value if value > 0 else Decimal("0")
 
 
 class AssetMaintenance(OwnedModel):
