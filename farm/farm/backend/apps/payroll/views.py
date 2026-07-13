@@ -207,22 +207,31 @@ class PayrollPeriodViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
 
             employees = Employee.objects.filter(farm=period.farm, is_active=True)
             for employee in employees:
+                # Count attendance as soon as it is marked — a present/half-day
+                # record reflects in pay immediately without waiting for a
+                # separate approval step. Only explicitly rejected/failed
+                # records are excluded (auto check-out and mark-absent already
+                # approve themselves).
                 attendances = Attendance.objects.filter(
                     employee=employee,
                     farm=period.farm,
                     date__month=period.month,
                     date__year=period.year,
-                    approval_status=Attendance.ApprovalStatus.APPROVED,
+                ).exclude(
+                    approval_status__in=[
+                        Attendance.ApprovalStatus.REJECTED,
+                        Attendance.ApprovalStatus.FAILED,
+                    ]
                 )
 
                 days_worked = Decimal("0")
-                absent_days = Decimal("0")
                 overtime_hours = Decimal("0")
                 worked_hours = Decimal("0")
                 for att in attendances:
-                    # A completed day counts whether the worker is still checked
-                    # in (PRESENT) or has checked out after a full day
-                    # (PRESENT_DONE). A short check-out is HALF_DAY (see below).
+                    # Days worked drives the pay. A completed day counts whether
+                    # the worker is still checked in (PRESENT) or checked out
+                    # after a full day (PRESENT_DONE); a short check-out is a
+                    # HALF_DAY worth half a day; ABSENT counts as nothing.
                     if att.status in (
                         Attendance.Status.PRESENT,
                         Attendance.Status.PRESENT_DONE,
@@ -230,10 +239,6 @@ class PayrollPeriodViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                         days_worked += Decimal("1")
                     elif att.status == Attendance.Status.HALF_DAY:
                         days_worked += Decimal("0.5")
-                        # Half day → half a day's salary is cut for a monthly wage.
-                        absent_days += Decimal("0.5")
-                    elif att.status == Attendance.Status.ABSENT:
-                        absent_days += Decimal("1")
                     overtime_hours += att.overtime_hours or Decimal("0")
                     # Hours actually worked (check-in → check-out), used for
                     # hourly-wage pay. Stored in seconds on the attendance.
@@ -246,18 +251,18 @@ class PayrollPeriodViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                 days_in_month = Decimal(
                     monthrange(period.year, period.month)[1]
                 )
-                # Hourly-wage employees are paid strictly for the hours they
-                # worked (rate × hours). Everyone else is on a monthly salary,
-                # prorated by attendance: each absent day cuts one day's salary
-                # (monthly ÷ days-in-month). daily_wage is only a legacy
-                # fallback for records with neither monthly nor hourly set.
+                # Pay is driven purely by attendance:
+                #  • Hourly wage  → rate × hours actually worked.
+                #  • Monthly salary → one day's salary (monthly ÷ days-in-month)
+                #    for every day present; a HALF_DAY earns half. So a full day
+                #    pays the per-day rate and a half day pays exactly half —
+                #    matching the Payslips page and the "Done" payout.
+                #  • daily_wage is a legacy fallback (neither monthly nor hourly).
                 if employee.wage_type == Employee.WageType.HOURLY and hourly_wage > 0:
                     gross_wage = worked_hours * hourly_wage
                 elif monthly_salary > 0:
                     daily_rate = monthly_salary / days_in_month
-                    gross_wage = monthly_salary - (absent_days * daily_rate)
-                    if gross_wage < 0:
-                        gross_wage = Decimal("0")
+                    gross_wage = days_worked * daily_rate
                 elif daily_wage > 0:
                     gross_wage = days_worked * daily_wage
                 else:

@@ -74,7 +74,8 @@ class PayslipDoneAutoBalanceTests(TestCase):
 
 
 class PayslipGenerationAbsenceTests(TestCase):
-    """Absent days cut one day's salary (monthly ÷ calendar days) on generate."""
+    """Pay is per-day: one day's salary (monthly ÷ calendar days) per day
+    present, half for a half day, nothing for an absent day."""
 
     def setUp(self):
         self.admin = User.objects.create_user(
@@ -110,7 +111,7 @@ class PayslipGenerationAbsenceTests(TestCase):
     def _slip(self):
         return Payslip.objects.get(employee=self.employee, period=self.period)
 
-    def test_absent_days_cut_from_monthly_salary(self):
+    def test_absent_days_are_not_paid(self):
         for d in range(1, 21):
             self._attendance(d, Attendance.Status.PRESENT)
         self._attendance(21, Attendance.Status.ABSENT)
@@ -121,10 +122,10 @@ class PayslipGenerationAbsenceTests(TestCase):
 
         slip = self._slip()
         self.assertEqual(slip.days_worked, Decimal("20"))
-        self.assertEqual(slip.gross_wage, Decimal("29000"))  # 31000 − 2×1000
-        self.assertEqual(slip.net_pay, Decimal("29000"))
+        self.assertEqual(slip.gross_wage, Decimal("20000"))  # 20 × 1000
+        self.assertEqual(slip.net_pay, Decimal("20000"))
 
-    def test_half_day_cuts_half_a_day(self):
+    def test_half_day_earns_half(self):
         for d in range(1, 21):
             self._attendance(d, Attendance.Status.PRESENT)
         self._attendance(21, Attendance.Status.HALF_DAY)
@@ -134,20 +135,48 @@ class PayslipGenerationAbsenceTests(TestCase):
 
         slip = self._slip()
         self.assertEqual(slip.days_worked, Decimal("20.5"))
-        self.assertEqual(slip.gross_wage, Decimal("30500"))  # 31000 − 0.5×1000
+        self.assertEqual(slip.gross_wage, Decimal("20500"))  # 20.5 × 1000
 
-    def test_no_absence_pays_full_monthly(self):
-        for d in range(1, 21):
+    def test_full_month_present_pays_full_monthly(self):
+        for d in range(1, 32):  # present every day of a 31-day month
             self._attendance(d, Attendance.Status.PRESENT)
 
         resp = self._generate()
         self.assertEqual(resp.status_code, 200, getattr(resp, "data", None))
 
-        self.assertEqual(self._slip().gross_wage, Decimal("31000"))
+        self.assertEqual(self._slip().gross_wage, Decimal("31000"))  # 31 × 1000
+
+    def test_pending_attendance_is_counted(self):
+        # Attendance counts as soon as it is marked — no separate approval
+        # needed. A pending present day still earns a day's pay.
+        Attendance.objects.create(
+            employee=self.employee, farm=self.farm, date=date(2026, 7, 1),
+            status=Attendance.Status.PRESENT,
+            approval_status=Attendance.ApprovalStatus.PENDING,
+        )
+
+        resp = self._generate()
+        self.assertEqual(resp.status_code, 200, getattr(resp, "data", None))
+
+        slip = self._slip()
+        self.assertEqual(slip.days_worked, Decimal("1"))
+        self.assertEqual(slip.gross_wage, Decimal("1000"))  # 1 × 1000
+
+    def test_rejected_attendance_is_not_counted(self):
+        Attendance.objects.create(
+            employee=self.employee, farm=self.farm, date=date(2026, 7, 1),
+            status=Attendance.Status.PRESENT,
+            approval_status=Attendance.ApprovalStatus.REJECTED,
+        )
+
+        resp = self._generate()
+        self.assertEqual(resp.status_code, 200, getattr(resp, "data", None))
+
+        self.assertEqual(self._slip().days_worked, Decimal("0"))
 
     def test_checked_out_full_day_counts_as_present(self):
-        # A worker who checked out after a full day (PRESENT_DONE) still counts
-        # as a worked day — no salary is cut and days_worked includes them.
+        # A worker who checked out after a full day (PRESENT_DONE) counts as a
+        # full worked day, same as a still-checked-in PRESENT day.
         for d in range(1, 20):
             self._attendance(d, Attendance.Status.PRESENT)
         self._attendance(20, Attendance.Status.PRESENT_DONE)
@@ -157,11 +186,11 @@ class PayslipGenerationAbsenceTests(TestCase):
 
         slip = self._slip()
         self.assertEqual(slip.days_worked, Decimal("20"))
-        self.assertEqual(slip.gross_wage, Decimal("31000"))  # no deduction
+        self.assertEqual(slip.gross_wage, Decimal("20000"))  # 20 × 1000
 
-    def test_half_day_checkout_cuts_half_salary(self):
-        # Under-5h check-out → HALF_DAY → half a day's salary cut (₹1,000/day →
-        # ₹500 cut), and days_worked counts it as 0.5.
+    def test_half_day_checkout_earns_half_salary(self):
+        # Under-5h check-out → HALF_DAY → half a day's pay (₹1,000/day → ₹500),
+        # and days_worked counts it as 0.5.
         for d in range(1, 20):
             self._attendance(d, Attendance.Status.PRESENT)
         self._attendance(20, Attendance.Status.HALF_DAY)
@@ -171,7 +200,7 @@ class PayslipGenerationAbsenceTests(TestCase):
 
         slip = self._slip()
         self.assertEqual(slip.days_worked, Decimal("19.5"))
-        self.assertEqual(slip.gross_wage, Decimal("30500"))  # 31000 − 0.5×1000
+        self.assertEqual(slip.gross_wage, Decimal("19500"))  # 19.5 × 1000
 
 
 class PayslipGenerationHourlyTests(TestCase):

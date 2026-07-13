@@ -757,7 +757,7 @@ export default function Payroll() {
               {t("payroll.alreadyPaid")}: <b>₹{Number(halfPaySlip?.half_paid || 0).toLocaleString("en-IN")}</b>
             </div>
             <div className="flex-1 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-800 ring-1 ring-indigo-200">
-              {t("payroll.netPayRemaining")}: <b>₹{(Number(halfPaySlip?.net_pay || 0) - Number(halfPaySlip?.half_paid || 0)).toLocaleString("en-IN")}</b>
+              {t("payroll.netPayRemaining")}: <b>₹{(Number(halfPaySlip?._net_calc ?? halfPaySlip?.net_pay ?? 0) - Number(halfPaySlip?.half_paid || 0)).toLocaleString("en-IN")}</b>
             </div>
           </div>
           <Input
