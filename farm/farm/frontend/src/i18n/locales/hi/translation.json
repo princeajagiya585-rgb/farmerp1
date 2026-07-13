@@ -1611,6 +1611,8 @@
   "payrollAdvances.confirmDone": "{{name}} का अग्रिम पूरा चुकाकर निपटान के रूप में चिह्नित करें?",
   "payroll.due": "देय",
   "payroll.done": "पूर्ण",
+  "payroll.finalDone": "अंतिम पूर्ण",
+  "payroll.confirmDonePay": "इस वेतन पर्ची को पूर्ण (DONE) चिह्नित करें और इस माह के कर्मचारी भुगतान में ₹{{amount}} जोड़ें?",
   "payroll.markPaid": "भुगतान किया गया चिह्नित करें",
   "payroll.markDue": "अवैतनिक (देय) चिह्नित करें",
   "payroll.confirmPaid": "इस वेतन पर्ची को भुगतान किया गया (PAID) चिह्नित करें?",

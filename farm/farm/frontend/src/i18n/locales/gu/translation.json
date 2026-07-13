@@ -1653,6 +1653,8 @@
   "payrollAdvances.confirmDone": "{{name}} ની પેશગી સંપૂર્ણ પતાવીને પૂર્ણ તરીકે ચિહ્નિત કરવી?",
   "payroll.due": "બાકી",
   "payroll.done": "પૂર્ણ",
+  "payroll.finalDone": "અંતિમ પૂર્ણ",
+  "payroll.confirmDonePay": "આ પગાર પત્રકને પૂર્ણ (DONE) ચિહ્નિત કરો અને આ મહિનાના કર્મચારી ચૂકવણીમાં ₹{{amount}} ઉમેરો?",
   "payroll.markPaid": "ચૂકવેલ તરીકે ચિહ્નિત કરો",
   "payroll.markDue": "ન ચૂકવેલ (બાકી) તરીકે ચિહ્નિત કરો",
   "payroll.confirmPaid": "આ પગાર પત્રકને ચૂકવેલ (PAID) તરીકે ચિહ્નિત કરવું?",

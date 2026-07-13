@@ -1648,6 +1648,8 @@
   "payrollAdvances.confirmDone": "Settle {{name}}’s advance in full and mark it cleared?",
   "payroll.due": "Due",
   "payroll.done": "Done",
+  "payroll.finalDone": "Final Done",
+  "payroll.confirmDonePay": "Mark this payslip DONE and add ₹{{amount}} to Employee Payments for this month?",
   "payroll.markPaid": "Mark as paid",
   "payroll.markDue": "Mark as unpaid (due)",
   "payroll.confirmPaid": "Mark this payslip as PAID?",

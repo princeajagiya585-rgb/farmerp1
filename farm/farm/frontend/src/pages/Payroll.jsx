@@ -9,6 +9,7 @@ import { useAuth } from "../context/AuthContext";
 const periodRepo = resource("payroll/periods");
 const slipRepo = resource("payroll/payslips");
 const advRepo = resource("payroll/advances");
+const payRepo = resource("payroll/payments");
 
 const statusLabelMap = {
   DRAFT: "statusDraft",
@@ -75,6 +76,39 @@ export default function Payroll() {
       return ms / daysInMonth(r.period_month, r.period_year);
     }
     return null;
+  };
+
+  // Gross wage driven purely by attendance: days worked × one-day salary.
+  // e.g. ₹12,000 monthly in a 31-day month → ₹387/day; 1 day = ₹387, 2 = ₹774.
+  // Falls back to the stored gross for daily-wage workers (no monthly salary).
+  const perDayGross = (r) => {
+    const rate = dailyRate(r);
+    if (rate == null) return Number(r.gross_wage || 0);
+    return Math.round(rate * Number(r.days_worked || 0));
+  };
+
+  // Net pay from the per-day gross: gross + OT + incentive − advances − deductions.
+  const perDayNet = (r) =>
+    Math.round(
+      perDayGross(r)
+      + Number(r.overtime_amount || 0)
+      + Number(r.incentive_amount || 0)
+      - Number(r.advance_deduction || 0)
+      - Number(r.other_deductions || 0)
+    );
+
+  // A date inside the payslip's own month, so the payout lands in the right
+  // month on the Employee Payments page (uses today if it's the live month).
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const periodDate = (r) => {
+    const today = new Date();
+    const y = Number(r.period_year) || today.getFullYear();
+    const m = Number(r.period_month) || today.getMonth() + 1;
+    const last = daysInMonth(m, y);
+    const day = y === today.getFullYear() && m === today.getMonth() + 1
+      ? Math.min(today.getDate(), last)
+      : last;
+    return `${y}-${pad2(m)}-${pad2(day)}`;
   };
 
   const SLIP_STATUS_OPTIONS = [
@@ -173,11 +207,27 @@ export default function Payroll() {
     load();
   };
 
-  // Mark a payslip Done (PAID) or Due (DRAFT / unpaid)
-  const markSlip = async (slip, status) => {
-    const prompt = status === "PAID" ? t("payroll.confirmPaid") : t("payroll.confirmDue");
-    if (!confirm(prompt)) return;
-    await slipRepo.update(slip.id, { status });
+  // Mark a payslip DONE: finalise it (PAID) at its current per-day net pay and
+  // record that amount as a payout on the Employee Payments page for the month.
+  const markDone = async (slip) => {
+    const net = perDayNet(slip);
+    if (!confirm(t("payroll.confirmDonePay", { amount: net.toLocaleString("en-IN") }))) return;
+    // Persist PAID + the per-day net so reports/payments agree. The backend
+    // settles the linked outstanding advances when a slip turns PAID.
+    await slipRepo.update(slip.id, { status: "PAID", net_pay: net });
+    // Add the payout to Employee Payments, dated inside the payslip's month.
+    try {
+      await payRepo.create({
+        employee: slip.employee,
+        payslip: slip.id,
+        amount: net,
+        date: periodDate(slip),
+        mode: "CASH",
+        reference: slip.period_month ? `${months[slip.period_month - 1]?.label} ${slip.period_year}` : "",
+      });
+    } catch (e) {
+      setMsg(e.response?.data?.detail || t("common.saveFailed"));
+    }
     load();
   };
 
@@ -294,10 +344,10 @@ export default function Payroll() {
                 [t("header.month")]: r.period_month ? `${months[r.period_month - 1]?.label} ${r.period_year}` : "",
                 [t("header.days")]: r.days_worked,
                 [t("payroll.dailyRate")]: rate != null ? Math.round(rate) : "",
-                [t("header.gross")]: Number(r.gross_wage || 0),
+                [t("header.gross")]: perDayGross(r),
                 [t("header.ot")]: Number(r.overtime_amount || 0),
                 [t("header.advances")]: Number(r.advance_deduction || 0),
-                [t("header.netPay")]: Number(r.net_pay || 0),
+                [t("header.netPay")]: r.status === "PAID" ? 0 : perDayNet(r) - Number(r.half_paid || 0),
                 [t("header.status")]: r.status,
               };
             });
@@ -435,7 +485,7 @@ export default function Payroll() {
               header: t("payroll.halfPay"),
               render: (r) => {
                 const paid = Number(r.half_paid || 0);
-                const remaining = Number(r.net_pay || 0) - paid;
+                const remaining = Number(r._net_calc ?? r.net_pay ?? 0) - paid;
                 return (
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-medium text-indigo-700">₹{paid.toLocaleString("en-IN")}</span>
@@ -453,14 +503,13 @@ export default function Payroll() {
               header: t("common.actions"),
               render: (r) => canRun && (
                 <div className="flex items-center gap-1">
-                  {r.status !== "DRAFT" && (
-                    <button onClick={() => markSlip(r, "DRAFT")} className="rounded bg-amber-500 px-2 py-1 text-xs font-medium text-white hover:bg-amber-600" title={t("payroll.markDue")}>
+                  {r.status === "PAID" ? (
+                    <span className="whitespace-nowrap rounded bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">
+                      {t("payroll.finalDone")}
+                    </span>
+                  ) : (
+                    <button onClick={() => markDone(r)} className="rounded bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700" title={t("payroll.markPaid")}>
                       {t("payroll.due")}
-                    </button>
-                  )}
-                  {r.status !== "PAID" && (
-                    <button onClick={() => markSlip(r, "PAID")} className="rounded bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700" title={t("payroll.markPaid")}>
-                      {t("payroll.done")}
                     </button>
                   )}
                   <button onClick={() => { setEditSlip(r); setEditSlipForm({ days_worked: r.days_worked, gross_wage: r.gross_wage, overtime_amount: r.overtime_amount, incentive_amount: r.incentive_amount, advance_deduction: r.advance_deduction, other_deductions: r.other_deductions, net_pay: r.net_pay, status: r.status }); }} className="rounded p-1.5 text-gray-500 hover:bg-gray-100" title={t("common.edit")}>
@@ -477,7 +526,17 @@ export default function Payroll() {
           ]}
           rows={slips
             .filter((s) => (!slipFilterMonth || String(s.period_month) === String(slipFilterMonth)) && (!slipFilterYear || String(s.period_year) === String(slipFilterYear)))
-            .map((s) => ({ ...s, net_remaining: s.status === "PAID" ? 0 : Number(s.net_pay || 0) - Number(s.half_paid || 0) }))}
+            .map((s) => {
+              // Gross & net follow attendance: days worked × one-day salary.
+              const gross = perDayGross(s);
+              const net = perDayNet(s);
+              return {
+                ...s,
+                gross_wage: gross,
+                _net_calc: net,
+                net_remaining: s.status === "PAID" ? 0 : net - Number(s.half_paid || 0),
+              };
+            })}
           empty={t("payroll.noPayslips")}
         />
       </Card>
