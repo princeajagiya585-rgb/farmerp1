@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Cog, Download, Pencil, Trash2 } from "lucide-react";
+import { Cog, Download, Pencil, Trash2 } from "lucide-react";
 import { resource } from "../lib/api";
 import { exportExcelMultiSheet } from "../lib/export";
 import { Badge, Button, Card, Input, Modal, PageHeader, Select, Table } from "../components/ui";
@@ -34,25 +34,22 @@ export default function Payroll() {
   const [slips, setSlips] = useState([]);
   const [advances, setAdvances] = useState([]);
   const [farms, setFarms] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ farm: "", month: new Date().getMonth() + 1, year: new Date().getFullYear() });
   const [msg, setMsg] = useState("");
   const [filterFarm, setFilterFarm] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
-  const [filterYear, setFilterYear] = useState("");
   // Payslip-specific filters
   const [slipFilterEmp, setSlipFilterEmp] = useState("");
   const [slipFilterStatus, setSlipFilterStatus] = useState("");
-  const [slipFilterMonth, setSlipFilterMonth] = useState("");
-  const [slipFilterYear, setSlipFilterYear] = useState("");
+  // Default the Payslips table to the CURRENT real-time month & year, so July
+  // shows only July's payslips and the view auto-rolls over to August in August.
+  // Users can still switch to "All Months"/older months via the dropdowns.
+  const [slipFilterMonth, setSlipFilterMonth] = useState(String(new Date().getMonth() + 1));
+  const [slipFilterYear, setSlipFilterYear] = useState(String(new Date().getFullYear()));
   const [employees, setEmployees] = useState([]);
   // Advances-specific filters
   const [advFilterStatus, setAdvFilterStatus] = useState("");
   const [advFilterEmp, setAdvFilterEmp] = useState("");
 
   // Edit modals
-  const [editPeriod, setEditPeriod] = useState(null);
-  const [editPeriodForm, setEditPeriodForm] = useState({});
   const [editAdv, setEditAdv] = useState(null);
   const [editAdvForm, setEditAdvForm] = useState({});
   const [editSlip, setEditSlip] = useState(null);
@@ -80,13 +77,6 @@ export default function Payroll() {
     return null;
   };
 
-  const STATUS_OPTIONS = [
-    { value: "DRAFT", label: t("payroll.statusDraft") },
-    { value: "GENERATED", label: t("payroll.statusGenerated") },
-    { value: "PAID", label: t("payroll.statusPaid") },
-    { value: "CLEARED", label: t("payroll.statusCleared") },
-  ];
-
   const SLIP_STATUS_OPTIONS = [
     { value: "DRAFT", label: t("payroll.statusDraft") },
     { value: "PAID", label: t("payroll.statusPaid") },
@@ -104,8 +94,9 @@ export default function Payroll() {
     // shows up in the filter & new-period dropdowns.
     resource("farms").list({ page_size: 200 }).then((d) => setFarms(d.results || d));
 
-    // Periods
-    periodRepo.list({ ...baseParams, ...(filterStatus ? { status: filterStatus } : {}), ...(filterYear ? { year: filterYear } : {}) }).then((d) => setPeriods(d.results || d));
+    // Periods (kept in state for auto-generate reference + Excel export only —
+    // the visible Periods table was removed; payslips now auto-generate).
+    periodRepo.list(baseParams).then((d) => setPeriods(d.results || d));
 
     // Payslips with its own filters
     const slipParams = { ...baseParams };
@@ -119,9 +110,44 @@ export default function Payroll() {
     if (advFilterEmp) advParams.employee = advFilterEmp;
     advRepo.list(advParams).then((d) => setAdvances(d.results || d));
   };
+  // Auto-generate the CURRENT month's payslips for every farm the user can
+  // access. Runs on page load so "Periods & Payslips" always reflects this
+  // month's approved attendance without any manual "Generate" step — and rolls
+  // over to the new month automatically. The backend preserves each slip's
+  // status & half-paid amount on regenerate; only days/wage/net recompute from
+  // attendance, so PAID / partially-paid slips are never clobbered.
+  const autoGenerateCurrentMonth = async (farmsArr) => {
+    if (!canRun || !farmsArr?.length) return;
+    const m = new Date().getMonth() + 1;
+    const y = new Date().getFullYear();
+    setMsg(t("payroll.generating"));
+    try {
+      const existing = await periodRepo.list({ month: m, year: y, page_size: 200 });
+      const rows = existing.results || existing;
+      const byFarm = {};
+      rows.forEach((p) => { byFarm[String(p.farm)] = p; });
+      for (const f of farmsArr) {
+        let period = byFarm[String(f.id)];
+        if (!period) {
+          try { period = await periodRepo.create({ farm: f.id, month: m, year: y }); }
+          catch { continue; } // farm may have no employees / no permission — skip
+        }
+        try { await periodRepo.action(period.id, "generate"); } catch { /* skip farm on error */ }
+      }
+    } finally {
+      setMsg("");
+    }
+  };
+
   useEffect(() => {
-    load();
-    resource("workforce/employees").list({ page_size: 200 }).then((d) => setEmployees(d.results || d));
+    (async () => {
+      const fd = await resource("farms").list({ page_size: 200 });
+      const farmsArr = fd.results || fd;
+      setFarms(farmsArr);
+      resource("workforce/employees").list({ page_size: 200 }).then((d) => setEmployees(d.results || d));
+      await autoGenerateCurrentMonth(farmsArr);
+      load();
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -133,41 +159,7 @@ export default function Payroll() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterFarm, filterStatus, filterYear, slipFilterEmp, slipFilterStatus, advFilterStatus, advFilterEmp]);
-
-  const createPeriod = async (e) => {
-    e.preventDefault();
-    await periodRepo.create({ ...form, month: Number(form.month), year: Number(form.year) });
-    setOpen(false);
-    load();
-  };
-
-  const generate = async (id) => {
-    setMsg(t("payroll.generating"));
-    try {
-      const res = await periodRepo.action(id, "generate");
-      setMsg(t("payroll.generationResult", {
-        created: res.created ?? 0,
-        net: Math.round(Number(res.total_net || 0)).toLocaleString("en-IN"),
-      }));
-      load();
-    } catch (e) {
-      setMsg(e.response?.data?.detail || t("payroll.generationFailed"));
-    }
-  };
-
-  const deletePeriod = async (id) => {
-    if (!confirm(t("crud.confirmDelete"))) return;
-    await periodRepo.remove(id);
-    load();
-  };
-
-  const savePeriod = async (e) => {
-    e.preventDefault();
-    await periodRepo.update(editPeriod.id, { status: editPeriodForm.status });
-    setEditPeriod(null);
-    load();
-  };
+  }, [filterFarm, slipFilterEmp, slipFilterStatus, advFilterStatus, advFilterEmp]);
 
   const deleteAdv = async (id) => {
     if (!confirm(t("crud.confirmDelete"))) return;
@@ -219,8 +211,25 @@ export default function Payroll() {
     (Number(f.advance_deduction) || 0) -
     (Number(f.other_deductions) || 0);
 
+  // When days worked is edited, recompute the gross wage as days × one-day
+  // salary so Net Pay reflects per-day attendance. Falls back to manual gross
+  // when the employee has no monthly salary (no known daily rate).
+  const updateSlipDays = (days) => {
+    const rate = editSlip ? dailyRate(editSlip) : null;
+    setEditSlipForm((f) => ({
+      ...f,
+      days_worked: days,
+      ...(rate != null && days !== ""
+        ? { gross_wage: Math.round(rate * Number(days) * 100) / 100 }
+        : {}),
+    }));
+  };
+
   const saveSlip = async (e) => {
     e.preventDefault();
+    // Advances, incentive & other deductions are managed on their own pages —
+    // preserve the payslip's existing values here (they're not edited in this
+    // modal), so Net Pay stays wage + OT + incentive − advance − deductions.
     await slipRepo.update(editSlip.id, {
       days_worked: Number(editSlipForm.days_worked),
       gross_wage: Number(editSlipForm.gross_wage),
@@ -252,7 +261,11 @@ export default function Payroll() {
       <PageHeader
         title={t("payroll.titlePg")}
         subtitle={t("payroll.subtitlePg")}
-        action={canRun && <Button onClick={() => setOpen(true)}><Plus size={16} /> {t("payroll.newPeriod")}</Button>}
+        action={canRun && (
+          <Button onClick={async () => { await autoGenerateCurrentMonth(farms); load(); }}>
+            <Cog size={16} /> {t("payroll.generate")}
+          </Button>
+        )}
       />
 
       {/* Single Excel export button — combines all sections into one file */}
@@ -320,61 +333,7 @@ export default function Payroll() {
             {farms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </Select>
         </div>
-        <div className="min-w-[160px]">
-          <Select label={t("header.status")} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-            <option value="">{t("common.allStatus")}</option>
-            {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </Select>
-        </div>
-        <div className="min-w-[140px]">
-          <Select label={t("header.year")} value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
-            <option value="">{t("payroll.allYears")}</option>
-            {Array.from({ length: 7 }, (_, i) => new Date().getFullYear() + 1 - i).map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </Select>
-        </div>
       </div>
-
-      <Card title={t("payroll.payrollPeriods")} className="mb-5">
-        <Table
-          columns={[
-            { key: "farm_name", header: t("header.farm"), render: (r) => r.farm_name || r.farm },
-            { key: "month", header: t("header.month"), render: (r) => months[r.month - 1]?.label },
-            { key: "year", header: t("header.year") },
-            {
-              key: "status",
-              header: t("header.status"),
-              render: (r) => (
-                <Badge color={statusColorMap[r.status] || "gray"}>
-                  {t(`payroll.${statusLabelMap[r.status] || r.status}`)}
-                </Badge>
-              ),
-            },
-            {
-              key: "_a",
-              header: t("header.actions"),
-              render: (r) =>
-                canRun && (
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => generate(r.id)} className="inline-flex items-center gap-1 rounded bg-brand-600 px-2 py-1 text-xs text-white hover:bg-brand-700">
-                      <Cog size={13} /> {t("payroll.generate")}
-                    </button>
-                    <button onClick={() => { setEditPeriod(r); setEditPeriodForm({ status: r.status }); }} className="rounded p-1.5 text-gray-500 hover:bg-gray-100" title={t("common.edit")}>
-                      <Pencil size={15} />
-                    </button>
-                    {canDelete && (
-                      <button onClick={() => deletePeriod(r.id)} className="rounded p-1.5 text-red-500 hover:bg-red-50" title={t("common.delete")}>
-                        <Trash2 size={15} />
-                      </button>
-                    )}
-                  </div>
-                ),
-            },
-          ]}
-          rows={periods}
-        />
-      </Card>
 
       <Card
         title={t("payroll.payslips")}
@@ -580,20 +539,6 @@ export default function Payroll() {
         />
       </Card>
 
-      <Modal open={open} onClose={() => setOpen(false)} title={t("payroll.newPeriod")}>
-        <form onSubmit={createPeriod} className="space-y-3">
-          <Select label={t("payroll.farmLabel")} value={form.farm} onChange={(e) => setForm({ ...form, farm: e.target.value })} required>
-            <option value="">{t("payroll.selectFarm")}</option>
-            {farms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-          </Select>
-          <Select label={t("payroll.monthLabel")} value={form.month} onChange={(e) => setForm({ ...form, month: e.target.value })} options={months} />
-          <Input label={t("payroll.yearLabel")} type="number" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} required />
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>{t("payroll.cancel")}</Button>
-            <Button type="submit">{t("payroll.create")}</Button>
-          </div>
-        </form>
-      </Modal>
       <Modal open={!!editSlip} onClose={() => setEditSlip(null)} title="Edit Payslip">
         <form onSubmit={saveSlip} className="space-y-3">
           <div>
@@ -601,12 +546,9 @@ export default function Payroll() {
             <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">{editSlip?.employee_name}</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Input label={t("header.days")} type="number" value={editSlipForm.days_worked || ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, days_worked: e.target.value })} />
-            <Input label={t("header.gross")} type="number" value={editSlipForm.gross_wage || ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, gross_wage: e.target.value })} />
-            <Input label={t("header.ot")} type="number" value={editSlipForm.overtime_amount || ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, overtime_amount: e.target.value })} />
-            <Input label="Incentive" type="number" value={editSlipForm.incentive_amount || ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, incentive_amount: e.target.value })} />
-            <Input label={t("header.advances")} type="number" value={editSlipForm.advance_deduction || ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, advance_deduction: e.target.value })} />
-            <Input label={t("header.deductions")} type="number" value={editSlipForm.other_deductions || ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, other_deductions: e.target.value })} />
+            <Input label={t("header.days")} type="number" value={editSlipForm.days_worked ?? ""} onChange={(e) => updateSlipDays(e.target.value)} />
+            <Input label={t("header.gross")} type="number" value={editSlipForm.gross_wage ?? ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, gross_wage: e.target.value })} />
+            <Input label={t("header.ot")} type="number" value={editSlipForm.overtime_amount ?? ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, overtime_amount: e.target.value })} />
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">{t("header.netPay")}</label>
               <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-brand-700" title={t("payroll.netAutoCalc")}>
@@ -614,6 +556,11 @@ export default function Payroll() {
               </p>
             </div>
           </div>
+          {editSlip && dailyRate(editSlip) != null && (
+            <p className="text-xs text-gray-500">
+              ₹{Math.round(dailyRate(editSlip)).toLocaleString("en-IN")}{t("payroll.perDay")} × {Number(editSlipForm.days_worked || 0)} {t("header.days").toLowerCase()}
+            </p>
+          )}
           <p className="text-xs text-gray-400">{t("payroll.netAutoCalc")}</p>
           <Select label={t("header.status")} value={editSlipForm.status || ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, status: e.target.value })}>
             {SLIP_STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -656,26 +603,6 @@ export default function Payroll() {
             </Button>
           </div>
         </div>
-      </Modal>
-
-      <Modal open={!!editPeriod} onClose={() => setEditPeriod(null)} title="Edit Payroll Period">
-        <form onSubmit={savePeriod} className="space-y-3">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">{t("header.farm")}</label>
-            <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">{editPeriod?.farm_name || editPeriod?.farm}</p>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">{t("header.month")} / {t("header.year")}</label>
-            <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">{editPeriod ? months[editPeriod.month - 1]?.label : ""} {editPeriod?.year}</p>
-          </div>
-          <Select label={t("header.status")} value={editPeriodForm.status || ""} onChange={(e) => setEditPeriodForm({ ...editPeriodForm, status: e.target.value })}>
-            {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </Select>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={() => setEditPeriod(null)}>{t("payroll.cancel")}</Button>
-            <Button type="submit">{t("crud.save")}</Button>
-          </div>
-        </form>
       </Modal>
 
       <Modal open={!!editAdv} onClose={() => setEditAdv(null)} title="Edit Advance">
