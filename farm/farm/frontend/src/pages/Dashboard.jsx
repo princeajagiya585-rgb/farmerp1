@@ -4,13 +4,14 @@ import { useTranslation } from "react-i18next";
 import {
   Tractor, Wallet, Users, Banknote, ClipboardList, MapPin,
   Sprout, Boxes, FileText, AlertTriangle, UserCog, ArrowRight,
-  TrendingUp, TrendingDown, CalendarCheck, LayoutGrid, Coins, UserMinus, Plane,
+  TrendingUp, TrendingDown, CalendarCheck, LayoutGrid, Coins, UserMinus, Plane, Download,
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from "recharts";
 import { api } from "../lib/api";
+import { exportExcel } from "../lib/export";
 import { useAuth } from "../context/AuthContext";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -237,92 +238,37 @@ export default function Dashboard() {
       {/* Accounting-style overview — KPIs, yearly ledger, charts & tables */}
       <DashboardOverview kpi={kpi} t={t} />
 
-      {/* Module Overview Cards — only show accessible modules */}
+      {/* Quick Access — clean navigation tiles (detail lives in the panels above) */}
       {visibleModules.length > 0 && (
         <>
           <h2 className="mb-4 text-lg font-bold text-gray-800">{t("dashboard.quickAccess")}</h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {visibleModules.map((mod) => {
               const Icon = mod.icon;
-              const metrics = getModuleMetrics(mod, kpi, t);
-              if (mod.key === "tasks") {
-                return (
-                  <TasksCard
-                    key="tasks"
-                    mod={mod}
-                    kpi={kpi}
-                    navigate={navigate}
-                    t={t}
-                  />
-                );
-              }
-              if (mod.key === "gps") {
-                return (
-                  <GpsCard
-                    key="gps"
-                    mod={mod}
-                    kpi={kpi}
-                    navigate={navigate}
-                    t={t}
-                  />
-                );
-              }
-              if (mod.key === "hr") {
-                return (
-                  <HrCard
-                    key="hr"
-                    mod={mod}
-                    kpi={kpi}
-                    navigate={navigate}
-                    t={t}
-                  />
-                );
-              }
-              if (mod.key === "finance") {
-                return (
-                  <FinanceCard
-                    key="finance"
-                    mod={mod}
-                    kpi={kpi}
-                    navigate={navigate}
-                    t={t}
-                  />
-                );
-              }
+              const metrics = getModuleMetrics(mod, kpi, t).slice(0, 2);
               return (
                 <div
                   key={mod.key}
                   onClick={() => navigate(mod.path)}
-                  className="group cursor-pointer overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-card transition-all hover:-translate-y-0.5 hover:shadow-soft"
+                  className="group cursor-pointer rounded-2xl border border-gray-100 bg-white p-4 shadow-card transition-all hover:-translate-y-1 hover:border-brand-200 hover:shadow-soft"
                 >
-                  <div className={`h-1.5 w-full bg-gradient-to-r ${mod.color}`} />
-                  <div className="p-4">
-                    <div className="mb-3 flex items-center gap-3">
-                      <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${mod.bg}`}>
-                        <Icon size={20} className="text-gray-700" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-bold text-gray-800">{t(mod.label)}</p>
-                      </div>
+                  <div className="mb-3 flex items-center gap-3">
+                    <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${mod.color} text-white shadow-sm`}>
+                      <Icon size={20} />
                     </div>
-                    {metrics.length > 0 ? (
-                      <div className="scrollable-content mb-3 max-h-[200px] space-y-1.5 overflow-y-auto">
-                        {metrics.map((m, i) => (
-                          <div key={i} className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-1.5">
-                            <span className="text-xs text-gray-500">{m.label.includes(".") ? t(m.label) : m.label}</span>
-                            <span className="text-sm font-bold text-gray-800">{m.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="scrollable-content mb-3 flex max-h-[200px] items-center justify-center overflow-y-auto rounded-lg bg-gray-50 py-4">
-                        <p className="text-xs text-gray-400">{t("common.view")}</p>
-                      </div>
-                    )}
-                    <div className="flex items-center justify-end gap-1 text-xs font-medium text-brand-600 opacity-0 transition-opacity group-hover:opacity-100">
-                      {t("common.view")} <ArrowRight size={12} />
-                    </div>
+                    <p className="flex-1 text-sm font-bold leading-tight text-gray-800">{t(mod.label)}</p>
+                    <ArrowRight size={16} className="shrink-0 text-gray-300 transition-all group-hover:translate-x-0.5 group-hover:text-brand-600" />
                   </div>
+                  {metrics.length > 0 && (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {metrics.map((m, i) => (
+                        <div key={i} className="rounded-lg bg-gray-50 px-2.5 py-1.5">
+                          <p className="truncate text-[10px] text-gray-500">{m.label.includes(".") ? t(m.label) : m.label}</p>
+                          <p className="truncate text-sm font-bold text-gray-800">{m.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -532,8 +478,49 @@ function FarmWisePanel({ fin }) {
   const tExp = rows.reduce((s, f) => s + Number(f.expenses || 0), 0);
   const tRev = rows.reduce((s, f) => s + Number(f.revenue || 0), 0);
   const tNet = tRev - tExp;
+  const margin = (net, rev) => (rev ? `${(net / rev * 100).toFixed(2)}%` : "0%");
+
+  const download = () => {
+    const data = rows.map((f) => {
+      const rev = Number(f.revenue || 0), net = Number(f.net || 0);
+      return {
+        farm: f.farm_name,
+        expenses: Number(f.expenses || 0),
+        revenue: rev,
+        net,
+        margin: margin(net, rev),
+      };
+    });
+    data.push({ farm: "Total", expenses: tExp, revenue: tRev, net: tNet, margin: margin(tNet, tRev) });
+    exportExcel(
+      data,
+      [
+        { key: "farm", header: "Farm" },
+        { key: "expenses", header: "Expenses" },
+        { key: "revenue", header: "Revenue" },
+        { key: "net", header: "Net Profit" },
+        { key: "margin", header: "Margin" },
+      ],
+      "farm-wise-financial-summary.xlsx",
+      "Farm Summary",
+    );
+  };
+
   return (
-    <Panel title="Farm wise Financial Overview (This Year)">
+    <Panel
+      title="Farm wise Financial Overview (This Year)"
+      action={
+        rows.length > 0 && (
+          <button
+            onClick={download}
+            title="Download farm-wise summary"
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 hover:text-brand-600"
+          >
+            <Download size={13} /> Excel
+          </button>
+        )
+      }
+    >
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
