@@ -1,70 +1,28 @@
-import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import CrudResource from "../components/CrudResource";
-import GeofencePreviewMap from "../components/GeofencePreviewMap";
 import { MapPin } from "lucide-react";
-import { Card } from "../components/ui";
 import { resource } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
-const geoRepo = resource("gps/geofences");
 const farmRepo = resource("farms");
 
-// Full-precision coordinate (no rounding) — whatever the user typed is kept.
+// Full-precision coordinate (no rounding) — whatever was entered is kept.
 const coord = (v) => (v == null || v === "" ? "" : String(v));
-
-// Expand a polygon outward from its centroid by `meters` so a worker within
-// that many metres of the marked area still counts as inside (GPS tolerance).
-// Returns a list of [lat, lng] with full precision.
-const bufferPolygon = (corners, meters) => {
-  const pts = (Array.isArray(corners) ? corners : [])
-    .map((c) => [Number(c[0]), Number(c[1])])
-    .filter((c) => !Number.isNaN(c[0]) && !Number.isNaN(c[1]));
-  const m = Number(meters) || 0;
-  if (pts.length < 3 || m <= 0) return pts;
-  const cLat = pts.reduce((s, p) => s + p[0], 0) / pts.length;
-  const cLng = pts.reduce((s, p) => s + p[1], 0) / pts.length;
-  const mPerDegLat = 111320;
-  const mPerDegLng = 111320 * Math.cos((cLat * Math.PI) / 180) || 1e-9;
-  return pts.map(([lat, lng]) => {
-    const dym = (lat - cLat) * mPerDegLat;
-    const dxm = (lng - cLng) * mPerDegLng;
-    const len = Math.hypot(dxm, dym) || 1e-9;
-    const scale = (len + m) / len;
-    return [cLat + (lat - cLat) * scale, cLng + (lng - cLng) * scale];
-  });
-};
 
 export default function Geofences() {
   const { t } = useTranslation();
   const { hasRole } = useAuth();
   const canWrite = hasRole("SUPER_ADMIN", "FARM_MANAGER");
-  const [areas, setAreas] = useState([]);
 
-  // Load the saved geofences to draw them on the preview map.
-  const loadAreas = () => {
-    geoRepo.list({ page_size: 200 }).then((d) => {
-      const rows = d.results || d;
-      setAreas(
-        rows
-          .filter((r) => Array.isArray(r.polygon) && r.polygon.length >= 3)
-          .map((r) => ({ id: r.id, name: r.farm_name || r.name, corners: r.polygon }))
-      );
-    }).catch(() => {});
-  };
-  useEffect(loadAreas, []);
-
-  // After a geofence is saved, push the buffered polygon + tolerance onto the
-  // farm itself so attendance check-in (which reads farm.geofence /
-  // check_in_radius) marks anyone inside the area (± tolerance) as Present.
+  // Keep the farm's own geofence in sync when a geofence is edited here, so
+  // attendance check-in (which reads farm.geofence / check_in_radius) uses the
+  // same 4 corners + tolerance shown on the Farms & Fields page.
   const syncFarm = async (record) => {
-    if (!record?.farm) { loadAreas(); return; }
-    const buffered = bufferPolygon(record.polygon, record.radius_m);
+    if (!record?.farm) return;
     await farmRepo.update(record.farm, {
-      geofence: buffered,
+      geofence: Array.isArray(record.polygon) ? record.polygon : [],
       check_in_radius: Number(record.radius_m) || 0,
     });
-    loadAreas(); // refresh the preview map with the new/edited corners
   };
 
   const cornerCell = (pts, i) => {
@@ -77,26 +35,14 @@ export default function Geofences() {
   };
 
   return (
-    <div className="space-y-5">
-      {/* Map preview of every farm's 4-corner area. */}
-      <Card title="Farm Areas — Map Preview">
-        {areas.length > 0 ? (
-          <GeofencePreviewMap areas={areas} height={360} />
-        ) : (
-          <p className="py-6 text-center text-sm text-gray-400">
-            No areas yet — add a geofence below to see its 4 corners on the map.
-          </p>
-        )}
-      </Card>
-
-      <CrudResource
-        title={t("geofences.title")}
-        subtitle={t("geofences.subtitle")}
-        path="gps/geofences"
-        showFarmFilter
-        canWrite={canWrite}
-        defaultValues={{ name: "Farm area", radius_m: 10 }}
-        onSaved={syncFarm}
+    <CrudResource
+      title={t("geofences.title")}
+      subtitle={t("geofences.subtitle")}
+      path="gps/geofences"
+      showFarmFilter
+      canWrite={canWrite}
+      defaultValues={{ name: "Farm area", radius_m: 10 }}
+      onSaved={syncFarm}
       columns={[
         { key: "farm_name", header: t("header.farm") },
         {
@@ -136,8 +82,7 @@ export default function Geofences() {
           type: "number",
           required: true,
         },
-        ]}
-      />
-    </div>
+      ]}
+    />
   );
 }

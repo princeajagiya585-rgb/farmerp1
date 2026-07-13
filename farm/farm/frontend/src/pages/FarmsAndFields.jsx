@@ -3,9 +3,52 @@ import { useState } from "react";
 import { Tractor, MapPin } from "lucide-react";
 import CrudResource from "../components/CrudResource";
 import { Badge } from "../components/ui";
+import { resource } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Eye } from "lucide-react";
+
+const geoRepo = resource("gps/geofences");
+
+// Full-precision corner cell for the farms table.
+const corner = (pts, i) => {
+  const p = Array.isArray(pts) ? pts[i] : null;
+  return p && p[0] != null && p[1] != null ? (
+    <span className="whitespace-nowrap font-mono text-[11px]">{String(p[0])}, {String(p[1])}</span>
+  ) : (
+    <span className="text-gray-300">—</span>
+  );
+};
+
+// After a farm is saved with its 4 corners + tolerance, mirror them onto a
+// Geofence record so the same area shows up on the Geofences page.
+const round6 = (n) => Math.round(Number(n) * 1e6) / 1e6;
+const syncGeofence = async (farm) => {
+  if (!farm?.id) return;
+  const corners = Array.isArray(farm.geofence) ? farm.geofence : [];
+  const tol = Number(farm.check_in_radius) || 0;
+  const centroid = corners.length
+    ? [round6(corners.reduce((s, p) => s + Number(p[0]), 0) / corners.length),
+       round6(corners.reduce((s, p) => s + Number(p[1]), 0) / corners.length)]
+    : [null, null];
+  const payload = {
+    farm: farm.id,
+    name: `${farm.name || "Farm"} area`,
+    polygon: corners,
+    radius_m: tol,
+    center_lat: centroid[0],
+    center_lng: centroid[1],
+  };
+  try {
+    const existing = await geoRepo.list({ farm: farm.id, page_size: 5 });
+    const rows = (existing.results || existing).filter((g) => String(g.farm) === String(farm.id));
+    if (rows.length) {
+      await geoRepo.update(rows[0].id, payload);
+    } else if (corners.length >= 3) {
+      await geoRepo.create(payload);
+    }
+  } catch { /* mirror is best-effort; the farm itself already saved */ }
+};
 
 const TABS = [
   { key: "farms", label: "Farms", icon: Tractor },
@@ -46,6 +89,8 @@ export default function FarmsAndFields() {
           subtitle={t("farms.subtitle")}
           path="farms"
           canWrite={canWrite}
+          defaultValues={{ check_in_radius: 10 }}
+          onSaved={syncGeofence}
           columns={[
             { key: "name", header: t("header.name") },
             { key: "location", header: t("header.location") },
@@ -68,24 +113,11 @@ export default function FarmsAndFields() {
                   <span className="text-gray-400">—</span>
                 ),
             },
-            {
-              key: "geofence",
-              header: "Area Corners (Lat / Lng)",
-              render: (r) => {
-                const pts = Array.isArray(r.geofence) ? r.geofence : [];
-                if (!pts.length) return <span className="text-gray-400">—</span>;
-                return (
-                  <div className="space-y-0.5">
-                    {pts.slice(0, 4).map((p, i) => (
-                      <div key={i} className="flex items-center gap-1 whitespace-nowrap font-mono text-[11px]">
-                        <span className="text-gray-400">{i + 1}.</span>
-                        {String(p[0])}, {String(p[1])}
-                      </div>
-                    ))}
-                  </div>
-                );
-              },
-            },
+            { key: "c1", header: "Corner 1 (Lat / Lng)", render: (r) => corner(r.geofence, 0) },
+            { key: "c2", header: "Corner 2", render: (r) => corner(r.geofence, 1) },
+            { key: "c3", header: "Corner 3", render: (r) => corner(r.geofence, 2) },
+            { key: "c4", header: "Corner 4", render: (r) => corner(r.geofence, 3) },
+            { key: "check_in_radius", header: "Tolerance (m)", render: (r) => (r.check_in_radius != null ? `${r.check_in_radius} m` : "—") },
             {
               key: "is_active",
               header: t("header.status"),
@@ -102,6 +134,21 @@ export default function FarmsAndFields() {
               type: "coords",
               placeholder: "e.g. 28.6139, 77.2090",
               targets: ["latitude", "longitude"],
+            },
+            {
+              name: "geofence",
+              label: "Farm Area — 4 Corner Lat/Lng",
+              type: "geopolygon",
+              corners: 4,
+              cornerLabel: "Corner",
+              required: true,
+              hint: "Enter each corner as: latitude, longitude (full precision, e.g. 23.323234342423, 43.435453435343). Auto-added to the Geofences page.",
+            },
+            {
+              name: "check_in_radius",
+              label: "Geofence tolerance (meters)",
+              type: "number",
+              required: true,
             },
             { name: "established_date", label: "Established Date", type: "date" },
             { name: "notes", label: "Notes", type: "textarea" },
