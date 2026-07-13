@@ -122,9 +122,11 @@ export default function Dashboard() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [waking, setWaking] = useState(false);
+  const [selectedFarm, setSelectedFarm] = useState("");
   const pollingRef = useRef(null);
   const retryRef = useRef(null);
   const kpiRef = useRef(null);
+  const selectedFarmRef = useRef("");
 
   // Keep a ref in sync with the latest data so the loader can decide whether a
   // failed *background* refresh should be surfaced (no data yet) or swallowed
@@ -145,7 +147,10 @@ export default function Dashboard() {
     }
     setLoading(true);
     api
-      .get("/reporting/dashboard/", { timeout: 20000 })
+      .get("/reporting/dashboard/", {
+        params: selectedFarmRef.current ? { farm: selectedFarmRef.current } : {},
+        timeout: 20000,
+      })
       .then((r) => {
         setKpi(r.data);
         setError("");
@@ -171,6 +176,13 @@ export default function Dashboard() {
         }
       })
       .finally(() => setLoading(false));
+  };
+
+  // Switch the whole dashboard to a single farm (or back to All Farms).
+  const onFarmChange = (value) => {
+    setSelectedFarm(value);
+    selectedFarmRef.current = value;
+    loadDashboard(0);
   };
 
  useEffect(() => {
@@ -227,12 +239,27 @@ export default function Dashboard() {
 
   return (
     <div>
-      {/* Welcome */}
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold text-brand-700">
-          {t("layout.welcome", { name: user?.first_name || user?.username })} 👋
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">{t("layout.overview")}</p>
+      {/* Welcome + farm scope selector */}
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-brand-700">
+            {t("layout.welcome", { name: user?.first_name || user?.username })} 👋
+          </h1>
+          <p className="mt-1 text-sm text-gray-500">{t("layout.overview")}</p>
+        </div>
+        {(kpi?.farms?.length || 0) > 1 && (
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🌾</span>
+            <select
+              value={selectedFarm}
+              onChange={(e) => onFarmChange(e.target.value)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm outline-none focus:border-brand-500"
+            >
+              <option value="">{t("dashboard.allFarms", "All Farms")}</option>
+              {kpi.farms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Accounting-style overview — KPIs, yearly ledger, charts & tables */}
@@ -244,6 +271,9 @@ export default function Dashboard() {
           <h2 className="mb-4 text-lg font-bold text-gray-800">{t("dashboard.quickAccess")}</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {visibleModules.map((mod) => {
+              // HR & Tasks keep their richer detail cards in Quick Access.
+              if (mod.key === "hr") return <HrCard key="hr" mod={mod} kpi={kpi} navigate={navigate} t={t} />;
+              if (mod.key === "tasks") return <TasksCard key="tasks" mod={mod} kpi={kpi} navigate={navigate} t={t} />;
               const Icon = mod.icon;
               const metrics = getModuleMetrics(mod, kpi, t).slice(0, 2);
               return (
@@ -364,7 +394,74 @@ function DashboardOverview({ kpi }) {
         <RecentTransactionsPanel kpi={kpi} />
         <UpcomingTasksPanel kpi={kpi} />
       </div>
+
+      <PayrollByEmployeePanel kpi={kpi} />
     </div>
+  );
+}
+
+function PayrollByEmployeePanel({ kpi }) {
+  const rows = kpi.payroll_by_employee || [];
+  const total = rows.reduce((s, r) => s + Number(r.paid || 0), 0);
+  const download = () => {
+    const data = rows.map((r) => ({ employee: r.employee, farm: r.farm_name || "—", paid: Number(r.paid || 0) }));
+    data.push({ employee: "Total", farm: "", paid: total });
+    exportExcel(
+      data,
+      [
+        { key: "employee", header: "Employee" },
+        { key: "farm", header: "Farm" },
+        { key: "paid", header: "Salary Paid" },
+      ],
+      "salary-by-employee.xlsx",
+      "Salary",
+    );
+  };
+  return (
+    <Panel
+      title="Salary Paid by Employee"
+      subtitle="Who received how much — actual payouts"
+      action={
+        rows.length > 0 && (
+          <button
+            onClick={download}
+            title="Download salary summary"
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 hover:text-brand-600"
+          >
+            <Download size={13} /> Excel
+          </button>
+        )
+      }
+    >
+      {rows.length === 0 ? (
+        <p className="py-6 text-center text-xs text-gray-400">No salary paid yet</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-wide text-gray-400">
+                <th className="py-1 text-left">Employee</th>
+                <th className="py-1 text-left">Farm</th>
+                <th className="py-1 text-right">Salary Paid</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="border-t border-gray-100">
+                  <td className="py-1.5 font-semibold text-gray-700">{r.employee}</td>
+                  <td className="py-1.5 text-green-700">{r.farm_name || "—"}</td>
+                  <td className="py-1.5 text-right font-semibold text-gray-800">{inr(r.paid)}</td>
+                </tr>
+              ))}
+              <tr className="border-t-2 border-gray-200 font-bold">
+                <td className="py-1.5 text-gray-800" colSpan={2}>Total</td>
+                <td className="py-1.5 text-right text-gray-800">{inr(total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panel>
   );
 }
 

@@ -31,7 +31,18 @@ class DashboardView(APIView):
     serializer_class = serializers.Serializer
 
     def get(self, request):
-        farm_ids = get_accessible_farm_ids(request.user)
+        all_farm_ids = get_accessible_farm_ids(request.user)
+        # Optional ?farm=<id> scopes the WHOLE dashboard to one farm. Everything
+        # below already filters by `farm_ids`, so narrowing it here makes every
+        # KPI, chart and table reflect just the selected farm.
+        farm_ids = all_farm_ids
+        sel_farm = request.query_params.get("farm")
+        if sel_farm and sel_farm in {str(x) for x in all_farm_ids}:
+            farm_ids = [sel_farm]
+        farms_list = [
+            {"id": str(f.id), "name": f.name}
+            for f in Farm.objects.filter(id__in=all_farm_ids).order_by("name")
+        ]
         today = timezone.now().date()
 
         farms_qs = Farm.objects.filter(id__in=farm_ids)
@@ -427,6 +438,22 @@ class DashboardView(APIView):
             ).select_related("farm").order_by("due_date")[:6]
         ]
 
+        # Salary paid per employee ("kisko kitni salary mile") — actual payouts.
+        payroll_by_employee = [
+            {
+                "employee": (f"{p['employee__first_name'] or ''} {p['employee__last_name'] or ''}".strip()
+                             or p["employee__employee_code"] or "—"),
+                "farm_name": p["employee__farm__name"],
+                "paid": float(p["paid"] or 0),
+            }
+            for p in (
+                Payment.objects.filter(employee__farm_id__in=farm_ids)
+                .values("employee_id", "employee__first_name", "employee__last_name",
+                        "employee__employee_code", "employee__farm__name")
+                .annotate(paid=Sum("amount")).order_by("-paid")[:20]
+            )
+        ]
+
         on_leave_today = att_qs.filter(date=today, status=Attendance.Status.LEAVE).count()
         active_employees = emp_qs.filter(is_active=True).count()
         try:
@@ -494,6 +521,9 @@ class DashboardView(APIView):
                 },
                 "recent_transactions": recent_transactions,
                 "upcoming_tasks": upcoming_tasks,
+                "payroll_by_employee": payroll_by_employee,
+                "farms": farms_list,
+                "selected_farm": sel_farm if farm_ids != all_farm_ids else None,
                 "inventory_kpis": {
                     "total_items": items_qs.count(),
                     "low_stock_count": low_stock_count,
