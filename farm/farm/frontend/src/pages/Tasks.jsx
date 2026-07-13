@@ -110,6 +110,25 @@ const formatDuration = (minutes) => {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 };
 
+// Optional per-task time limit (in hours) is stored in the task's `category`
+// field. Returns the limit in hours (number) or null when none/invalid.
+const taskLimitHours = (row) => {
+  const raw = row?.category;
+  if (raw == null || raw === "") return null;
+  const h = Number(raw);
+  return !Number.isNaN(h) && h > 0 ? h : null;
+};
+
+// "2h", "1h 30m", "30m" \u2014 a compact label for the allotted time limit.
+const formatLimit = (hours) => {
+  const totalMin = Math.round(hours * 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+};
+
 export default function Tasks() {
   const { t } = useTranslation();
   const { hasRole } = useAuth();
@@ -304,7 +323,7 @@ export default function Tasks() {
 
   // ── TaskTimer component ──────────────────────────────────────────
   // Shows the timer based on task.status and my_execution.timer_data
-  const TaskTimer = ({ row }) => {
+  const TaskTimer = ({ row, limitMinutes = null }) => {
     const status = row.status;
     const execution = row.my_execution;
     // Prefer the task-level work_timer (computed from activities → works for
@@ -369,13 +388,14 @@ export default function Tasks() {
       }
 
       const net = (now - anchor) / 1000 - accBreak;
+      const over = limitMinutes != null && net > limitMinutes * 60;
       return (
         <div className="flex items-center gap-1.5">
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+            <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${over ? "bg-red-400" : "bg-green-400"}`} />
+            <span className={`relative inline-flex h-2 w-2 rounded-full ${over ? "bg-red-500" : "bg-green-500"}`} />
           </span>
-          <span className="text-xs font-medium text-green-700">{fmt(net)}</span>
+          <span className={`text-xs font-medium ${over ? "text-red-700" : "text-green-700"}`} title={over ? t("tasks.overLimit") : undefined}>{fmt(net)}</span>
         </div>
       );
     }
@@ -597,7 +617,19 @@ export default function Tasks() {
             {
               key: "timer",
               header: t("header.timer"),
-              render: (r) => <TaskTimer row={r} />,
+              render: (r) => {
+                const limitH = taskLimitHours(r);
+                return (
+                  <div className="flex items-center gap-1.5">
+                    {limitH != null && (
+                      <span className="whitespace-nowrap rounded bg-blue-50 px-1.5 py-0.5 text-xs font-semibold text-blue-700" title={t("tasks.timeLimit")}>
+                        {formatLimit(limitH)}
+                      </span>
+                    )}
+                    <TaskTimer row={r} limitMinutes={limitH != null ? limitH * 60 : null} />
+                  </div>
+                );
+              },
             },
           ];
           return cols;
@@ -630,7 +662,9 @@ export default function Tasks() {
           },
           ...assignFields,
           { name: "field", label: t("tasks.fieldField"), optionsFrom: { path: "farms/fields", label: (f) => f.name } },
-          { name: "category", label: t("tasks.fieldCategory") },
+          // Optional fixed time limit for the work, in hours (stored in `category`).
+          // e.g. 3 → the task should be done within 3 hours; shown next to the timer.
+          { name: "category", label: t("tasks.fieldTimeLimit"), type: "number" },
           { name: "start_date", label: t("tasks.fieldStartDate"), type: "date" },
           { name: "due_date", label: t("tasks.fieldDueDate"), type: "date" },
         ]}
