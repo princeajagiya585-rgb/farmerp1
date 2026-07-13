@@ -46,7 +46,6 @@ export default function FarmsAndFields() {
           subtitle={t("farms.subtitle")}
           path="farms"
           canWrite={canWrite}
-          defaultValues={{ check_in_radius: 10 }}
           columns={[
             { key: "name", header: t("header.name") },
             { key: "location", header: t("header.location") },
@@ -80,7 +79,7 @@ export default function FarmsAndFields() {
                     {pts.slice(0, 4).map((p, i) => (
                       <div key={i} className="flex items-center gap-1 whitespace-nowrap font-mono text-[11px]">
                         <span className="text-gray-400">{i + 1}.</span>
-                        {Number(p[0]).toFixed(6)}, {Number(p[1]).toFixed(6)}
+                        {String(p[0])}, {String(p[1])}
                       </div>
                     ))}
                   </div>
@@ -103,19 +102,6 @@ export default function FarmsAndFields() {
               type: "coords",
               placeholder: "e.g. 28.6139, 77.2090",
               targets: ["latitude", "longitude"],
-            },
-            {
-              name: "geofence",
-              label: "Farm Area — 4 Corner Lat/Lng (optional)",
-              type: "geopolygon",
-              corners: 4,
-              cornerLabel: "Corner",
-              hint: "Mark the farm boundary corner-by-corner. Attendance counts as In Geofence only inside this 4-corner area (± the tolerance below).",
-            },
-            {
-              name: "check_in_radius",
-              label: "Geofence tolerance (meters)",
-              type: "number",
             },
             { name: "established_date", label: "Established Date", type: "date" },
             { name: "notes", label: "Notes", type: "textarea" },

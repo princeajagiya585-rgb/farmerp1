@@ -1,102 +1,111 @@
-import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import CrudResource from "../components/CrudResource";
 import { MapPin } from "lucide-react";
-import { Card } from "../components/ui";
 import { resource } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+
+const farmRepo = resource("farms");
+
+// Full-precision coordinate (no rounding) — whatever the user typed is kept.
+const coord = (v) => (v == null || v === "" ? "" : String(v));
+
+// Expand a polygon outward from its centroid by `meters` so a worker within
+// that many metres of the marked area still counts as inside (GPS tolerance).
+// Returns a list of [lat, lng] with full precision.
+const bufferPolygon = (corners, meters) => {
+  const pts = (Array.isArray(corners) ? corners : [])
+    .map((c) => [Number(c[0]), Number(c[1])])
+    .filter((c) => !Number.isNaN(c[0]) && !Number.isNaN(c[1]));
+  const m = Number(meters) || 0;
+  if (pts.length < 3 || m <= 0) return pts;
+  const cLat = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+  const cLng = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+  const mPerDegLat = 111320;
+  const mPerDegLng = 111320 * Math.cos((cLat * Math.PI) / 180) || 1e-9;
+  return pts.map(([lat, lng]) => {
+    const dym = (lat - cLat) * mPerDegLat;
+    const dxm = (lng - cLng) * mPerDegLng;
+    const len = Math.hypot(dxm, dym) || 1e-9;
+    const scale = (len + m) / len;
+    return [cLat + (lat - cLat) * scale, cLng + (lng - cLng) * scale];
+  });
+};
 
 export default function Geofences() {
   const { t } = useTranslation();
   const { hasRole } = useAuth();
   const canWrite = hasRole("SUPER_ADMIN", "FARM_MANAGER");
-  const [farms, setFarms] = useState([]);
 
-  useEffect(() => {
-    resource("farms").list({ page_size: 200 }).then((d) => setFarms(d.results || d)).catch(() => {});
-  }, []);
+  // After a geofence is saved, push the buffered polygon + tolerance onto the
+  // farm itself so attendance check-in (which reads farm.geofence /
+  // check_in_radius) marks anyone inside the area (± tolerance) as Present.
+  const syncFarm = async (record) => {
+    if (!record?.farm) return;
+    const buffered = bufferPolygon(record.polygon, record.radius_m);
+    await farmRepo.update(record.farm, {
+      geofence: buffered,
+      check_in_radius: Number(record.radius_m) || 0,
+    });
+  };
 
-  const corner = (pts, i) => {
+  const cornerCell = (pts, i) => {
     const p = Array.isArray(pts) ? pts[i] : null;
     return p && p[0] != null && p[1] != null ? (
-      <span className="font-mono text-[11px]">{Number(p[0]).toFixed(6)}, {Number(p[1]).toFixed(6)}</span>
+      <span className="font-mono text-[11px]">{coord(p[0])}, {coord(p[1])}</span>
     ) : (
       <span className="text-gray-300">—</span>
     );
   };
 
   return (
-    <div className="space-y-5">
-      {/* Farm areas defined by their 4 boundary corners (used for attendance). */}
-      <Card title="Farm Areas — 4 Corner Lat / Lng">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 text-left text-xs font-semibold text-gray-500">
-                <th className="py-2 pr-3">{t("header.farm")}</th>
-                <th className="py-2 pr-3">Center Lat / Lng</th>
-                <th className="py-2 pr-3">Corner 1</th>
-                <th className="py-2 pr-3">Corner 2</th>
-                <th className="py-2 pr-3">Corner 3</th>
-                <th className="py-2 pr-3">Corner 4</th>
-              </tr>
-            </thead>
-            <tbody>
-              {farms.map((f) => (
-                <tr key={f.id} className="border-b border-gray-100">
-                  <td className="py-2 pr-3 font-medium text-gray-800">{f.name}</td>
-                  <td className="py-2 pr-3">
-                    {f.latitude && f.longitude ? (
-                      <span className="flex items-center gap-1 font-mono text-[11px]">
-                        <MapPin size={11} className="text-brand-500" />
-                        {Number(f.latitude).toFixed(6)}, {Number(f.longitude).toFixed(6)}
-                      </span>
-                    ) : <span className="text-gray-300">—</span>}
-                  </td>
-                  <td className="py-2 pr-3">{corner(f.geofence, 0)}</td>
-                  <td className="py-2 pr-3">{corner(f.geofence, 1)}</td>
-                  <td className="py-2 pr-3">{corner(f.geofence, 2)}</td>
-                  <td className="py-2 pr-3">{corner(f.geofence, 3)}</td>
-                </tr>
-              ))}
-              {farms.length === 0 && (
-                <tr><td colSpan={6} className="py-3 text-center text-gray-400">—</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      <CrudResource
-        title={t("geofences.title")}
-        subtitle={t("geofences.subtitle")}
-        path="gps/geofences"
-        showFarmFilter
-        canWrite={canWrite}
-        // Auto-refresh removed to avoid Railway 429 rate limits.
-        // Data changes infrequently (geofences are rarely modified).
-        columns={[
-          { key: "farm_name", header: t("header.farm") },
-          {
-            key: "center_lat",
-            header: "Center Latitude / Longitude",
-            render: (r) =>
-              r.center_lat && r.center_lng ? (
-                <span className="flex items-center gap-1.5 text-xs">
-                  <MapPin size={12} className="text-brand-500" />
-                  <span className="font-mono">
-                    {Number(r.center_lat).toFixed(6)}, {Number(r.center_lng).toFixed(6)}
-                  </span>
-                </span>
-              ) : (
-                <span className="text-gray-400">—</span>
-              ),
-          },
-        ]}
-        fields={[
-          { name: "farm", label: t("geofences.fieldFarm"), optionsFrom: { path: "farms", label: (f) => f.name }, required: true },
-        ]}
-      />
-    </div>
+    <CrudResource
+      title={t("geofences.title")}
+      subtitle={t("geofences.subtitle")}
+      path="gps/geofences"
+      showFarmFilter
+      canWrite={canWrite}
+      defaultValues={{ name: "Farm area", radius_m: 10 }}
+      onSaved={syncFarm}
+      columns={[
+        { key: "farm_name", header: t("header.farm") },
+        {
+          key: "c1",
+          header: "Corner 1 (Lat / Lng)",
+          render: (r) => (
+            <span className="flex items-center gap-1">
+              <MapPin size={11} className="text-brand-500" />
+              {cornerCell(r.polygon, 0)}
+            </span>
+          ),
+        },
+        { key: "c2", header: "Corner 2", render: (r) => cornerCell(r.polygon, 1) },
+        { key: "c3", header: "Corner 3", render: (r) => cornerCell(r.polygon, 2) },
+        { key: "c4", header: "Corner 4", render: (r) => cornerCell(r.polygon, 3) },
+        {
+          key: "radius_m",
+          header: "Tolerance (m)",
+          render: (r) => (r.radius_m != null ? `${r.radius_m} m` : "—"),
+        },
+      ]}
+      fields={[
+        { name: "farm", label: t("geofences.fieldFarm"), optionsFrom: { path: "farms", label: (f) => f.name }, required: true },
+        { name: "name", label: "Label", required: true },
+        {
+          name: "polygon",
+          label: "Farm Area — 4 Corner Lat/Lng",
+          type: "geopolygon",
+          corners: 4,
+          cornerLabel: "Corner",
+          required: true,
+          hint: "Enter each corner as: latitude, longitude (full precision, e.g. 23.323234342423, 43.435453435343).",
+        },
+        {
+          name: "radius_m",
+          label: "Geofence tolerance (meters)",
+          type: "number",
+          required: true,
+        },
+      ]}
+    />
   );
 }

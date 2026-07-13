@@ -36,7 +36,7 @@ const EMPTY_PARAMS = {};
 export default function CrudResource({
   title, subtitle, path, columns, fields = [], canWrite = true,
   canEdit,
-  rowActions, defaultValues = {}, searchable = true, extraToolbar, listParams = EMPTY_PARAMS,
+  rowActions, defaultValues = {}, searchable = true, extraToolbar, listParams = EMPTY_PARAMS, onSaved,
   refreshInterval, computedFields = [], rowClassName, sortRows, createOptions, footerColumns = [],
   fieldDependencies = [], // [{ watch: "fieldName", target: "targetField", mapField: "sourceFieldInRecord" }]
   renderFooter, // optional custom tfoot footer: (totals) => JSX
@@ -271,15 +271,23 @@ export default function CrudResource({
         if (fl.type === "coords") delete payload[fl.name];
       });
       // Geopolygon → clean array of [lat, lng] number pairs (drop empty corners)
+      let geoInvalid = false;
       fields.forEach((fl) => {
         if (fl.type === "geopolygon") {
           const arr = Array.isArray(payload[fl.name]) ? payload[fl.name] : [];
-          payload[fl.name] = arr
+          const clean = arr
             .filter((p) => p && p[0] !== "" && p[1] !== "" && p[0] != null && p[1] != null)
             .map((p) => [Number(p[0]), Number(p[1])])
             .filter((p) => !Number.isNaN(p[0]) && !Number.isNaN(p[1]));
+          if (fl.required && clean.length < (fl.corners || 3)) geoInvalid = true;
+          payload[fl.name] = clean;
         }
       });
+      if (geoInvalid) {
+        setError(t("crud.geopolygonRequired", "Enter every corner as: latitude, longitude"));
+        setSaving(false);
+        return;
+      }
       fields.forEach((fl) => {
         if (fl.type === "number" && payload[fl.name] !== "" && payload[fl.name] != null)
           payload[fl.name] = Number(payload[fl.name]);
@@ -313,18 +321,22 @@ export default function CrudResource({
         });
       }
 
+      let saved;
       if (modal.mode === "create") {
-        await repo.create(payload);
+        saved = await repo.create(payload);
       } else {
         if (!hasFileField) {
           Object.keys(payload).forEach((k) => {
             if (payload[k] === null || payload[k] === "") delete payload[k];
           });
         }
-        await repo.update(modal.id, payload);
+        saved = await repo.update(modal.id, payload);
       }
       setModal(null);
       load();
+      if (onSaved) {
+        try { await onSaved(saved, modal.mode); } catch { /* side-effect only, non-fatal */ }
+      }
     } catch (e) {
       setError(formatApiError(e, t("crud.saveFailed")));
     } finally {
