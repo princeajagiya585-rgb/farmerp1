@@ -46,18 +46,23 @@ export default function Geofences() {
       columns={[
         { key: "farm_name", header: t("header.farm") },
         {
-          key: "c1",
-          header: "Corner 1 (Lat / Lng)",
-          render: (r) => (
-            <span className="flex items-center gap-1">
-              <MapPin size={11} className="text-brand-500" />
-              {cornerCell(r.polygon, 0)}
-            </span>
-          ),
+          key: "polygon",
+          header: "Corners (Lat / Lng)",
+          render: (r) => {
+            const pts = Array.isArray(r.polygon) ? r.polygon : [];
+            if (!pts.length) return <span className="text-gray-300">—</span>;
+            return (
+              <div className="flex flex-col gap-0.5">
+                {pts.map((p, i) => (
+                  <span key={i} className="flex items-center gap-1 font-mono text-[11px] whitespace-nowrap">
+                    {i === 0 ? <MapPin size={11} className="text-brand-500" /> : <span className="w-[11px]" />}
+                    <span className="text-gray-400">{i + 1}.</span> {cornerCell(pts, i)}
+                  </span>
+                ))}
+              </div>
+            );
+          },
         },
-        { key: "c2", header: "Corner 2", render: (r) => cornerCell(r.polygon, 1) },
-        { key: "c3", header: "Corner 3", render: (r) => cornerCell(r.polygon, 2) },
-        { key: "c4", header: "Corner 4", render: (r) => cornerCell(r.polygon, 3) },
         {
           key: "radius_m",
           header: "Tolerance (m)",
@@ -69,12 +74,12 @@ export default function Geofences() {
         { name: "name", label: "Label", required: true },
         {
           name: "polygon",
-          label: "Farm Area — 4 Corner Lat/Lng",
+          label: "Farm Area — Corner Lat/Lng",
           type: "geopolygon",
           corners: 4,
           cornerLabel: "Corner",
           required: true,
-          hint: "Enter each corner as: latitude, longitude (full precision, e.g. 23.323234342423, 43.435453435343).",
+          hint: "Enter each corner as: latitude, longitude. Use “+ Corner Lat/Lng” to add as many corners as your farm shape needs.",
         },
         {
           name: "radius_m",

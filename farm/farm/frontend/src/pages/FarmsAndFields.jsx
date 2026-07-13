@@ -20,8 +20,8 @@ const corner = (pts, i) => {
   );
 };
 
-// After a farm is saved with its 4 corners + tolerance, mirror them onto a
-// Geofence record so the same area shows up on the Geofences page.
+// After a farm is saved with its corners (4 or more) + tolerance, mirror them
+// onto a Geofence record so the same area shows up on the Geofences page.
 const round6 = (n) => Math.round(Number(n) * 1e6) / 1e6;
 const syncGeofence = async (farm) => {
   if (!farm?.id) return;
@@ -135,10 +135,24 @@ export default function FarmsAndFields() {
                   <span className="text-gray-400">—</span>
                 ),
             },
-            { key: "c1", header: "Corner 1 (Lat / Lng)", render: (r) => corner(farmCorners(r), 0) },
-            { key: "c2", header: "Corner 2", render: (r) => corner(farmCorners(r), 1) },
-            { key: "c3", header: "Corner 3", render: (r) => corner(farmCorners(r), 2) },
-            { key: "c4", header: "Corner 4", render: (r) => corner(farmCorners(r), 3) },
+            {
+              key: "corners",
+              header: "Corners (Lat / Lng)",
+              render: (r) => {
+                const pts = farmCorners(r);
+                const list = Array.isArray(pts) ? pts : [];
+                if (!list.length) return <span className="text-gray-300">—</span>;
+                return (
+                  <div className="flex flex-col gap-0.5">
+                    {list.map((_, i) => (
+                      <span key={i} className="flex items-center gap-1 whitespace-nowrap">
+                        <span className="text-[10px] text-gray-400">{i + 1}.</span> {corner(list, i)}
+                      </span>
+                    ))}
+                  </div>
+                );
+              },
+            },
             { key: "check_in_radius", header: "Tolerance (m)", render: (r) => { const tol = farmTolerance(r); return tol != null ? `${tol} m` : "—"; } },
             {
               key: "is_active",
@@ -159,12 +173,12 @@ export default function FarmsAndFields() {
             },
             {
               name: "geofence",
-              label: "Farm Area — 4 Corner Lat/Lng",
+              label: "Farm Area — Corner Lat/Lng",
               type: "geopolygon",
               corners: 4,
               cornerLabel: "Corner",
               required: true,
-              hint: "Enter each corner as: latitude, longitude (full precision, e.g. 23.323234342423, 43.435453435343). Auto-added to the Geofences page.",
+              hint: "Enter each corner as: latitude, longitude. Use “+ Corner Lat/Lng” to add as many corners as your farm shape needs. Auto-added to the Geofences page.",
             },
             {
               name: "check_in_radius",

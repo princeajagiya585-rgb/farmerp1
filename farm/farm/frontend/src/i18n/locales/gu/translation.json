@@ -924,6 +924,8 @@
   "crud.excel": "એક્સેલ",
   "crud.print": "પ્રિંટ",
   "crud.save": "સાચવો",
+  "crud.addCorner": "ખૂણો (Lat/Lng)",
+  "crud.removeCorner": "ખૂણો દૂર કરો",
   "crud.saving": "સાચવાઈ રહ્યું છે…",
   "crud.cancel": "રદ કરો",
   "crud.noOptions": "— પસંદ કરો —",

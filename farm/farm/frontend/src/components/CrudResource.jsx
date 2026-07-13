@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Plus, Pencil, Trash2, Search, Download, Printer, ChevronLeft, ChevronRight, ChevronDown, Filter, Camera,
+  Plus, Pencil, Trash2, Search, Download, Printer, ChevronLeft, ChevronRight, ChevronDown, Filter, Camera, X,
 } from "lucide-react";
 import LoadingSpinner from "./LoadingSpinner";
 import CameraCapture from "./CameraCapture";
@@ -800,24 +800,31 @@ export default function CrudResource({
               );
             }
             if (fl.type === "geopolygon") {
-              const corners = fl.corners || 4;
+              // `corners` is the MINIMUM number of corner rows to show (default
+              // 4). Users can add as many more as their farm shape needs via the
+              // "+ Corner" button; extra corners flow through to the polygon and
+              // the geofence check-in unchanged.
+              const minCorners = fl.corners || 4;
               const val = Array.isArray(form[fl.name]) ? form[fl.name] : [];
+              const count = Math.max(minCorners, val.length);
+              const rows = Array.from({ length: count }, (_, k) => val[k] || ["", ""]);
+              const commit = (next) => setForm({ ...form, [fl.name]: next });
               const setCorner = (i, raw) => {
                 const parts = raw.split(",").map((p) => p.trim());
-                const next = Array.from({ length: corners }, (_, k) => val[k] || ["", ""]);
-                next[i] = [parts[0] ?? "", parts[1] ?? ""];
-                setForm({ ...form, [fl.name]: next });
+                commit(rows.map((p, k) => (k === i ? [parts[0] ?? "", parts[1] ?? ""] : p)));
               };
+              const addCorner = () => commit([...rows, ["", ""]]);
+              const removeCorner = (i) => commit(rows.filter((_, k) => k !== i));
+              const cornerWord = fl.cornerLabel || "Corner";
               return (
                 <div key={fl.name}>
                   <label className="mb-1 block text-sm font-medium text-gray-700">{fl.label}</label>
                   <div className="space-y-2">
-                    {Array.from({ length: corners }).map((_, i) => {
-                      const pair = val[i] || ["", ""];
+                    {rows.map((pair, i) => {
                       const str = pair[0] !== "" && pair[1] !== "" && pair[0] != null && pair[1] != null ? `${pair[0]}, ${pair[1]}` : "";
                       return (
                         <div key={i} className="flex items-center gap-2">
-                          <span className="w-14 shrink-0 text-xs font-semibold text-gray-500">{(fl.cornerLabel || "Corner")} {i + 1}</span>
+                          <span className="w-14 shrink-0 text-xs font-semibold text-gray-500">{cornerWord} {i + 1}</span>
                           <input
                             type="text"
                             placeholder="latitude, longitude"
@@ -825,10 +832,27 @@ export default function CrudResource({
                             onChange={(e) => setCorner(i, e.target.value)}
                             className="w-full rounded-xl border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                           />
+                          {count > minCorners && (
+                            <button
+                              type="button"
+                              onClick={() => removeCorner(i)}
+                              title={t("crud.removeCorner", "Remove corner")}
+                              className="shrink-0 rounded-lg p-2 text-red-500 hover:bg-red-50"
+                            >
+                              <X size={15} />
+                            </button>
+                          )}
                         </div>
                       );
                     })}
                   </div>
+                  <button
+                    type="button"
+                    onClick={addCorner}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-100"
+                  >
+                    <Plus size={15} /> {t("crud.addCorner", "Corner Lat/Lng")}
+                  </button>
                   <p className="mt-1 text-xs text-gray-400">{fl.hint || "Enter each corner as: latitude, longitude"}</p>
                 </div>
               );

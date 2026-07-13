@@ -1470,6 +1470,8 @@
   "crud.excel": "Excel",
   "crud.print": "Print",
   "crud.save": "Save",
+  "crud.addCorner": "Corner Lat/Lng",
+  "crud.removeCorner": "Remove corner",
   "crud.saving": "Saving…",
   "crud.cancel": "Cancel",
   "crud.noOptions": "— select —",

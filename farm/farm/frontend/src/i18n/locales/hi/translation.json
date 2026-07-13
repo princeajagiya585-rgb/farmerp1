@@ -527,6 +527,8 @@
   "crud.excel": "एक्सेल",
   "crud.print": "प्रिंट",
   "crud.save": "सहेजें",
+  "crud.addCorner": "कोना (Lat/Lng)",
+  "crud.removeCorner": "कोना हटाएं",
   "crud.saving": "सहेजा जा रहा है…",
   "crud.cancel": "रद्द करें",
   "crud.noOptions": "— चुनें —",
