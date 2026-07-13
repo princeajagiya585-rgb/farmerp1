@@ -1708,6 +1708,8 @@
   "attendance.updateFailed": "Failed to update attendance record.",
   "attendance.checkinSuccess": "{{name}} checked in successfully.",
   "attendance.outsideFarmArea": "You are outside the farm area. Attendance can only be marked from inside the farm boundary. Please move inside the farm and try again.",
+  "errors.outside_farm_area": "You are outside the farm area. Attendance can only be marked from inside the farm boundary. Please move inside the farm and try again.",
+  "common.somethingWrong": "Something went wrong. Please try again.",
   "attendance.checkoutSuccess": "{{name}} checked out successfully.",
   "workerDetail.purchases": "Purchases",
   "workerDetail.sales": "Sales",

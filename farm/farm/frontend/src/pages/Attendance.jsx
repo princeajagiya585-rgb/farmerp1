@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { Download, MapPin, Check, X, LogIn, LogOut, Clock, Navigation, Camera, Loader2, Pencil, Trash2, Timer } from "lucide-react";
 import { openMapUrl, hasValidCoords } from "../lib/maps";
-import { api, resource, toFormData, normalizePhotoUrl } from "../lib/api";
+import { api, resource, toFormData, normalizePhotoUrl, apiErrorMessage } from "../lib/api";
 import { Badge, Button, Card, PageHeader, PhotoThumb, Table, Select, ToastContainer, useToast } from "../components/ui";
 import CameraCapture from "../components/CameraCapture";
 import { exportExcel } from "../lib/export";
@@ -400,7 +400,7 @@ export default function Attendance() {
         refreshMyToday();
       }
     } catch (e) {
-      const detail = e.response?.data?.detail || t("common.checkInFailed");
+      const detail = apiErrorMessage(e, t, "common.checkInFailed");
       setMsg(detail);
       addToast(detail, "error");
     } finally {
@@ -451,7 +451,7 @@ export default function Attendance() {
         refreshMyToday();
       }
     } catch (e) {
-      const detail = e.response?.data?.detail || t("common.checkOutFailed");
+      const detail = apiErrorMessage(e, t, "common.checkOutFailed");
       setMsg(detail);
       addToast(detail, "error");
     } finally {
@@ -676,7 +676,7 @@ export default function Attendance() {
       {!isEmployee && (
         <Card title={t("attendance.quickCheckIn")} className="mb-5">
           <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[240px]">
+            <div className="w-full sm:w-auto sm:min-w-[240px]">
               <Select label={t("attendance.employee")} value={empId} onChange={(e) => setEmpId(e.target.value)}>
                 <option value="">{t("attendance.selectEmployee")}</option>
                 {employees.map((e) => (

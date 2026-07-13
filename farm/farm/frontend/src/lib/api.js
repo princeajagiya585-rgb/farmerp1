@@ -472,3 +472,16 @@ export function toFormData(obj) {
   });
   return fd;
 }
+
+// Turn an axios error into a user-facing, localized message. When the backend
+// tags an error with a stable `code`, we show the matching `errors.<code>`
+// translation (falling back to the server `detail`, then a generic message);
+// otherwise we show the raw `detail`. Pass the `t` from `useTranslation()`.
+export function apiErrorMessage(err, t, fallbackKey = "common.somethingWrong") {
+  const data = err?.response?.data;
+  const detail = typeof data?.detail === "string" ? data.detail : "";
+  const code = data?.code;
+  const generic = t(fallbackKey, "Something went wrong. Please try again.");
+  if (code) return t(`errors.${code}`, detail || generic);
+  return detail || generic;
+}

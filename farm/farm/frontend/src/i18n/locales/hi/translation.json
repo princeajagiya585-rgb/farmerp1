@@ -1666,6 +1666,8 @@
   "attendance.updateFailed": "उपस्थिति रिकॉर्ड अपडेट करने में विफल।",
   "attendance.checkinSuccess": "{{name}} सफलतापूर्वक चेक इन हुए।",
   "attendance.outsideFarmArea": "आप फ़ार्म क्षेत्र के बाहर हैं। उपस्थिति केवल फ़ार्म की सीमा के अंदर से ही दर्ज की जा सकती है। कृपया फ़ार्म के अंदर आकर पुनः प्रयास करें।",
+  "errors.outside_farm_area": "आप फ़ार्म क्षेत्र के बाहर हैं। उपस्थिति केवल फ़ार्म की सीमा के अंदर से ही दर्ज की जा सकती है। कृपया फ़ार्म के अंदर आकर पुनः प्रयास करें।",
+  "common.somethingWrong": "कुछ गड़बड़ हो गई। कृपया पुनः प्रयास करें।",
   "attendance.checkoutSuccess": "{{name}} सफलतापूर्वक चेक आउट हुए।",
   "workerDetail.purchases": "खरीद",
   "workerDetail.sales": "बिक्री",

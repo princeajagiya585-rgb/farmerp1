@@ -317,6 +317,46 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
                     if not allowed or str(cand.id) in allowed:
                         selected_farm = cand
 
+            # ── Geofence gate ─────────────────────────────────────────────────
+            # Block an out-of-farm check-in BEFORE any record is created, so a
+            # rejected attempt neither persists an attendance row nor fires the
+            # "pending approval" notification signal (both would otherwise be
+            # rolled back, but the notification's WebSocket push is not
+            # transactional). Admins / farm managers are exempt so they can
+            # record attendance for others while off-site. `code` lets the
+            # frontend show a localized message.
+            _lat_raw = request.data.get("check_in_lat")
+            _lng_raw = request.data.get("check_in_lng")
+            if _lat_raw is not None and _lng_raw is not None:
+                _lat, _lng = float(_lat_raw), float(_lng_raw)
+                _candidates = [selected_farm] if selected_farm else []
+                if employee.user_id:
+                    for _f in employee.user.farms.all():
+                        if not any(cf and cf.id == _f.id for cf in _candidates):
+                            _candidates.append(_f)
+                _inside_any = any(
+                    cf and location_inside_farm(cf, _lat, _lng) is True
+                    for cf in _candidates
+                )
+                if not _inside_any:
+                    _sel_inside = (
+                        location_inside_farm(selected_farm, _lat, _lng)
+                        if selected_farm else None
+                    )
+                    _privileged = request.user.role in (
+                        Role.SUPER_ADMIN, Role.FARM_MANAGER,
+                    )
+                    if _sel_inside is False and not _privileged:
+                        raise ValidationError({
+                            "detail": (
+                                "You are outside the farm area. Attendance can "
+                                "only be marked from inside the farm boundary "
+                                "(within the geofence tolerance). Please move "
+                                "inside the farm and try again."
+                            ),
+                            "code": "outside_farm_area",
+                        })
+
             # Check if attendance already exists for this date
             existing = Attendance.objects.filter(employee=employee, date=att_date).first()
             if existing and existing.check_in_time is not None:
@@ -381,31 +421,13 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
                     attendance.geofence_status = True
                     attendance.status = Attendance.Status.PRESENT
                 else:
-                    # Inside none of the farms. Use the picked farm to decide.
+                    # Inside none of the farms. The out-of-farm case for a
+                    # non-privileged worker was already blocked by the geofence
+                    # gate above (before any record was created), so here we only
+                    # reach: a privileged user off-site (record Absent) or no
+                    # fence to verify against (None → Present, benefit of doubt).
                     farm = selected_farm
                     sel_inside = location_inside_farm(selected_farm, lat, lng) if selected_farm else None
-                    if sel_inside is False:
-                        # A real geofence exists and the worker is OUTSIDE the
-                        # farm area (Corner 1-4 + Tolerance). Block the check-in
-                        # entirely instead of recording an Absent row — attendance
-                        # may only be marked from inside the farm boundary. Raising
-                        # here rolls back the atomic block so no record is created.
-                        # Admins / farm managers are exempt so they can still record
-                        # attendance for others while off-site.
-                        privileged = request.user.role in (
-                            Role.SUPER_ADMIN, Role.FARM_MANAGER,
-                        )
-                        if not privileged:
-                            raise ValidationError({
-                                "detail": (
-                                    "You are outside the farm area. Attendance can "
-                                    "only be marked from inside the farm boundary "
-                                    "(within the geofence tolerance). Please move "
-                                    "inside the farm and try again."
-                                )
-                            })
-                    # sel_inside is False (privileged user) or None (no fence to
-                    # verify against → benefit of the doubt).
                     attendance.geofence_status = sel_inside  # False or None
                     attendance.status = (
                         Attendance.Status.ABSENT if sel_inside is False
