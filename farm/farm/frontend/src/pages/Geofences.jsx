@@ -1,6 +1,5 @@
 import { useTranslation } from "react-i18next";
 import CrudResource from "../components/CrudResource";
-import { MapPin } from "lucide-react";
 import { resource } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
@@ -28,7 +27,7 @@ export default function Geofences() {
   const cornerCell = (pts, i) => {
     const p = Array.isArray(pts) ? pts[i] : null;
     return p && p[0] != null && p[1] != null ? (
-      <span className="font-mono text-[11px]">{coord(p[0])}, {coord(p[1])}</span>
+      <span className="font-mono text-[10px]">{coord(p[0])}, {coord(p[1])}</span>
     ) : (
       <span className="text-gray-300">—</span>
     );
@@ -52,10 +51,9 @@ export default function Geofences() {
             const pts = Array.isArray(r.polygon) ? r.polygon : [];
             if (!pts.length) return <span className="text-gray-300">—</span>;
             return (
-              <div className="flex flex-col gap-0.5">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] text-gray-600">
                 {pts.map((p, i) => (
-                  <span key={i} className="flex items-center gap-1 font-mono text-[11px] whitespace-nowrap">
-                    {i === 0 ? <MapPin size={11} className="text-brand-500" /> : <span className="w-[11px]" />}
+                  <span key={i} className="whitespace-nowrap">
                     <span className="text-gray-400">{i + 1}.</span> {cornerCell(pts, i)}
                   </span>
                 ))}

@@ -14,7 +14,7 @@ const geoRepo = resource("gps/geofences");
 const corner = (pts, i) => {
   const p = Array.isArray(pts) ? pts[i] : null;
   return p && p[0] != null && p[1] != null ? (
-    <span className="whitespace-nowrap font-mono text-[11px]">{String(p[0])}, {String(p[1])}</span>
+    <span className="whitespace-nowrap font-mono text-[10px]">{String(p[0])}, {String(p[1])}</span>
   ) : (
     <span className="text-gray-300">—</span>
   );
@@ -143,10 +143,10 @@ export default function FarmsAndFields() {
                 const list = Array.isArray(pts) ? pts : [];
                 if (!list.length) return <span className="text-gray-300">—</span>;
                 return (
-                  <div className="flex flex-col gap-0.5">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[10px] text-gray-600">
                     {list.map((_, i) => (
-                      <span key={i} className="flex items-center gap-1 whitespace-nowrap">
-                        <span className="text-[10px] text-gray-400">{i + 1}.</span> {corner(list, i)}
+                      <span key={i} className="whitespace-nowrap">
+                        <span className="text-gray-400">{i + 1}.</span> {corner(list, i)}
                       </span>
                     ))}
                   </div>
