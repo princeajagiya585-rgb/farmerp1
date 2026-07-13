@@ -51,6 +51,10 @@ class Asset(OwnedModel):
         max_length=20, choices=WarrantyType.choices, blank=True,
         help_text="Whether the asset is covered by a guaranty or a warranty",
     )
+    warranty_years = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text="Length of the guaranty/warranty in years",
+    )
     purchase_date = models.DateField(null=True, blank=True)
     purchase_cost = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     depreciation_period = models.CharField(

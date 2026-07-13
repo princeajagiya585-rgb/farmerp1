@@ -31,6 +31,15 @@ const statusColor = {
 const money = (v) =>
   v == null || v === "" ? "—" : `₹${Number(v).toLocaleString("en-IN")}`;
 
+// "3.0" → "3 yr", "1.5" → "1.5 yr"
+const years = (v) => {
+  const n = Number(v);
+  if (!n || Number.isNaN(n)) return "";
+  return `${n} yr`;
+};
+
+const PERIOD_LABEL = { DAY: "day", MONTH: "month", YEAR: "year" };
+
 // Straight-line depreciation: each period (day/month/year) since the purchase
 // date subtracts `percent`% of the purchase cost. Mirrors the backend so the
 // live form preview matches the saved value. e.g. ₹13,000 at 2%/day → ₹260/day.
@@ -95,7 +104,26 @@ export default function AssetRegister({ title, subtitle, listParams }) {
           header: t("header.photo"),
           render: (r) => <PhotoThumb url={normalizePhotoUrl(r.photo_url)} alt={r.name} size={48} />,
         },
+        { key: "purchase_date", header: t("assets.purchaseDate"), render: (r) => r.purchase_date || "—" },
+        {
+          key: "warranty_type",
+          header: "Guaranty / Warranty",
+          render: (r) => {
+            if (!r.warranty_type) return "—";
+            const label = r.warranty_type === "GUARANTY" ? "Guaranty" : "Warranty";
+            const y = years(r.warranty_years);
+            return y ? `${label} · ${y}` : label;
+          },
+        },
         { key: "purchase_cost", header: t("assets.purchaseCost"), render: (r) => money(r.purchase_cost) },
+        {
+          key: "depreciation_period",
+          header: "Depreciation",
+          render: (r) =>
+            r.depreciation_period
+              ? `${Number(r.depreciation_percent) || 0}% / ${PERIOD_LABEL[r.depreciation_period] || r.depreciation_period}`
+              : "—",
+        },
         { key: "current_value", header: t("assets.currentValue"), render: (r) => money(r.current_value) },
         { key: "assigned_to_name", header: t("header.operator"), render: (r) => r.assigned_to_name || "—" },
       ]}
@@ -113,6 +141,13 @@ export default function AssetRegister({ title, subtitle, listParams }) {
             { value: "GUARANTY", label: "Guaranty" },
             { value: "WARRANTY", label: "Warranty" },
           ],
+        },
+        // How many years the guaranty/warranty runs — appears once a type is set.
+        {
+          name: "warranty_years",
+          label: "Guaranty / Warranty (years)",
+          type: "number",
+          hidden: (form) => !form.warranty_type,
         },
         { name: "purchase_date", label: t("assets.purchaseDate"), type: "date" },
         { name: "purchase_cost", label: "Purchase Cost (₹)", type: "number" },
