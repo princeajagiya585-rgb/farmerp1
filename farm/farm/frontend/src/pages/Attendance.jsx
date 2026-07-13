@@ -122,6 +122,9 @@ function StatusBadge({ row }) {
 }
 
 const TODAY = new Date().toISOString().slice(0, 10);
+// Previous calendar day (same UTC basis as TODAY), used to auto-finalise the
+// day that just ended by marking no-shows as Absent.
+const YESTERDAY = new Date(new Date(TODAY).getTime() - 86400000).toISOString().slice(0, 10);
 
 // Format seconds to HH:MM:SS
 function formatDuration(seconds) {
@@ -165,8 +168,11 @@ export default function Attendance() {
     // Pre-select an employee when arriving from the Attendance Reports "Edit" action.
     employee: location.state?.employeeId ? String(location.state.employeeId) : "",
     farm: "",
-    date_from: "",
-    date_to: "",
+    // Show only the current day by default — a new day hides the previous day's
+    // rows, which stay reachable through the date filter. When arriving from the
+    // Reports "Edit" action (employee pre-selected) keep the full history visible.
+    date_from: location.state?.employeeId ? "" : TODAY,
+    date_to: location.state?.employeeId ? "" : TODAY,
     status: "",
     approval_status: ""
   });
@@ -225,6 +231,26 @@ export default function Attendance() {
     // the farm a multi-farm worker is inside / nearest to (needs lat/lng/geofence).
     resource("farms").list({ page_size: 200 }).then((d) => setFarms(d.results || d)).catch(() => {});
   }, [currentUser, isEmployee]);
+
+  // End-of-day auto-absent: once per day (per browser), mark every employee who
+  // has no attendance record for the day that just ended as Absent, so a day
+  // without any check-in becomes Absent automatically. Restricted to
+  // admins/managers (the endpoint enforces this too). Idempotent — the backend
+  // skips employees who already have a record for that date.
+  useEffect(() => {
+    if (!canApprove) return;
+    const key = `attendance_absentee_run_${TODAY}`;
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, "1");
+    api
+      .post("/workforce/attendance/mark_absent/", { date: YESTERDAY })
+      .then(() => load())
+      .catch(() => {
+        // Non-blocking: allow a retry on the next load if it failed.
+        localStorage.removeItem(key);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canApprove]);
 
   useEffect(() => {
     if (!myProfile) return;
