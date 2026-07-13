@@ -675,6 +675,10 @@ export default function CrudResource({
         <form onSubmit={save} className="space-y-3">
           {error && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{error}</p>}
           {fields.map((fl) => {
+            // Conditionally hide a field based on the current form state
+            // (e.g. show Monthly Salary only when wage type is Monthly).
+            const isHidden = typeof fl.hidden === "function" ? fl.hidden(form, modal?.mode) : fl.hidden;
+            if (isHidden) return null;
             const isReadonly = typeof fl.readonly === "function" ? fl.readonly(currentRow, modal?.mode) : fl.readonly;
             const handleChange = (e) => {
               const newValue = e.target.value;

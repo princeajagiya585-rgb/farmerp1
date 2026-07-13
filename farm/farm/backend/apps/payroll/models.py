@@ -130,6 +130,12 @@ class Payslip(OwnedModel):
     net_pay = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     # Amount already paid out via partial ("Half Pay") payments.
     half_paid = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # Optional bill/receipt photo for the payout — e.g. a screenshot of an
+    # online transaction. Optional because some payouts are made in cash.
+    payment_photo = models.ImageField(
+        upload_to="payslips/", null=True, blank=True,
+        help_text="Optional bill/receipt photo for the payout (online transaction proof)",
+    )
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.DRAFT
     )

@@ -24,6 +24,13 @@ class Employee(TimeStampedModel):
         DAILY_WAGE = "DAILY_WAGE", "Daily Wage"
         SEASONAL = "SEASONAL", "Seasonal"
 
+    class WageType(models.TextChoices):
+        # How this employee's pay is calculated on the payslip:
+        #   MONTHLY → monthly_salary, prorated per attended day
+        #   HOURLY  → hourly_wage × hours actually worked
+        MONTHLY = "MONTHLY", "Monthly Salary"
+        HOURLY = "HOURLY", "Hourly Wage"
+
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -49,8 +56,16 @@ class Employee(TimeStampedModel):
     photo = models.ImageField(upload_to="employees/", null=True, blank=True)
     is_active = models.BooleanField(default=True, help_text="Whether the employee is currently active/employed")
     date_of_joining = models.DateField(null=True, blank=True)
+    wage_type = models.CharField(
+        max_length=20, choices=WageType.choices, default=WageType.MONTHLY,
+        help_text="Whether pay is calculated per month (attendance-prorated) or per hour worked",
+    )
     daily_wage = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     monthly_salary = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    hourly_wage = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text="Rate per hour worked, used when wage_type is HOURLY",
+    )
     bank_account = models.CharField(max_length=50, blank=True)
     bank_ifsc = models.CharField(max_length=20, blank=True)
     department = models.ForeignKey(

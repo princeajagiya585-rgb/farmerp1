@@ -141,6 +141,35 @@ def _sync_payslip(employee, farm, month, year):
     )
 
 
+def _record_salary_expense(*, farm, amount, date, description, user):
+    """Auto-record a salary payout as a LABOUR expense in Financial Management.
+
+    Salary is an operating expense, so every actual disbursement — an advance
+    given, a part ("Half Pay") payment, or the remaining balance settled when a
+    payslip is closed — adds a matching, already-approved entry to the Expenses
+    table. Amounts are split so they never double count: half-pays expense the
+    part paid and the close expenses only the leftover (net − already paid).
+    """
+    if amount is None:
+        return
+    amount = Decimal(str(amount))
+    if amount <= 0:
+        return
+    from apps.finance.models import Expense
+    owner = user if getattr(user, "is_authenticated", False) else None
+    Expense.objects.create(
+        farm=farm,
+        category=Expense.Category.LABOUR,
+        amount=amount,
+        date=date,
+        description=description,
+        status=Expense.Status.APPROVED,
+        is_paid=True,
+        approved_by=owner,
+        created_by=owner,
+    )
+
+
 def _resync_advance_payslips(employee, farm):
     """Re-sync every existing payslip for this employee+farm after an advance
     is created, edited or deleted.
@@ -189,8 +218,15 @@ class PayrollPeriodViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                 days_worked = Decimal("0")
                 absent_days = Decimal("0")
                 overtime_hours = Decimal("0")
+                worked_hours = Decimal("0")
                 for att in attendances:
-                    if att.status == Attendance.Status.PRESENT:
+                    # A completed day counts whether the worker is still checked
+                    # in (PRESENT) or has checked out after a full day
+                    # (PRESENT_DONE). A short check-out is HALF_DAY (see below).
+                    if att.status in (
+                        Attendance.Status.PRESENT,
+                        Attendance.Status.PRESENT_DONE,
+                    ):
                         days_worked += Decimal("1")
                     elif att.status == Attendance.Status.HALF_DAY:
                         days_worked += Decimal("0.5")
@@ -199,17 +235,25 @@ class PayrollPeriodViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                     elif att.status == Attendance.Status.ABSENT:
                         absent_days += Decimal("1")
                     overtime_hours += att.overtime_hours or Decimal("0")
+                    # Hours actually worked (check-in → check-out), used for
+                    # hourly-wage pay. Stored in seconds on the attendance.
+                    worked_hours += Decimal(att.working_seconds or 0) / Decimal("3600")
 
                 daily_wage = employee.daily_wage or Decimal("0")
                 monthly_salary = employee.monthly_salary or Decimal("0")
+                hourly_wage = employee.hourly_wage or Decimal("0")
                 # Days in this payroll month — one day's salary = monthly ÷ this.
                 days_in_month = Decimal(
                     monthrange(period.year, period.month)[1]
                 )
-                # If monthly_salary is set, it is the base wage, but each absent
-                # day cuts one day's salary (monthly ÷ days-in-month). Only fall
-                # back to daily_wage × days_worked when monthly_salary is not set.
-                if monthly_salary > 0:
+                # Hourly-wage employees are paid strictly for the hours they
+                # worked (rate × hours). Everyone else is on a monthly salary,
+                # prorated by attendance: each absent day cuts one day's salary
+                # (monthly ÷ days-in-month). daily_wage is only a legacy
+                # fallback for records with neither monthly nor hourly set.
+                if employee.wage_type == Employee.WageType.HOURLY and hourly_wage > 0:
+                    gross_wage = worked_hours * hourly_wage
+                elif monthly_salary > 0:
                     daily_rate = monthly_salary / days_in_month
                     gross_wage = monthly_salary - (absent_days * daily_rate)
                     if gross_wage < 0:
@@ -315,6 +359,14 @@ class AdvanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
         advance = serializer.save()
         self._sync_status(advance)
         _resync_advance_payslips(advance.employee, advance.farm)
+        # An advance is cash paid out now → record it as a salary expense.
+        _record_salary_expense(
+            farm=advance.farm,
+            amount=advance.amount,
+            date=advance.date,
+            description=f"Salary advance — {advance.employee.name}",
+            user=self.request.user,
+        )
 
     def perform_update(self, serializer):
         advance = serializer.save()
@@ -438,6 +490,20 @@ class PayslipViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
             # The advance amount deducted on it is realised as a repayment →
             # clear those advances so they drop out of the Outstanding list.
             self._settle_advances(payslip)
+            # Closing the account pays out the leftover balance (net − already
+            # part-paid) → record that as a salary expense. Half-pays already
+            # expensed their own amount, so we only add the remainder here.
+            remaining = (payslip.net_pay or Decimal("0")) - (payslip.half_paid or Decimal("0"))
+            _record_salary_expense(
+                farm=payslip.farm,
+                amount=remaining,
+                date=timezone.now().date(),
+                description=(
+                    f"Salary paid — {payslip.employee.name} "
+                    f"({payslip.period.month}/{payslip.period.year})"
+                ),
+                user=getattr(getattr(self, "request", None), "user", None),
+            )
 
     def _settle_advances(self, payslip):
         remaining = payslip.advance_deduction or Decimal("0")
@@ -493,6 +559,17 @@ class PayslipViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
             payslip.half_paid = net
             payslip.status = Payslip.Status.PAID
         payslip.save(update_fields=["half_paid", "status"])
+        # This part payment is cash paid out now → record it as a salary expense.
+        _record_salary_expense(
+            farm=payslip.farm,
+            amount=applied,
+            date=timezone.now().date(),
+            description=(
+                f"Salary part payment — {payslip.employee.name} "
+                f"({payslip.period.month}/{payslip.period.year})"
+            ),
+            user=request.user,
+        )
         return Response(
             {"applied": applied, "payslip": self.get_serializer(payslip).data},
             status=200,

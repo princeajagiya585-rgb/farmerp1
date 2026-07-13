@@ -72,8 +72,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
     "employment_type", "designation", "farm", "farm_name", "assigned_farms", "assigned_farm_details",
     "department", "department_name", "skills", "skill_names", "skill_ids",
     "address", "photo", "photo_url", "is_active", "category", "user",
-    "created_at", "updated_at", "daily_wage", "monthly_salary",
-    "date_of_joining"
+    "created_at", "updated_at", "wage_type", "daily_wage", "monthly_salary",
+    "hourly_wage", "date_of_joining"
 ]
         extra_kwargs = {
             'first_name': {'required': False},

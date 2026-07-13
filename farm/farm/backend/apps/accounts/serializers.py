@@ -78,6 +78,18 @@ class UserCreateSerializer(serializers.ModelSerializer):
         many=True, queryset=__import__("apps.farms.models", fromlist=["Farm"]).Farm.objects.all(),
         required=False,
     )
+    # Wage details live on the Employee record, but the Users admin form sets
+    # them here so a login account and its pay are created in one step. These
+    # are write-only and applied to the user's linked Employee after save.
+    wage_type = serializers.ChoiceField(
+        choices=["MONTHLY", "HOURLY"], required=False, write_only=True
+    )
+    monthly_salary = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, write_only=True
+    )
+    hourly_wage = serializers.DecimalField(
+        max_digits=12, decimal_places=2, required=False, write_only=True
+    )
 
     def to_internal_value(self, data):
         # Normalise `farms` into a clean list of ids regardless of how it was
@@ -109,6 +121,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
             "id", "username", "email", "password", "password2", "first_name", "last_name",
             "role", "phone", "preferred_language", "farms",
             "aadhaar_number", "aadhaar_photo",
+            "wage_type", "monthly_salary", "hourly_wage",
         ]
         extra_kwargs = {
             "aadhaar_number": {"required": False},
@@ -122,9 +135,39 @@ class UserCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"password2": "Passwords do not match."})
         return attrs
 
+    @staticmethod
+    def _apply_wage(user, wage_type, monthly_salary, hourly_wage):
+        """Persist wage details onto the user's linked Employee.
+
+        The Employee is created/linked by a post_save signal when the User is
+        saved, so we look it up afterwards and write the wage fields. Nothing
+        to do if none were supplied or no Employee exists yet.
+        """
+        if wage_type is None and monthly_salary is None and hourly_wage is None:
+            return
+        from apps.workforce.models import Employee
+        emp = Employee.objects.filter(user=user).first()
+        if not emp:
+            return
+        update_fields = []
+        if wage_type is not None:
+            emp.wage_type = wage_type
+            update_fields.append("wage_type")
+        if monthly_salary is not None:
+            emp.monthly_salary = monthly_salary
+            update_fields.append("monthly_salary")
+        if hourly_wage is not None:
+            emp.hourly_wage = hourly_wage
+            update_fields.append("hourly_wage")
+        if update_fields:
+            emp.save(update_fields=update_fields)
+
     def create(self, validated_data):
         validated_data.pop("password2", None)
         farms = validated_data.pop("farms", [])
+        wage_type = validated_data.pop("wage_type", None)
+        monthly_salary = validated_data.pop("monthly_salary", None)
+        hourly_wage = validated_data.pop("hourly_wage", None)
         password = validated_data.pop("password")
         # Set default email and phone if not provided
         if not validated_data.get("email"):
@@ -136,12 +179,16 @@ class UserCreateSerializer(serializers.ModelSerializer):
         user.save()
         if farms:
             user.farms.set(farms)
+        self._apply_wage(user, wage_type, monthly_salary, hourly_wage)
         return user
 
     def update(self, instance, validated_data):
         validated_data.pop("password2", None)
         password = validated_data.pop("password", None)
         farms = validated_data.pop("farms", None)
+        wage_type = validated_data.pop("wage_type", None)
+        monthly_salary = validated_data.pop("monthly_salary", None)
+        hourly_wage = validated_data.pop("hourly_wage", None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         if password:
@@ -149,6 +196,7 @@ class UserCreateSerializer(serializers.ModelSerializer):
         if farms is not None:
             instance.farms.set(farms)
         instance.save()
+        self._apply_wage(instance, wage_type, monthly_salary, hourly_wage)
         return instance
 
 

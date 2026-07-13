@@ -42,8 +42,8 @@ export default function Workforce() {
     }).catch(() => {});
   }, []);
 
-  // Build list params from active filters (memoized to avoid unnecessary re-fetches)
-  const listParams = useMemo(() => {
+  // Build shared list params from active filters (memoized to avoid refetches)
+  const baseParams = useMemo(() => {
     const params = {};
     if (farmFilter) params.farm = farmFilter;
     // Employee dropdown filters by the employee's unique code via search.
@@ -53,7 +53,162 @@ export default function Workforce() {
     return params;
   }, [farmFilter, empFilter, deptFilter, empTypeFilter]);
 
+  // Each table is locked to its wage type so monthly- and hourly-wage
+  // employees always show in separate tables (and filter by farm together).
+  const monthlyParams = useMemo(() => ({ ...baseParams, wage_type: "MONTHLY" }), [baseParams]);
+  const hourlyParams = useMemo(() => ({ ...baseParams, wage_type: "HOURLY" }), [baseParams]);
+
   const hasActiveFilters = farmFilter || empFilter || deptFilter || empTypeFilter;
+
+  // Category select options (shared by both tables' forms)
+  const categoryOptions = hasRole("SUPER_ADMIN", "FARM_MANAGER")
+    ? [
+        { value: "SUPER_ADMIN", label: t("role.superAdmin") },
+        { value: "MANAGER", label: t("workforce.manager") },
+        { value: "SUPERVISOR", label: t("workforce.supervisor") },
+        { value: "EMPLOYEE", label: t("skills.employeeLabour") },
+        { value: "LABOUR", label: t("workforce.labour") },
+        { value: "DRIVER", label: t("workforce.driver") },
+        { value: "SECURITY", label: t("workforce.security") },
+        { value: "OFFICE_STAFF", label: t("workforce.officeStaff") },
+        { value: "ACCOUNTANT", label: t("workforce.accountant") },
+        { value: "TECHNICIAN", label: t("workforce.technician") },
+      ]
+    : [
+        { value: "EMPLOYEE", label: t("skills.employeeLabour") },
+        { value: "LABOUR", label: t("workforce.labour") },
+        { value: "DRIVER", label: t("workforce.driver") },
+        { value: "SECURITY", label: t("workforce.security") },
+        { value: "TECHNICIAN", label: t("workforce.technician") },
+      ];
+
+  const categoryLabels = {
+    SUPER_ADMIN: { color: "purple", label: t("role.superAdmin") },
+    MANAGER: { color: "purple", label: t("workforce.manager") },
+    SUPERVISOR: { color: "blue", label: t("workforce.supervisor") },
+    EMPLOYEE: { color: "blue", label: t("skills.employeeLabour") },
+    LABOUR: { color: "gray", label: t("skills.labour") },
+    DRIVER: { color: "gray", label: t("workforce.driver") },
+    SECURITY: { color: "gray", label: t("workforce.security") },
+    OFFICE_STAFF: { color: "gray", label: t("workforce.officeStaff") },
+    ACCOUNTANT: { color: "gray", label: t("workforce.accountant") },
+    TECHNICIAN: { color: "gray", label: t("workforce.technician") },
+  };
+
+  // Shared form fields. `salaryField` differs per wage type. The wage-type
+  // dropdown lets the admin switch a record between the two tables; the
+  // matching salary input shows conditionally via `hidden`.
+  const buildFields = () => [
+    { name: "name", label: t("workforce.fullName"), required: true },
+    {
+      name: "category",
+      label: t("workforce.category"),
+      type: "select",
+      readonly: (row) => !!row?.user,
+      options: categoryOptions,
+    },
+    {
+      name: "employment_type",
+      label: t("workforce.employmentType"),
+      type: "select",
+      options: [
+        { value: "PERMANENT", label: t("workforce.permanent") },
+        { value: "CONTRACT", label: t("workforce.contract") },
+        { value: "DAILY_WAGE", label: t("workforce.dailyWage") },
+        { value: "SEASONAL", label: t("workforce.seasonal") },
+      ],
+    },
+    { name: "designation", label: t("workforce.designation") },
+    { name: "department", label: t("workforce.department"), optionsFrom: { path: "workforce/departments", label: (d) => d.name } },
+    {
+      name: "skills",
+      label: t("header.skills"),
+      type: "multiselect",
+      optionsFrom: { path: "workforce/skills", label: (s) => s.name },
+    },
+    { name: "farm", label: t("workforce.farm"), optionsFrom: { path: "farms", label: (f) => f.name }, required: true },
+    {
+      name: "wage_type",
+      label: t("workforce.wageType"),
+      type: "select",
+      options: [
+        { value: "MONTHLY", label: t("workforce.monthlySalary") },
+        { value: "HOURLY", label: t("workforce.hourlyWage") },
+      ],
+    },
+    // Monthly salary — hidden for hourly-wage employees.
+    {
+      name: "monthly_salary",
+      label: t("workforce.monthlySalary"),
+      type: "number",
+      hidden: (form) => form.wage_type === "HOURLY",
+    },
+    // Hourly rate — shown only for hourly-wage employees.
+    {
+      name: "hourly_wage",
+      label: t("workforce.hourlyWage"),
+      type: "number",
+      hidden: (form) => form.wage_type !== "HOURLY",
+    },
+    { name: "date_of_joining", label: t("workforce.dateOfJoining"), type: "date" },
+  ];
+
+  const commonColumns = [
+    { key: "name", header: t("header.employee") },
+    { key: "assigned_farms", header: t("users.assignedFarm"), render: (r) => r.assigned_farms?.length ? r.assigned_farms.join(", ") : "—" },
+    { key: "category", header: t("header.category"), render: (r) => {
+        const cat = categoryLabels[r.category];
+        return cat ? <Badge color={cat.color}>{cat.label}</Badge> : <Badge color="gray">{r.category || "—"}</Badge>;
+    } },
+    { key: "employment_type", header: t("header.type") },
+    { key: "designation", header: t("header.designation"), render: (r) => r.designation || "—" },
+    { key: "department_name", header: t("header.department"), render: (r) => r.department_name || "—" },
+  ];
+
+  const joiningColumn = { key: "date_of_joining", header: t("workforce.dateOfJoining"), render: (r) => r.date_of_joining || "—" };
+  const skillsColumn = {
+    key: "skill_names",
+    header: t("header.skills"),
+    render: (r) =>
+      r.skill_names?.length ? (
+        <div className="flex max-w-[200px] flex-wrap gap-1">
+          {r.skill_names.map((s, i) => (
+            <span key={i} className="inline-flex items-center rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">
+              {s}
+            </span>
+          ))}
+        </div>
+      ) : (
+        "—"
+      ),
+  };
+
+  const monthlyColumns = [
+    ...commonColumns,
+    skillsColumn,
+    { key: "monthly_salary", header: t("workforce.monthlySalary"), render: (r) => r.monthly_salary && parseFloat(r.monthly_salary) > 0 ? `₹${parseFloat(r.monthly_salary).toLocaleString("en-IN")}` : "—" },
+    joiningColumn,
+  ];
+
+  const hourlyColumns = [
+    ...commonColumns,
+    skillsColumn,
+    { key: "hourly_wage", header: t("workforce.hourlyWage"), render: (r) => r.hourly_wage && parseFloat(r.hourly_wage) > 0 ? `₹${parseFloat(r.hourly_wage).toLocaleString("en-IN")}/hr` : "—" },
+    joiningColumn,
+  ];
+
+  const financeAction = (row) =>
+    canViewFinance ? (
+      <button
+        onClick={() => navigate(`/workforce/${row.id}/financials`)}
+        className="rounded p-1.5 text-brand-600 hover:bg-brand-50"
+        title={t("workforce.viewFinancialDetails")}
+      >
+        <Eye size={15} />
+      </button>
+    ) : null;
+
+  const newCode = () => `EMP-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
   return (
     <div>
@@ -102,9 +257,9 @@ export default function Workforce() {
           className="w-full sm:w-auto sm:min-w-[160px] rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
         >
           <option value="">{t("workforce.allTypes")}</option>
-          {EMPLOYMENT_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
+          {EMPLOYMENT_TYPES.map((et) => (
+            <option key={et.value} value={et.value}>
+              {et.label}
             </option>
           ))}
         </select>
@@ -118,125 +273,37 @@ export default function Workforce() {
         )}
       </div>
 
+      {/* Monthly-salary employees */}
       <CrudResource
-        title={t("workforce.title")}
-        subtitle={t("workforce.subtitle")}
+        title={t("workforce.monthlyEmployees")}
+        subtitle={t("workforce.monthlyEmployeesSub")}
         path="workforce/employees"
         canWrite={canWrite}
         showFarmFilter
-        listParams={listParams}
-        defaultValues={{ employee_code: `EMP-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}` }}
-        rowActions={(row) =>
-          canViewFinance ? (
-            <button
-              onClick={() => navigate(`/workforce/${row.id}/financials`)}
-              className="rounded p-1.5 text-brand-600 hover:bg-brand-50"
-              title={t("workforce.viewFinancialDetails")}
-            >
-              <Eye size={15} />
-            </button>
-          ) : null
-        }
-        footerColumns={["daily_wage", "monthly_salary"]}
-        columns={[
-            { key: "name", header: t("header.employee") },
-            { key: "assigned_farms", header: t("users.assignedFarm"), render: (r) => r.assigned_farms?.length ? r.assigned_farms.join(", ") : "—" },
-            { key: "category", header: t("header.category"), render: (r) => {
-                const categoryLabels = {
-                  SUPER_ADMIN: { color: "purple", label: t("role.superAdmin") },
-                  MANAGER: { color: "purple", label: t("workforce.manager") },
-                  SUPERVISOR: { color: "blue", label: t("workforce.supervisor") },
-                  EMPLOYEE: { color: "blue", label: t("skills.employeeLabour") },
-                  LABOUR: { color: "gray", label: t("skills.labour") },
-                  DRIVER: { color: "gray", label: t("workforce.driver") },
-                  SECURITY: { color: "gray", label: t("workforce.security") },
-                  OFFICE_STAFF: { color: "gray", label: t("workforce.officeStaff") },
-                  ACCOUNTANT: { color: "gray", label: t("workforce.accountant") },
-                  TECHNICIAN: { color: "gray", label: t("workforce.technician") },
-                };
-                const cat = categoryLabels[r.category];
-                return cat ? <Badge color={cat.color}>{cat.label}</Badge> : <Badge color="gray">{r.category || "—"}</Badge>;
-            } },
-            { key: "employment_type", header: t("header.type") },
-            { key: "designation", header: t("header.designation"), render: (r) => r.designation || "—" },
-            { key: "department_name", header: t("header.department"), render: (r) => r.department_name || "—" },
-            { key: "daily_wage", header: t("header.wage") },
-            {
-              key: "skill_names",
-              header: t("header.skills"),
-              render: (r) =>
-                r.skill_names?.length ? (
-                  <div className="flex max-w-[200px] flex-wrap gap-1">
-                    {r.skill_names.map((s, i) => (
-                      <span key={i} className="inline-flex items-center rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  "—"
-                ),
-            },
-            { key: "monthly_salary", header: t("workforce.monthlySalary"), render: (r) => r.monthly_salary && parseFloat(r.monthly_salary) > 0 ? `₹${parseFloat(r.monthly_salary).toLocaleString("en-IN")}` : "—" },
-            { key: "date_of_joining", header: t("workforce.dateOfJoining"), render: (r) => r.date_of_joining || "—" },
-          ]}
-          fields={[
-            { name: "name", label: t("workforce.fullName"), required: true },
-            {
-              name: "category",
-              label: t("workforce.category"),
-              type: "select",
-              // If the employee has a linked user, category is auto-calculated
-              // from the user's role (handled by the backend serializer), so
-              // the field becomes read-only. Standalone employees (no linked
-              // user) can have their category set manually by the admin.
-              readonly: (row) => !!row?.user,
-              options: [
-                ...(hasRole("SUPER_ADMIN", "FARM_MANAGER") ? [
-                  { value: "SUPER_ADMIN", label: t("role.superAdmin") },
-                  { value: "MANAGER", label: t("workforce.manager") },
-                  { value: "SUPERVISOR", label: t("workforce.supervisor") },
-                  { value: "EMPLOYEE", label: t("skills.employeeLabour") },
-                  { value: "LABOUR", label: t("workforce.labour") },
-                  { value: "DRIVER", label: t("workforce.driver") },
-                  { value: "SECURITY", label: t("workforce.security") },
-                  { value: "OFFICE_STAFF", label: t("workforce.officeStaff") },
-                  { value: "ACCOUNTANT", label: t("workforce.accountant") },
-                  { value: "TECHNICIAN", label: t("workforce.technician") },
-                ] : [
-                  { value: "EMPLOYEE", label: t("skills.employeeLabour") },
-                  { value: "LABOUR", label: t("workforce.labour") },
-                  { value: "DRIVER", label: t("workforce.driver") },
-                  { value: "SECURITY", label: t("workforce.security") },
-                  { value: "TECHNICIAN", label: t("workforce.technician") },
-                ]),
-              ],
-            },
-            {
-              name: "employment_type",
-              label: t("workforce.employmentType"),
-              type: "select",
-              options: [
-                { value: "PERMANENT", label: t("workforce.permanent") },
-                { value: "CONTRACT", label: t("workforce.contract") },
-                { value: "DAILY_WAGE", label: t("workforce.dailyWage") },
-                { value: "SEASONAL", label: t("workforce.seasonal") },
-              ],
-            },
-            { name: "designation", label: t("workforce.designation") },
-            { name: "department", label: t("workforce.department"), optionsFrom: { path: "workforce/departments", label: (d) => d.name } },
-            {
-              name: "skills",
-              label: t("header.skills"),
-              type: "multiselect",
-              optionsFrom: { path: "workforce/skills", label: (s) => s.name },
-            },
-            { name: "farm", label: t("workforce.farm"), optionsFrom: { path: "farms", label: (f) => f.name }, required: true },
-            { name: "daily_wage", label: t("workforce.dailyWage"), type: "number" },
-            { name: "monthly_salary", label: t("workforce.monthlySalary"), type: "number" },
-            { name: "date_of_joining", label: t("workforce.dateOfJoining"), type: "date" },
-          ]}
+        listParams={monthlyParams}
+        defaultValues={{ employee_code: newCode(), wage_type: "MONTHLY" }}
+        rowActions={financeAction}
+        footerColumns={["monthly_salary"]}
+        columns={monthlyColumns}
+        fields={buildFields()}
       />
+
+      {/* Hourly-wage employees */}
+      <div className="mt-8">
+        <CrudResource
+          title={t("workforce.hourlyEmployees")}
+          subtitle={t("workforce.hourlyEmployeesSub")}
+          path="workforce/employees"
+          canWrite={canWrite}
+          showFarmFilter
+          listParams={hourlyParams}
+          defaultValues={{ employee_code: newCode(), wage_type: "HOURLY" }}
+          rowActions={financeAction}
+          footerColumns={["hourly_wage"]}
+          columns={hourlyColumns}
+          fields={buildFields()}
+        />
+      </div>
     </div>
   );
 }

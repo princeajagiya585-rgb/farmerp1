@@ -57,7 +57,7 @@ class EmployeeViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMode
     employee_self_lookup = "user"  # Employee links directly to the user
     allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = [Role.EMPLOYEE]
-    filterset_fields = ["farm", "category", "employment_type", "is_active", "department", "user"]
+    filterset_fields = ["farm", "category", "employment_type", "wage_type", "is_active", "department", "user"]
     search_fields = ["first_name", "last_name", "employee_code", "phone", "designation"]
 
     @action(detail=True, methods=["get"])
@@ -472,13 +472,27 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             if attendance.check_out_time is not None:
                 return Response({"detail": "Already checked out today."}, status=400)
             attendance.check_out_time = timezone.now()
+            # Hours actually worked this session (check-in → now), used for the
+            # half-day rule below.
+            worked_seconds_now = attendance.calculate_working_hours()
+            FULL_DAY_MIN_SECONDS = 5 * 3600  # 5 hours
             # Auto-approve on check-out ONLY when the check-in was inside the
             # farm geofence. If the worker checked in from outside, keep them
             # Absent and unapproved (Approval column shows "-").
             if attendance.geofence_status is False:
                 attendance.status = Attendance.Status.ABSENT
             else:
-                attendance.status = Attendance.Status.PRESENT_DONE
+                # Monthly-wage employees: checking out with under 5 hours worked
+                # counts as a HALF DAY (payroll cuts half a day's salary); 5+
+                # hours is a full day. Hourly employees are paid by the hour, so
+                # their day is left as a completed present day regardless.
+                is_monthly = getattr(
+                    attendance.employee, "wage_type", Employee.WageType.MONTHLY
+                ) == Employee.WageType.MONTHLY
+                if is_monthly and worked_seconds_now < FULL_DAY_MIN_SECONDS:
+                    attendance.status = Attendance.Status.HALF_DAY
+                else:
+                    attendance.status = Attendance.Status.PRESENT_DONE
                 attendance.approval_status = Attendance.ApprovalStatus.APPROVED
             if request.data.get("overtime_hours") is not None:
                 attendance.overtime_hours = request.data.get("overtime_hours")

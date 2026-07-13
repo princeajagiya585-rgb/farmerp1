@@ -186,11 +186,16 @@ export default function Users() {
       preferred_language: "en",
       aadhaar_number: "",
       aadhaar_photo: null,
+      wage_type: "MONTHLY",
+      monthly_salary: "",
+      hourly_wage: "",
     });
     setModalOpen({ mode: "create" });
   };
 
   const openEdit = (user) => {
+    // Wage details live on the linked employee record.
+    const emp = userEmpMap[user.id];
     setFormData({
       username: user.username,
       email: user.email || "",
@@ -202,6 +207,9 @@ export default function Users() {
       preferred_language: user.preferred_language || "en",
       aadhaar_number: user.aadhaar_number || "",
       aadhaar_photo: null,
+      wage_type: emp?.wage_type || "MONTHLY",
+      monthly_salary: emp?.monthly_salary != null ? String(emp.monthly_salary) : "",
+      hourly_wage: emp?.hourly_wage != null ? String(emp.hourly_wage) : "",
     });
     setModalOpen({ mode: "edit", id: user.id });
   };
@@ -343,6 +351,20 @@ export default function Users() {
       if (!dataToSend.password) {
         delete dataToSend.password;
         delete dataToSend.password2;
+      }
+      // Wage details apply to the linked employee. Super admins have none;
+      // for everyone else send only the salary field matching the wage type
+      // and drop blanks so we never overwrite an existing wage with "".
+      if (dataToSend.role === "SUPER_ADMIN") {
+        delete dataToSend.wage_type;
+        delete dataToSend.monthly_salary;
+        delete dataToSend.hourly_wage;
+      } else {
+        if (dataToSend.wage_type === "HOURLY") delete dataToSend.monthly_salary;
+        else delete dataToSend.hourly_wage;
+        ["monthly_salary", "hourly_wage"].forEach((k) => {
+          if (dataToSend[k] === "" || dataToSend[k] == null) delete dataToSend[k];
+        });
       }
       const hasFile = dataToSend.aadhaar_photo instanceof File;
       // FormData can't carry a JS array cleanly — send farms comma-joined; JSON keeps the array
@@ -1040,6 +1062,43 @@ export default function Users() {
                 onChange={(next) => setFormData({ ...formData, farms: next })}
                 placeholder={t("users.selectFarm")}
               />
+            )}
+            {formData.role !== "SUPER_ADMIN" && (
+              <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/50 p-3">
+                <Select
+                  label={t("workforce.wageType")}
+                  value={formData.wage_type || "MONTHLY"}
+                  onChange={(e) => setFormData({ ...formData, wage_type: e.target.value })}
+                >
+                  <option value="MONTHLY">{t("workforce.monthlySalary")}</option>
+                  <option value="HOURLY">{t("workforce.hourlyWage")}</option>
+                </Select>
+                {formData.wage_type === "HOURLY" ? (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">{t("workforce.hourlyWage")}</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.hourly_wage ?? ""}
+                      onChange={(e) => setFormData({ ...formData, hourly_wage: e.target.value })}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">{t("workforce.monthlySalary")}</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formData.monthly_salary ?? ""}
+                      onChange={(e) => setFormData({ ...formData, monthly_salary: e.target.value })}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+                    />
+                  </div>
+                )}
+              </div>
             )}
             {modalOpen.mode === "create" && (
               <>

@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Cog, Download, Pencil, Trash2 } from "lucide-react";
-import { resource } from "../lib/api";
+import { Cog, Download, Pencil, Trash2, Camera, ImagePlus } from "lucide-react";
+import { resource, toFormData, normalizePhotoUrl } from "../lib/api";
 import { exportExcelMultiSheet } from "../lib/export";
-import { Badge, Button, Card, Input, Modal, PageHeader, Select, Table } from "../components/ui";
+import { Badge, Button, Card, Input, Modal, PageHeader, PhotoThumb, Select, Table } from "../components/ui";
+import CameraCapture from "../components/CameraCapture";
 import { useAuth } from "../context/AuthContext";
 
 const periodRepo = resource("payroll/periods");
@@ -63,6 +64,11 @@ export default function Payroll() {
   const [halfPayAmount, setHalfPayAmount] = useState("");
   const [halfPaySaving, setHalfPaySaving] = useState(false);
   const [halfPayError, setHalfPayError] = useState("");
+  // Bill/receipt photo attach modal
+  const [photoSlip, setPhotoSlip] = useState(null);
+  const [photoCameraOpen, setPhotoCameraOpen] = useState(false);
+  const [photoSaving, setPhotoSaving] = useState(false);
+  const [photoError, setPhotoError] = useState("");
 
   const months = Array.from({ length: 12 }, (_, i) => ({
     value: i + 1,
@@ -288,6 +294,39 @@ export default function Payroll() {
     }
   };
 
+  // Attach a bill/receipt photo (from file or camera) to a payslip. Optional —
+  // used as proof for online transactions; cash payouts can skip it.
+  const uploadSlipPhoto = async (file) => {
+    if (!file || !photoSlip) return;
+    setPhotoSaving(true);
+    setPhotoError("");
+    try {
+      const saved = await slipRepo.update(photoSlip.id, toFormData({ payment_photo: file }));
+      // Keep the modal open showing the new photo so the user sees it saved.
+      setPhotoSlip((prev) => (prev ? { ...prev, payment_photo_url: saved.payment_photo_url } : prev));
+      load();
+    } catch (err) {
+      setPhotoError(err.response?.data?.detail || t("common.saveFailed"));
+    } finally {
+      setPhotoSaving(false);
+    }
+  };
+
+  const removeSlipPhoto = async () => {
+    if (!photoSlip) return;
+    setPhotoSaving(true);
+    setPhotoError("");
+    try {
+      await slipRepo.update(photoSlip.id, { payment_photo: null });
+      setPhotoSlip((prev) => (prev ? { ...prev, payment_photo_url: null } : prev));
+      load();
+    } catch (err) {
+      setPhotoError(err.response?.data?.detail || t("common.saveFailed"));
+    } finally {
+      setPhotoSaving(false);
+    }
+  };
+
   // Net pay always = wage + overtime + incentive − advances − deductions
   const computeNet = (f) =>
     (Number(f.gross_wage) || 0) +
@@ -340,6 +379,150 @@ export default function Payroll() {
     setEditAdv(null);
     load();
   };
+
+  // Payslip rows for the current month/year filter, with gross/advance/net
+  // recomputed from attendance, then split by wage type into two tables.
+  const visibleSlips = slips
+    .filter((s) => (!slipFilterMonth || String(s.period_month) === String(slipFilterMonth)) && (!slipFilterYear || String(s.period_year) === String(slipFilterYear)))
+    .map((s) => {
+      const { gross, adv, net } = slipCalc(s);
+      return {
+        ...s,
+        gross_wage: gross,
+        advance_deduction: adv,
+        _net_calc: net,
+        net_remaining: s.status === "PAID" ? 0 : net - Number(s.half_paid || 0),
+      };
+    });
+  const hourlySlips = visibleSlips.filter((s) => s.employee_wage_type === "HOURLY");
+  const monthlySlips = visibleSlips.filter((s) => s.employee_wage_type !== "HOURLY");
+
+  // Column set for the payslip tables. Hourly-wage slips show the hourly rate
+  // instead of the monthly salary; everything else is identical so the two
+  // tables read consistently.
+  const buildSlipColumns = (isHourly) => [
+    { key: "employee_name", header: t("header.employee"), render: (r) => r.employee_name || r.employee },
+    { key: "farm_name", header: t("header.farm"), render: (r) => r.farm_name || "-" },
+    {
+      key: "period_month",
+      header: t("header.month"),
+      render: (r) => (r.period_month ? `${months[r.period_month - 1]?.label} ${r.period_year}` : "-"),
+    },
+    {
+      key: "days_worked",
+      header: t("header.days"),
+      render: (r) => {
+        const rate = dailyRate(r);
+        const days = Number(r.days_worked || 0);
+        if (rate != null) {
+          return (
+            <span className="whitespace-nowrap">
+              {days} <span className="text-xs text-gray-500">· ₹{Math.round(rate).toLocaleString("en-IN")}{t("payroll.perDay")}</span>
+            </span>
+          );
+        }
+        return days;
+      },
+    },
+    isHourly
+      ? {
+          key: "employee_hourly_wage",
+          header: t("workforce.hourlyWage"),
+          render: (r) => {
+            const hw = Number(r.employee_hourly_wage || 0);
+            return hw > 0 ? `₹${hw.toLocaleString("en-IN")}/hr` : "-";
+          },
+        }
+      : {
+          key: "employee_monthly_salary",
+          header: t("payroll.monthlySalary"),
+          render: (r) => {
+            const ms = Number(r.employee_monthly_salary || 0);
+            return ms > 0 ? `₹${ms.toLocaleString("en-IN")}` : "-";
+          },
+        },
+    { key: "gross_wage", header: t("header.gross") },
+    { key: "overtime_amount", header: t("header.ot") },
+    { key: "advance_deduction", header: t("header.advances") },
+    {
+      key: "net_remaining",
+      header: t("header.netPay"),
+      render: (r) => (
+        <div>
+          <b>₹{Number(r.net_remaining || 0).toLocaleString("en-IN")}</b>
+          {r.status === "PAID" && (
+            <div className="whitespace-nowrap text-xs font-medium text-green-600">
+              {t("payroll.accountClosed")}
+              {r.period_month ? ` · ${months[r.period_month - 1]?.label} ${r.period_year}` : ""}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "status",
+      header: t("header.status"),
+      render: (r) => (
+        <Badge color={statusColorMap[r.status] || "gray"}>
+          {t(`payroll.${statusLabelMap[r.status] || r.status}`)}
+        </Badge>
+      ),
+    },
+    {
+      key: "payment_photo_url",
+      header: t("payroll.billPhoto"),
+      render: (r) => {
+        const url = normalizePhotoUrl(r.payment_photo_url);
+        return url ? <PhotoThumb url={url} alt={t("payroll.billPhoto")} size={32} /> : <span className="text-gray-400">—</span>;
+      },
+    },
+    {
+      key: "half_paid",
+      header: t("payroll.halfPay"),
+      render: (r) => {
+        const paid = Number(r.half_paid || 0);
+        const remaining = Number(r._net_calc ?? r.net_pay ?? 0) - paid;
+        return (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-indigo-700">₹{paid.toLocaleString("en-IN")}</span>
+            {canRun && remaining > 0 && r.status !== "PAID" && (
+              <button onClick={() => openHalfPay(r)} className="rounded bg-indigo-500 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-600" title={t("payroll.halfPayTitle")}>
+                {t("payroll.halfPay")}
+              </button>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: "_a",
+      header: t("common.actions"),
+      render: (r) => canRun && (
+        <div className="flex items-center gap-1">
+          {r.status === "PAID" ? (
+            <span className="whitespace-nowrap rounded bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">
+              {t("payroll.finalDone")}
+            </span>
+          ) : (
+            <button onClick={() => markDone(r)} className="rounded bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700" title={t("payroll.markPaid")}>
+              {t("payroll.due")}
+            </button>
+          )}
+          <button onClick={() => { setPhotoSlip(r); setPhotoError(""); }} className={`rounded p-1.5 hover:bg-indigo-50 ${normalizePhotoUrl(r.payment_photo_url) ? "text-indigo-600" : "text-gray-500"}`} title={t("payroll.attachPhoto")}>
+            <Camera size={15} />
+          </button>
+          <button onClick={() => { setEditSlip(r); setEditSlipForm({ days_worked: r.days_worked, gross_wage: r.gross_wage, overtime_amount: r.overtime_amount, incentive_amount: r.incentive_amount, advance_deduction: r.advance_deduction, other_deductions: r.other_deductions, net_pay: r.net_pay, status: r.status }); }} className="rounded p-1.5 text-gray-500 hover:bg-gray-100" title={t("common.edit")}>
+            <Pencil size={15} />
+          </button>
+          {canDelete && (
+            <button onClick={() => deleteSlip(r.id)} className="rounded p-1.5 text-red-500 hover:bg-red-50" title={t("common.delete")}>
+              <Trash2 size={15} />
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
 
   return (
     <div>
@@ -422,7 +605,7 @@ export default function Payroll() {
       </div>
 
       <Card
-        title={t("payroll.payslips")}
+        title={t("payroll.payslipsMonthly")}
         className="mb-5"
         action={
           <div className="flex flex-wrap gap-2">
@@ -457,123 +640,17 @@ export default function Payroll() {
       >
         <Table
           footerColumns={["gross_wage", "overtime_amount", "advance_deduction", "half_paid", "net_remaining"]}
-          columns={[
-            { key: "employee_name", header: t("header.employee"), render: (r) => r.employee_name || r.employee },
-            { key: "farm_name", header: t("header.farm"), render: (r) => r.farm_name || "-" },
-            {
-              key: "period_month",
-              header: t("header.month"),
-              render: (r) => (r.period_month ? `${months[r.period_month - 1]?.label} ${r.period_year}` : "-"),
-            },
-            {
-              key: "days_worked",
-              header: t("header.days"),
-              render: (r) => {
-                const rate = dailyRate(r);
-                const days = Number(r.days_worked || 0);
-                if (rate != null) {
-                  return (
-                    <span className="whitespace-nowrap">
-                      {days} <span className="text-xs text-gray-500">· ₹{Math.round(rate).toLocaleString("en-IN")}{t("payroll.perDay")}</span>
-                    </span>
-                  );
-                }
-                return days;
-              },
-            },
-            {
-              key: "employee_monthly_salary",
-              header: t("payroll.monthlySalary"),
-              render: (r) => {
-                const ms = Number(r.employee_monthly_salary || 0);
-                return ms > 0 ? `₹${ms.toLocaleString("en-IN")}` : "-";
-              },
-            },
-            { key: "gross_wage", header: t("header.gross") },
-            { key: "overtime_amount", header: t("header.ot") },
-            { key: "advance_deduction", header: t("header.advances") },
-            {
-              key: "net_remaining",
-              header: t("header.netPay"),
-              render: (r) => (
-                <div>
-                  <b>₹{Number(r.net_remaining || 0).toLocaleString("en-IN")}</b>
-                  {r.status === "PAID" && (
-                    <div className="whitespace-nowrap text-xs font-medium text-green-600">
-                      {t("payroll.accountClosed")}
-                      {r.period_month ? ` · ${months[r.period_month - 1]?.label} ${r.period_year}` : ""}
-                    </div>
-                  )}
-                </div>
-              ),
-            },
-            {
-              key: "status",
-              header: t("header.status"),
-              render: (r) => (
-                <Badge color={statusColorMap[r.status] || "gray"}>
-                  {t(`payroll.${statusLabelMap[r.status] || r.status}`)}
-                </Badge>
-              ),
-            },
-            {
-              key: "half_paid",
-              header: t("payroll.halfPay"),
-              render: (r) => {
-                const paid = Number(r.half_paid || 0);
-                const remaining = Number(r._net_calc ?? r.net_pay ?? 0) - paid;
-                return (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-indigo-700">₹{paid.toLocaleString("en-IN")}</span>
-                    {canRun && remaining > 0 && r.status !== "PAID" && (
-                      <button onClick={() => openHalfPay(r)} className="rounded bg-indigo-500 px-2 py-1 text-xs font-medium text-white hover:bg-indigo-600" title={t("payroll.halfPayTitle")}>
-                        {t("payroll.halfPay")}
-                      </button>
-                    )}
-                  </div>
-                );
-              },
-            },
-            {
-              key: "_a",
-              header: t("common.actions"),
-              render: (r) => canRun && (
-                <div className="flex items-center gap-1">
-                  {r.status === "PAID" ? (
-                    <span className="whitespace-nowrap rounded bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">
-                      {t("payroll.finalDone")}
-                    </span>
-                  ) : (
-                    <button onClick={() => markDone(r)} className="rounded bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700" title={t("payroll.markPaid")}>
-                      {t("payroll.due")}
-                    </button>
-                  )}
-                  <button onClick={() => { setEditSlip(r); setEditSlipForm({ days_worked: r.days_worked, gross_wage: r.gross_wage, overtime_amount: r.overtime_amount, incentive_amount: r.incentive_amount, advance_deduction: r.advance_deduction, other_deductions: r.other_deductions, net_pay: r.net_pay, status: r.status }); }} className="rounded p-1.5 text-gray-500 hover:bg-gray-100" title={t("common.edit")}>
-                    <Pencil size={15} />
-                  </button>
-                  {canDelete && (
-                    <button onClick={() => deleteSlip(r.id)} className="rounded p-1.5 text-red-500 hover:bg-red-50" title={t("common.delete")}>
-                      <Trash2 size={15} />
-                    </button>
-                  )}
-                </div>
-              ),
-            },
-          ]}
-          rows={slips
-            .filter((s) => (!slipFilterMonth || String(s.period_month) === String(slipFilterMonth)) && (!slipFilterYear || String(s.period_year) === String(slipFilterYear)))
-            .map((s) => {
-              // Gross follows attendance (days × one-day salary); the Advances
-              // column is filled from advances dated in this slip's month.
-              const { gross, adv, net } = slipCalc(s);
-              return {
-                ...s,
-                gross_wage: gross,
-                advance_deduction: adv,
-                _net_calc: net,
-                net_remaining: s.status === "PAID" ? 0 : net - Number(s.half_paid || 0),
-              };
-            })}
+          columns={buildSlipColumns(false)}
+          rows={monthlySlips}
+          empty={t("payroll.noPayslips")}
+        />
+      </Card>
+
+      <Card title={t("payroll.payslipsHourly")} className="mb-5">
+        <Table
+          footerColumns={["gross_wage", "overtime_amount", "advance_deduction", "half_paid", "net_remaining"]}
+          columns={buildSlipColumns(true)}
+          rows={hourlySlips}
           empty={t("payroll.noPayslips")}
         />
       </Card>
@@ -700,6 +777,53 @@ export default function Payroll() {
           </div>
         </div>
       </Modal>
+
+      {/* Attach bill / receipt photo (file or camera) — optional payout proof */}
+      <Modal open={!!photoSlip} onClose={() => setPhotoSlip(null)} title={t("payroll.attachPhoto")}>
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">{t("header.employee")}</label>
+            <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">{photoSlip?.employee_name || photoSlip?.employee}</p>
+          </div>
+          {normalizePhotoUrl(photoSlip?.payment_photo_url) && (
+            <div className="flex items-center gap-3">
+              <PhotoThumb url={normalizePhotoUrl(photoSlip.payment_photo_url)} alt={t("payroll.billPhoto")} size={64} />
+              <Button type="button" variant="secondary" onClick={removeSlipPhoto} disabled={photoSaving}>
+                <Trash2 size={14} /> {t("common.remove")}
+              </Button>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              capture="environment"
+              onChange={(e) => { const f = e.target.files[0]; if (f) uploadSlipPhoto(f); }}
+              className="w-full rounded-lg border border-gray-300 text-sm file:mr-3 file:rounded-l-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
+            />
+            <button
+              type="button"
+              onClick={() => setPhotoCameraOpen(true)}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-100"
+            >
+              <Camera size={16} /> {t("common.takePhoto")}
+            </button>
+          </div>
+          <p className="text-xs text-gray-400">{t("payroll.billPhotoHint")}</p>
+          {photoSaving && <p className="text-sm text-brand-600">{t("common.saving")}</p>}
+          {photoError && <p className="text-sm text-red-600">{photoError}</p>}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="secondary" onClick={() => setPhotoSlip(null)} disabled={photoSaving}>{t("payroll.cancel")}</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <CameraCapture
+        open={photoCameraOpen}
+        title={t("payroll.attachPhoto")}
+        onClose={() => setPhotoCameraOpen(false)}
+        onCapture={(file) => { setPhotoCameraOpen(false); uploadSlipPhoto(file); }}
+      />
 
       <Modal open={!!editAdv} onClose={() => setEditAdv(null)} title="Edit Advance">
         <form onSubmit={saveAdv} className="space-y-3">
