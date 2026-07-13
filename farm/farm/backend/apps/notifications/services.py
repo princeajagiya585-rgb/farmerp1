@@ -65,6 +65,11 @@ def notify_roles(farm, roles, title, body="", notification_type="INFO", data=Non
     query = Q(role="SUPER_ADMIN")
     if farm is not None:
         query |= Q(role__in=role_list, farms=farm)
+        # Always include the farm's designated manager, even if they were never
+        # added to the farm's members (User.farms) M2M — Farm.manager is the
+        # source of truth for who runs the farm, so they must get farm alerts.
+        if getattr(farm, "manager_id", None):
+            query |= Q(pk=farm.manager_id)
     else:
         query |= Q(role__in=role_list)
     recipients = User.objects.filter(query, is_active=True).distinct()

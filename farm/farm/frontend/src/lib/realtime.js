@@ -115,16 +115,30 @@ export function connectNotificationStream({ onMessage, onStatus, signal }) {
     console.warn("[WS] WebSocket unavailable after max retries — falling back to HTTP polling.");
 
     let pollTimer = null;
+    // Track already-delivered notification ids so repeated polls of the unread
+    // list don't re-deliver the same items. The first poll only seeds this set
+    // (no delivery) so we don't replay every pre-existing unread notification.
+    const seen = new Set();
+    let seeded = false;
     async function poll() {
       if (stopped) return;
       try {
         const token = getToken();
         if (!token) return;
         const { default: { api } } = await import("./api");
-        const { data } = await api.get("/notifications/unread/");
-        if (data && data.results) {
-          data.results.forEach(msg => onMessage?.(msg));
+        // Real endpoint: the unread list (paginated `results`). The old
+        // `/notifications/unread/` route does not exist and 404'd silently.
+        const { data } = await api.get("/notifications/", {
+          params: { is_read: false, page_size: 20 },
+        });
+        const items = (data && data.results) || (Array.isArray(data) ? data : []);
+        const fresh = items.filter((m) => m && m.id != null && !seen.has(m.id));
+        items.forEach((m) => m && m.id != null && seen.add(m.id));
+        if (seeded) {
+          // Deliver oldest-first so the newest ends up on top after prepend.
+          fresh.reverse().forEach((msg) => onMessage?.(msg));
         }
+        seeded = true;
       } catch {
         // Silently retry on next poll cycle
       }
