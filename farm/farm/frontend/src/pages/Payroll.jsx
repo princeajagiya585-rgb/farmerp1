@@ -34,6 +34,9 @@ export default function Payroll() {
   const [periods, setPeriods] = useState([]);
   const [slips, setSlips] = useState([]);
   const [advances, setAdvances] = useState([]);
+  // Every advance (farm-scoped, unfiltered by status/employee) — used to fill
+  // each payslip's Advances column by matching the advance's month to the slip.
+  const [allAdvances, setAllAdvances] = useState([]);
   const [farms, setFarms] = useState([]);
   const [msg, setMsg] = useState("");
   const [filterFarm, setFilterFarm] = useState("");
@@ -87,15 +90,43 @@ export default function Payroll() {
     return Math.round(rate * Number(r.days_worked || 0));
   };
 
-  // Net pay from the per-day gross: gross + OT + incentive − advances − deductions.
-  const perDayNet = (r) =>
-    Math.round(
-      perDayGross(r)
+  // Advance to show on a payslip's Advances column: the outstanding balance of
+  // every advance for that employee whose date falls in the payslip's own month
+  // & year. So an advance given in July shows on the July slip, August on August
+  // — "amount according to month". Falls back to the stored value until the
+  // advances list has loaded.
+  const advanceForSlip = (r) => {
+    const empId = String(r.employee);
+    const m = Number(r.period_month);
+    const y = Number(r.period_year);
+    if (!m || !y || !allAdvances.length) return Number(r.advance_deduction || 0);
+    let total = 0;
+    for (const a of allAdvances) {
+      if (String(a.employee) !== empId || !a.date) continue;
+      const [ay, am] = String(a.date).split("-").map(Number); // "2026-07-15"
+      if (am === m && ay === y) {
+        const bal = a.balance != null
+          ? Number(a.balance)
+          : Number(a.amount || 0) - Number(a.amount_repaid || 0);
+        if (bal > 0) total += bal;
+      }
+    }
+    return Math.round(total);
+  };
+
+  // Per-day gross, month-matched advance, and resulting net for a payslip.
+  const slipCalc = (r) => {
+    const gross = perDayGross(r);
+    const adv = advanceForSlip(r);
+    const net = Math.round(
+      gross
       + Number(r.overtime_amount || 0)
       + Number(r.incentive_amount || 0)
-      - Number(r.advance_deduction || 0)
+      - adv
       - Number(r.other_deductions || 0)
     );
+    return { gross, adv, net };
+  };
 
   // A date inside the payslip's own month, so the payout lands in the right
   // month on the Employee Payments page (uses today if it's the live month).
@@ -138,11 +169,15 @@ export default function Payroll() {
     if (slipFilterStatus) slipParams.status = slipFilterStatus;
     slipRepo.list(slipParams).then((d) => setSlips(d.results || d));
 
-    // Advances with its own filters
+    // Advances with its own filters (drives the Outstanding Advances card)
     const advParams = { ...baseParams };
     if (advFilterStatus) advParams.status = advFilterStatus;
     if (advFilterEmp) advParams.employee = advFilterEmp;
     advRepo.list(advParams).then((d) => setAdvances(d.results || d));
+
+    // All advances (unfiltered by status/employee) so the payslip Advances
+    // column can be filled by month regardless of the card's active filters.
+    advRepo.list({ ...baseParams, page_size: 500 }).then((d) => setAllAdvances(d.results || d));
   };
   // Auto-generate the CURRENT month's payslips for every farm the user can
   // access. Runs on page load so "Periods & Payslips" always reflects this
@@ -210,11 +245,11 @@ export default function Payroll() {
   // Mark a payslip DONE: finalise it (PAID) at its current per-day net pay and
   // record that amount as a payout on the Employee Payments page for the month.
   const markDone = async (slip) => {
-    const net = perDayNet(slip);
+    const { adv, net } = slipCalc(slip);
     if (!confirm(t("payroll.confirmDonePay", { amount: net.toLocaleString("en-IN") }))) return;
-    // Persist PAID + the per-day net so reports/payments agree. The backend
-    // settles the linked outstanding advances when a slip turns PAID.
-    await slipRepo.update(slip.id, { status: "PAID", net_pay: net });
+    // Persist PAID + the per-day net & month-matched advance so the backend
+    // settles the right advance amount and reports/payments agree.
+    await slipRepo.update(slip.id, { status: "PAID", net_pay: net, advance_deduction: adv });
     // Add the payout to Employee Payments, dated inside the payslip's month.
     try {
       await payRepo.create({
@@ -338,16 +373,17 @@ export default function Payroll() {
           if (slips.length > 0) {
             const slipRows = slips.map((r) => {
               const rate = dailyRate(r);
+              const { gross, adv, net } = slipCalc(r);
               return {
                 [t("header.employee")]: r.employee_name,
                 [t("header.farm")]: r.farm_name || "",
                 [t("header.month")]: r.period_month ? `${months[r.period_month - 1]?.label} ${r.period_year}` : "",
                 [t("header.days")]: r.days_worked,
                 [t("payroll.dailyRate")]: rate != null ? Math.round(rate) : "",
-                [t("header.gross")]: perDayGross(r),
+                [t("header.gross")]: gross,
                 [t("header.ot")]: Number(r.overtime_amount || 0),
-                [t("header.advances")]: Number(r.advance_deduction || 0),
-                [t("header.netPay")]: r.status === "PAID" ? 0 : perDayNet(r) - Number(r.half_paid || 0),
+                [t("header.advances")]: adv,
+                [t("header.netPay")]: r.status === "PAID" ? 0 : net - Number(r.half_paid || 0),
                 [t("header.status")]: r.status,
               };
             });
@@ -527,12 +563,13 @@ export default function Payroll() {
           rows={slips
             .filter((s) => (!slipFilterMonth || String(s.period_month) === String(slipFilterMonth)) && (!slipFilterYear || String(s.period_year) === String(slipFilterYear)))
             .map((s) => {
-              // Gross & net follow attendance: days worked × one-day salary.
-              const gross = perDayGross(s);
-              const net = perDayNet(s);
+              // Gross follows attendance (days × one-day salary); the Advances
+              // column is filled from advances dated in this slip's month.
+              const { gross, adv, net } = slipCalc(s);
               return {
                 ...s,
                 gross_wage: gross,
+                advance_deduction: adv,
                 _net_calc: net,
                 net_remaining: s.status === "PAID" ? 0 : net - Number(s.half_paid || 0),
               };
