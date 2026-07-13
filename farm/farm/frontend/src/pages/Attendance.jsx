@@ -966,7 +966,12 @@ export default function Attendance() {
               )}
 
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">{t("common.checkInPhoto")}</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  {t("common.checkInPhoto")}{" "}
+                  {canApprove
+                    ? <span className="text-gray-400">({t("common.optional")})</span>
+                    : <span className="text-red-500">*</span>}
+                </label>
                 {checkInPreview ? (
                   <div className="relative">
                     <img src={checkInPreview} alt="Preview" className="h-40 w-full rounded-lg object-cover" />
@@ -1012,9 +1017,9 @@ export default function Attendance() {
               </Button>
               <Button
                 onClick={submitCheckIn}
-                disabled={actionLoading || !checkInPos || !checkInPhoto}
-                className={!checkInPos || !checkInPhoto ? "opacity-50" : "bg-green-600 hover:bg-green-700"}
-                title={!checkInPos ? "Location required" : !checkInPhoto ? "Photo required" : "Click to check in"}
+                disabled={actionLoading || !checkInPos || (!canApprove && !checkInPhoto)}
+                className={!checkInPos || (!canApprove && !checkInPhoto) ? "opacity-50" : "bg-green-600 hover:bg-green-700"}
+                title={!checkInPos ? "Location required" : (!canApprove && !checkInPhoto) ? "Photo required" : "Click to check in"}
               >
                 {actionLoading ? (
                   <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> {t("common.checkingIn")}</span>
@@ -1173,7 +1178,12 @@ export default function Attendance() {
               )}
 
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">{t("common.checkOutPhoto")}</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  {t("common.checkOutPhoto")}{" "}
+                  {canApprove
+                    ? <span className="text-gray-400">({t("common.optional")})</span>
+                    : <span className="text-red-500">*</span>}
+                </label>
                 {checkOutPreview ? (
                   <div className="relative">
                     <img src={checkOutPreview} alt="Preview" className="h-40 w-full rounded-lg object-cover" />
@@ -1219,9 +1229,9 @@ export default function Attendance() {
               </Button>
               <Button
                 onClick={submitCheckOut}
-                disabled={actionLoading || !checkOutPos || !checkOutPhoto}
-                className={!checkOutPos || !checkOutPhoto ? "opacity-50" : "bg-orange-500 hover:bg-orange-600"}
-                title={!checkOutPos ? "Location required" : !checkOutPhoto ? "Photo required" : "Click to check out"}
+                disabled={actionLoading || !checkOutPos || (!canApprove && !checkOutPhoto)}
+                className={!checkOutPos || (!canApprove && !checkOutPhoto) ? "opacity-50" : "bg-orange-500 hover:bg-orange-600"}
+                title={!checkOutPos ? "Location required" : (!canApprove && !checkOutPhoto) ? "Photo required" : "Click to check out"}
               >
                 {actionLoading ? (
                   <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> {t("attendance.checkingOut")}</span>

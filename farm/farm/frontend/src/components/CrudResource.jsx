@@ -226,6 +226,9 @@ export default function CrudResource({
       if (fl.type === "multiselect" && !Array.isArray(initialForm[fl.name])) {
         initialForm[fl.name] = [];
       }
+      if (fl.type === "geopolygon" && !Array.isArray(initialForm[fl.name])) {
+        initialForm[fl.name] = [];
+      }
     });
     setForm(initialForm);
     setError("");
@@ -237,6 +240,8 @@ export default function CrudResource({
     fields.forEach((fl) => {
       if (fl.type === "multiselect") {
         f[fl.name] = row[fl.name]?.map((item) => (typeof item === 'object' && item?.id ? item.id : item)) ?? [];
+      } else if (fl.type === "geopolygon") {
+        f[fl.name] = Array.isArray(row[fl.name]) ? row[fl.name].map((p) => [p?.[0] ?? "", p?.[1] ?? ""]) : [];
       } else if (fl.type === "coords") {
         const lat = row[fl.targets?.[0]] ?? "";
         const lng = row[fl.targets?.[1]] ?? "";
@@ -264,6 +269,16 @@ export default function CrudResource({
       // Remove virtual coords field, keep the split targets
       fields.forEach((fl) => {
         if (fl.type === "coords") delete payload[fl.name];
+      });
+      // Geopolygon → clean array of [lat, lng] number pairs (drop empty corners)
+      fields.forEach((fl) => {
+        if (fl.type === "geopolygon") {
+          const arr = Array.isArray(payload[fl.name]) ? payload[fl.name] : [];
+          payload[fl.name] = arr
+            .filter((p) => p && p[0] !== "" && p[1] !== "" && p[0] != null && p[1] != null)
+            .map((p) => [Number(p[0]), Number(p[1])])
+            .filter((p) => !Number.isNaN(p[0]) && !Number.isNaN(p[1]));
+        }
       });
       fields.forEach((fl) => {
         if (fl.type === "number" && payload[fl.name] !== "" && payload[fl.name] != null)
@@ -765,6 +780,40 @@ export default function CrudResource({
                     className="w-full rounded-xl border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                   />
                   <p className="mt-1 text-xs text-gray-400">Enter as: latitude, longitude (e.g. 28.6139, 77.2090)</p>
+                </div>
+              );
+            }
+            if (fl.type === "geopolygon") {
+              const corners = fl.corners || 4;
+              const val = Array.isArray(form[fl.name]) ? form[fl.name] : [];
+              const setCorner = (i, raw) => {
+                const parts = raw.split(",").map((p) => p.trim());
+                const next = Array.from({ length: corners }, (_, k) => val[k] || ["", ""]);
+                next[i] = [parts[0] ?? "", parts[1] ?? ""];
+                setForm({ ...form, [fl.name]: next });
+              };
+              return (
+                <div key={fl.name}>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">{fl.label}</label>
+                  <div className="space-y-2">
+                    {Array.from({ length: corners }).map((_, i) => {
+                      const pair = val[i] || ["", ""];
+                      const str = pair[0] !== "" && pair[1] !== "" && pair[0] != null && pair[1] != null ? `${pair[0]}, ${pair[1]}` : "";
+                      return (
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="w-14 shrink-0 text-xs font-semibold text-gray-500">{(fl.cornerLabel || "Corner")} {i + 1}</span>
+                          <input
+                            type="text"
+                            placeholder="latitude, longitude"
+                            value={str}
+                            onChange={(e) => setCorner(i, e.target.value)}
+                            className="w-full rounded-xl border border-gray-300 px-3.5 py-2.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">{fl.hint || "Enter each corner as: latitude, longitude"}</p>
                 </div>
               );
             }
