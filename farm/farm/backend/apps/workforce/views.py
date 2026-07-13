@@ -8,6 +8,7 @@ from django.utils.dateparse import parse_date, parse_datetime
 
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 
 from apps.core.mixins import BaseModelViewSet, EmployeeSelfScopedMixin
 from apps.accounts.models import Role
@@ -380,11 +381,31 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
                     attendance.geofence_status = True
                     attendance.status = Attendance.Status.PRESENT
                 else:
-                    # Inside none of the farms. Use the picked farm to decide:
-                    # a real "outside" (fence exists) → Absent; no fence config
-                    # (cannot verify) → Present (benefit of the doubt).
+                    # Inside none of the farms. Use the picked farm to decide.
                     farm = selected_farm
                     sel_inside = location_inside_farm(selected_farm, lat, lng) if selected_farm else None
+                    if sel_inside is False:
+                        # A real geofence exists and the worker is OUTSIDE the
+                        # farm area (Corner 1-4 + Tolerance). Block the check-in
+                        # entirely instead of recording an Absent row — attendance
+                        # may only be marked from inside the farm boundary. Raising
+                        # here rolls back the atomic block so no record is created.
+                        # Admins / farm managers are exempt so they can still record
+                        # attendance for others while off-site.
+                        privileged = request.user.role in (
+                            Role.SUPER_ADMIN, Role.FARM_MANAGER,
+                        )
+                        if not privileged:
+                            raise ValidationError({
+                                "detail": (
+                                    "You are outside the farm area. Attendance can "
+                                    "only be marked from inside the farm boundary "
+                                    "(within the geofence tolerance). Please move "
+                                    "inside the farm and try again."
+                                )
+                            })
+                    # sel_inside is False (privileged user) or None (no fence to
+                    # verify against → benefit of the doubt).
                     attendance.geofence_status = sel_inside  # False or None
                     attendance.status = (
                         Attendance.Status.ABSENT if sel_inside is False

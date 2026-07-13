@@ -81,6 +81,34 @@ const pickBestFarm = (loc, emp, farmsById) => {
   return best || primary;
 };
 
+// Is `loc` inside ANY of the worker's farm areas? Mirrors the backend
+// `location_inside_farm` so a check-in from outside the boundary can be blocked
+// before it is ever sent. A worker is "inside" if the point falls within a
+// farm's 4-corner polygon OR within that farm's tolerance radius of its centre.
+// Returns true (inside), false (outside a real fence), or null (no fence to
+// check against → cannot verify, let the server decide).
+const insideAnyFarm = (loc, emp, farmsById) => {
+  if (!loc || loc.lat == null) return null;
+  const ids = new Set();
+  if (emp?.farm) ids.add(String(emp.farm));
+  (emp?.assigned_farm_details || []).forEach((f) => ids.add(String(f.id)));
+  let hasFence = false;
+  for (const id of ids) {
+    const f = farmsById[id];
+    if (!f) continue;
+    if (Array.isArray(f.geofence) && f.geofence.length >= 3) {
+      hasFence = true;
+      if (pointInPolygon(loc.lat, loc.lng, f.geofence)) return true;
+    }
+    if (f.latitude != null && f.longitude != null) {
+      hasFence = true;
+      const radius = Number(f.check_in_radius) || 100;
+      if (haversineM(loc.lat, loc.lng, Number(f.latitude), Number(f.longitude)) <= radius) return true;
+    }
+  }
+  return hasFence ? false : null;
+};
+
 const statusColor = { PRESENT: "green", ABSENT: "red", HALF_DAY: "yellow", LEAVE: "blue", PRESENT_DONE: "purple" };
 const apprColor = { PENDING: "yellow", APPROVED: "green", REJECTED: "red", FAILED: "red" };
 const statusLabelMap = { PRESENT: "present", ABSENT: "absent", HALF_DAY: "halfDay", LEAVE: "leave", PRESENT_DONE: "presentDone" };
@@ -303,6 +331,23 @@ export default function Attendance() {
     setActionLoading(true);
     setMsg("");
     let loc = checkInPos || (await getLocation());
+    // Block the check-in when the worker is outside the farm boundary. Attendance
+    // may only be marked from inside the farm's 4-corner area (+ tolerance).
+    // Admins/managers are exempt so they can record attendance for others off-site.
+    if (!canApprove) {
+      const byId = {};
+      farms.forEach((f) => { byId[String(f.id)] = f; });
+      if (insideAnyFarm(loc, checkInTarget, byId) === false) {
+        const detail = t(
+          "attendance.outsideFarmArea",
+          "You are outside the farm area. Attendance can only be marked from inside the farm boundary. Please move inside the farm and try again.",
+        );
+        setMsg(detail);
+        addToast(detail, "error");
+        setActionLoading(false);
+        return;
+      }
+    }
     try {
       const payload = {
         employee: checkInTarget.id,

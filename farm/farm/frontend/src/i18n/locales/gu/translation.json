@@ -864,6 +864,7 @@
   "attendance.updated": "હાજરી રેકોર્ડ સફળતાપૂર્વક અપડેટ થયો.",
   "attendance.updateFailed": "હાજરી રેકોર્ડ અપડેટ કરવામાં નિષ્ફળ.",
   "attendance.checkinSuccess": "{{name}} સફળતાપૂર્વક ચેક ઇન થયા.",
+  "attendance.outsideFarmArea": "તમે ફાર્મ વિસ્તારની બહાર છો. હાજરી ફક્ત ફાર્મની સીમાની અંદરથી જ નોંધી શકાય છે. કૃપા કરીને ફાર્મની અંદર આવીને ફરી પ્રયાસ કરો.",
   "attendance.checkoutSuccess": "{{name}} સફળતાપૂર્વક ચેક આઉટ થયા.",
   "attendance.statusLabel": "સ્થિતિ",
   "attendance.approvalStatus": "મંજૂરી સ્થિતિ",
