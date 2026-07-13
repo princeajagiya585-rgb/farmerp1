@@ -12,7 +12,7 @@ const pwaManifest = {
   background_color: "#f0fdf4",
   display: "standalone",
   display_override: ["window-controls-overlay", "standalone"],
-  orientation: "portrait-primary",
+  orientation: "any",
   start_url: "/",
   scope: "/",
   lang: "en",

@@ -526,7 +526,7 @@ export default function CrudResource({
           {/* Farm, Employee, User & Buyer Filters with Apply button */}
           {(showFarmFilter || showEmployeeFilter || showUserFilter || showBuyerFilter) && (          <div className="flex flex-wrap items-end gap-2 rounded-lg bg-gray-50 p-2 border border-gray-200">
               {showFarmFilter && (
-                <div className="min-w-[150px]">
+                <div className="w-full sm:w-auto sm:min-w-[150px]">
                   <select
                     value={farmFilter}
                     onChange={(e) => setFarmFilter(e.target.value)}
@@ -540,7 +540,7 @@ export default function CrudResource({
                 </div>
               )}
               {showEmployeeFilter && (
-                <div className="min-w-[150px]">
+                <div className="w-full sm:w-auto sm:min-w-[150px]">
                   <select
                     value={empFilter}
                     onChange={(e) => setEmpFilter(e.target.value)}
@@ -554,7 +554,7 @@ export default function CrudResource({
                 </div>
               )}
               {showUserFilter && (
-                <div className="min-w-[150px]">
+                <div className="w-full sm:w-auto sm:min-w-[150px]">
                   <select
                     value={userFilter}
                     onChange={(e) => setUserFilter(e.target.value)}
@@ -568,7 +568,7 @@ export default function CrudResource({
                 </div>
               )}
               {showBuyerFilter && (
-                <div className="min-w-[150px]">
+                <div className="w-full sm:w-auto sm:min-w-[150px]">
                   <input
                     value={buyerFilter}
                     onChange={(e) => setBuyerFilter(e.target.value)}

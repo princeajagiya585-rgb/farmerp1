@@ -95,13 +95,13 @@ export default function PayrollReports() {
       {/* Monthly payroll report */}
       <Card title={translate("payrollReports.monthlyPayroll")} className="mb-5">
         <div className="mb-4 flex flex-wrap items-end gap-3">
-          <div className="min-w-[180px]">
+          <div className="w-full sm:w-auto sm:min-w-[180px]">
             <Select label="Farm" value={mFarm} onChange={(e) => setMFarm(e.target.value)}>
               <option value="">All farms</option>
               {farms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
             </Select>
           </div>
-          <div className="min-w-[200px]">
+          <div className="w-full sm:w-auto sm:min-w-[200px]">
             <Select label={translate("header.employee")} value={mEmp} onChange={(e) => setMEmp(e.target.value)}>
               <option value="">{translate("common.allEmployees")}</option>
               {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
@@ -188,7 +188,7 @@ export default function PayrollReports() {
       {/* Worker payment history */}
       <Card title={translate("payrollReports.workerPaymentHistory")}>
         <div className="mb-4 flex flex-wrap items-end gap-3">
-          <div className="min-w-[220px]">
+          <div className="w-full sm:w-auto sm:min-w-[220px]">
             <Select label="Employee" value={emp} onChange={(e) => setEmp(e.target.value)}>
               <option value="">All employees</option>
               {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}

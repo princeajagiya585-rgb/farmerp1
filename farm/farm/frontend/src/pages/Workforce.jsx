@@ -63,7 +63,7 @@ export default function Workforce() {
         <select
           value={farmFilter}
           onChange={(e) => setFarmFilter(e.target.value)}
-          className="min-w-[180px] rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+          className="w-full sm:w-auto sm:min-w-[180px] rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
         >
           <option value="">{t("workforce.allFarms")}</option>
           {farms.map((f) => (
@@ -75,7 +75,7 @@ export default function Workforce() {
         <select
           value={empFilter}
           onChange={(e) => setEmpFilter(e.target.value)}
-          className="min-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+          className="w-full sm:w-auto sm:min-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
         >
           <option value="">{t("workforce.allEmployees")}</option>
           {employees.map((e) => (
@@ -87,7 +87,7 @@ export default function Workforce() {
         <select
           value={deptFilter}
           onChange={(e) => setDeptFilter(e.target.value)}
-          className="min-w-[180px] rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+          className="w-full sm:w-auto sm:min-w-[180px] rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
         >
           <option value="">{t("workforce.allDepartments")}</option>
           {departments.map((d) => (
@@ -99,7 +99,7 @@ export default function Workforce() {
         <select
           value={empTypeFilter}
           onChange={(e) => setEmpTypeFilter(e.target.value)}
-          className="min-w-[160px] rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+          className="w-full sm:w-auto sm:min-w-[160px] rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
         >
           <option value="">{t("workforce.allTypes")}</option>
           {EMPLOYMENT_TYPES.map((t) => (

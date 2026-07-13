@@ -12,7 +12,7 @@ export function Card({ title, action, children, className = "" }) {
           {action}
         </div>
       )}
-      <div className="p-5">{children}</div>
+      <div className="p-4 sm:p-5">{children}</div>
     </div>
   );
 }
@@ -194,14 +194,14 @@ export function Modal({ open, onClose, title, children, width = "max-w-lg" }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-gray-900/50 p-4 backdrop-blur-sm">
-      <div className={`mt-12 w-full ${width} animate-fade-in rounded-2xl bg-white shadow-lift`}>
-        <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3.5">
+      <div className={`mt-4 sm:mt-12 w-full ${width} animate-fade-in rounded-2xl bg-white shadow-lift`}>
+        <div className="flex items-center justify-between border-b border-gray-100 px-4 sm:px-5 py-3.5">
           <h3 className="font-semibold text-gray-800">{title}</h3>
           <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
             <X size={18} />
           </button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="p-4 sm:p-5">{children}</div>
       </div>
     </div>
   );
@@ -230,7 +230,7 @@ export function Table({ columns, rows, empty = "No records found.", rowClassName
             {columns.map((c, i) => (
               <th
                 key={c.key}
-                className={`px-4 py-3.5 font-semibold ${
+                className={`whitespace-nowrap px-4 py-3.5 font-semibold ${
                   i === 0 ? "rounded-tl-xl" : ""
                 } ${
                   i === columns.length - 1 ? "rounded-tr-xl" : ""
@@ -265,7 +265,7 @@ export function Table({ columns, rows, empty = "No records found.", rowClassName
                 }`}
               >
                 {columns.map((c) => (
-                  <td key={c.key} className="px-4 py-3 text-gray-700 group-hover:text-gray-900">
+                  <td key={c.key} className="whitespace-nowrap px-4 py-3 text-gray-700 group-hover:text-gray-900">
                     {c.render ? c.render(row) : row[c.key] ?? "—"}
                   </td>
                 ))}
