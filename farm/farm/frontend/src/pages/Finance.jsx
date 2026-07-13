@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Check, X, FileText, ExternalLink } from "lucide-react";
 import CrudResource from "../components/CrudResource";
 import { Badge } from "../components/ui";
@@ -8,6 +8,7 @@ import { useAuth } from "../context/AuthContext";
 
 const expRepo = resource("finance/expenses");
 const stColor = { PENDING: "yellow", APPROVED: "green", REJECTED: "red" };
+const EXPENSE_CATEGORIES = ["LABOUR", "INPUTS", "FUEL", "MAINTENANCE", "UTILITIES", "TRANSPORT", "MISC"];
 
 export default function Finance() {
   const { t } = useTranslation();
@@ -19,6 +20,12 @@ export default function Finance() {
   ];
   const canWrite = hasRole("SUPER_ADMIN", "FARM_MANAGER");
   const [tab, setTab] = useState("expenses");
+  // Category filter for the Expenses tab (backend supports ?category=).
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const expenseParams = useMemo(
+    () => (categoryFilter ? { category: categoryFilter } : {}),
+    [categoryFilter]
+  );
 
   const act = async (id, verb, reload) => {
     await expRepo.action(id, verb);
@@ -46,6 +53,20 @@ export default function Finance() {
           canWrite={canWrite}
           showFarmFilter
           showUserFilter
+          listParams={expenseParams}
+          extraToolbar={
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+              title={t("header.category")}
+            >
+              <option value="">{t("finance.allCategories", "All Categories")}</option>
+              {EXPENSE_CATEGORIES.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          }
           footerColumns={["amount"]}
           columns={[
             { key: "description", header: t("header.description") },

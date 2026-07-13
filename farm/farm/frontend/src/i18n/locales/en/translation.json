@@ -1270,6 +1270,7 @@
   "finance.source": "Source",
   "finance.cropOptional": "Crop (optional)",
   "finance.expenses": "Expenses",
+  "finance.allCategories": "All Categories",
   "finance.revenue": "Revenue",
   "financeSales.title": "Sales",
   "financeSales.subtitle": "Record and manage crop and product sales",
