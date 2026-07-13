@@ -503,6 +503,13 @@ class PayslipViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
         """Monthly payroll report: per-employee payslip rows + totals.
 
         Query params (optional): farm, month, year, employee.
+
+        The Advance column is sourced straight from the Advances page data
+        (each employee's outstanding advance balance) instead of the value
+        frozen on the payslip, so advances always show for the employee that
+        has them — regardless of whether that month's payslips were generated.
+        Employees that have an outstanding advance but no payslip for the
+        selected period are still listed so their advance is never hidden.
         """
         qs = self.filter_queryset(self.get_queryset())
         farm = request.query_params.get("farm")
@@ -518,6 +525,31 @@ class PayslipViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
         if employee:
             qs = qs.filter(employee_id=employee)
 
+        # Outstanding advance balance per employee, from the Advance records
+        # (same source as the Advances page). Honours the farm/employee filters
+        # and the requesting user's farm scope (super admin sees all farms).
+        adv_qs = Advance.objects.filter(status=Advance.Status.OUTSTANDING)
+        if request.user.role not in (Role.SUPER_ADMIN,):
+            allowed_farm_ids = list(request.user.farms.values_list("id", flat=True))
+            adv_qs = adv_qs.filter(farm_id__in=allowed_farm_ids)
+        if farm:
+            adv_qs = adv_qs.filter(farm_id=farm)
+        if employee:
+            adv_qs = adv_qs.filter(employee_id=employee)
+        advance_by_emp = {}
+        for adv in adv_qs.select_related("employee", "employee__farm"):
+            bal = adv.balance
+            if bal > 0:
+                advance_by_emp[adv.employee_id] = (
+                    advance_by_emp.get(adv.employee_id, Decimal("0")) + bal
+                )
+
+        try:
+            m = int(month) if month else None
+            y = int(year) if year else None
+        except (TypeError, ValueError):
+            m, y = None, None
+
         fields = [
             "gross_wage",
             "overtime_amount",
@@ -526,12 +558,53 @@ class PayslipViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
             "other_deductions",
             "net_pay",
         ]
-        totals = {f: Decimal("0") for f in fields}
         rows = []
+        seen_employees = set()
         for slip in qs:
+            seen_employees.add(slip.employee_id)
+            data = PayslipSerializer(slip, context={"request": request}).data
+            # Always reflect the employee's real outstanding advance and keep
+            # the row internally consistent by recomputing Net Pay from it.
+            adv = advance_by_emp.get(slip.employee_id, Decimal("0"))
+            gross = slip.gross_wage or Decimal("0")
+            ot = slip.overtime_amount or Decimal("0")
+            inc = slip.incentive_amount or Decimal("0")
+            other = slip.other_deductions or Decimal("0")
+            data["advance_deduction"] = adv
+            data["net_pay"] = gross + ot + inc - adv - other
+            rows.append(data)
+
+        # Employees with an outstanding advance but no payslip this period.
+        missing_ids = [e for e in advance_by_emp if e not in seen_employees]
+        emp_map = {
+            e.id: e
+            for e in Employee.objects.filter(pk__in=missing_ids).select_related("farm")
+        }
+        for emp_id in missing_ids:
+            emp_obj = emp_map.get(emp_id)
+            if not emp_obj:
+                continue
+            adv = advance_by_emp[emp_id]
+            rows.append({
+                "employee": emp_id,
+                "employee_name": emp_obj.name,
+                "farm": emp_obj.farm_id,
+                "farm_name": emp_obj.farm.name if emp_obj.farm_id else None,
+                "period_month": m,
+                "period_year": y,
+                "days_worked": Decimal("0"),
+                "gross_wage": Decimal("0"),
+                "overtime_amount": Decimal("0"),
+                "incentive_amount": Decimal("0"),
+                "advance_deduction": adv,
+                "other_deductions": Decimal("0"),
+                "net_pay": -adv,
+            })
+
+        totals = {f: Decimal("0") for f in fields}
+        for data in rows:
             for f in fields:
-                totals[f] += getattr(slip, f) or Decimal("0")
-            rows.append(PayslipSerializer(slip, context={"request": request}).data)
+                totals[f] += Decimal(str(data.get(f) or "0"))
 
         return Response({"count": len(rows), "rows": rows, "totals": totals})
 

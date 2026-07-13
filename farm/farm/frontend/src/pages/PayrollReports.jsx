@@ -14,9 +14,17 @@ const MONTHS = Array.from({ length: 12 }, (_, i) => ({
   label: new Date(0, i).toLocaleString("en", { month: "long" }),
 }));
 const money = (v) => `₹${Number(v || 0).toLocaleString("en-IN")}`;
+// "7" + 2026 → "July 2026" (period month is stored as an integer 1-12).
+const monthLabel = (m, y) => {
+  if (!m) return "—";
+  const name = MONTHS.find((x) => Number(x.value) === Number(m))?.label || m;
+  return y ? `${name} ${y}` : name;
+};
 
 const MONTHLY_COLS = [
   { key: "employee_name", header: "Employee" },
+  { key: "period_month", header: "Month" },
+  { key: "period_year", header: "Year" },
   { key: "days_worked", header: "Days" },
   { key: "gross_wage", header: "Gross" },
   { key: "overtime_amount", header: "OT" },
@@ -121,6 +129,7 @@ export default function PayrollReports() {
           footerColumns={["gross_wage", "overtime_amount", "advance_deduction", "other_deductions", "net_pay"]}
           columns={[
             { key: "employee_name", header: translate("header.employee") },
+            { key: "period_month", header: translate("header.month"), render: (r) => monthLabel(r.period_month, r.period_year) },
             { key: "days_worked", header: translate("header.days") },
             { key: "gross_wage", header: translate("header.gross"), render: (r) => money(r.gross_wage) },
             { key: "overtime_amount", header: translate("header.ot"), render: (r) => money(r.overtime_amount) },
