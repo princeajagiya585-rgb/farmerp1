@@ -941,8 +941,9 @@ export default function Attendance() {
             <div className="space-y-4 p-5">
               {/* Multi-farm workers no longer pick a farm — the attendance is
                   auto-attributed to the farm they are inside / nearest to (by
-                  GPS). We just show which farm was detected. */}
-              {(checkInTarget?.assigned_farm_details?.length || 0) > 1 && (
+                  GPS). Employees see nothing; managers/admins get a small
+                  read-only note of the detected farm. */}
+              {!isEmployee && (checkInTarget?.assigned_farm_details?.length || 0) > 1 && (
                 <div className="rounded-lg bg-brand-50 p-3 ring-1 ring-brand-200">
                   <p className="flex items-center gap-1.5 text-sm font-semibold text-brand-800">
                     <MapPin size={14} className="text-brand-600" />
