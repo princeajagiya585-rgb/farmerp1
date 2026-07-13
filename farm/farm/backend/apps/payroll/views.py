@@ -212,9 +212,16 @@ class PayrollPeriodViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                 # separate approval step. Only explicitly rejected/failed
                 # records are excluded (auto check-out and mark-absent already
                 # approve themselves).
+                #
+                # NOTE: we do NOT filter by farm here. A worker assigned to
+                # several farms may check in at any of them, so their day is
+                # recorded against whichever farm's geofence matched — but the
+                # payslip belongs to the employee's home-farm period, so every
+                # attendance day of theirs must count no matter where it was
+                # recorded. Filtering by period.farm silently dropped cross-farm
+                # days (e.g. a half day at another assigned farm → days_worked 0).
                 attendances = Attendance.objects.filter(
                     employee=employee,
-                    farm=period.farm,
                     date__month=period.month,
                     date__year=period.year,
                 ).exclude(

@@ -174,6 +174,24 @@ class PayslipGenerationAbsenceTests(TestCase):
 
         self.assertEqual(self._slip().days_worked, Decimal("0"))
 
+    def test_attendance_at_another_assigned_farm_still_counts(self):
+        # A worker assigned to several farms may check in at any of them. Their
+        # day must still count on their home-farm payslip even though it was
+        # recorded against a different farm's geofence.
+        other = Farm.objects.create(name="Other Farm", code="FOTH")
+        Attendance.objects.create(
+            employee=self.employee, farm=other, date=date(2026, 7, 1),
+            status=Attendance.Status.HALF_DAY,
+            approval_status=Attendance.ApprovalStatus.APPROVED,
+        )
+
+        resp = self._generate()
+        self.assertEqual(resp.status_code, 200, getattr(resp, "data", None))
+
+        slip = self._slip()
+        self.assertEqual(slip.days_worked, Decimal("0.5"))
+        self.assertEqual(slip.gross_wage, Decimal("500"))  # 0.5 × 1000
+
     def test_checked_out_full_day_counts_as_present(self):
         # A worker who checked out after a full day (PRESENT_DONE) counts as a
         # full worked day, same as a still-checked-in PRESENT day.
