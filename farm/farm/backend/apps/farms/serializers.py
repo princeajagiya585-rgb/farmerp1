@@ -47,7 +47,7 @@ class FarmListSerializer(serializers.ModelSerializer):
         model = Farm
         fields = [
             "id", "name", "code", "location", "total_area",
-            "latitude", "longitude",
+            "latitude", "longitude", "geofence", "check_in_radius",
             "manager_name", "field_count", "active_crop_count",
             "employee_count", "asset_count", "is_active", "created_at",
         ]

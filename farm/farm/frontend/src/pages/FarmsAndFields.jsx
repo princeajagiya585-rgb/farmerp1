@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Tractor, MapPin } from "lucide-react";
 import CrudResource from "../components/CrudResource";
 import { Badge } from "../components/ui";
@@ -61,6 +61,28 @@ export default function FarmsAndFields() {
   const navigate = useNavigate();
   const canWrite = hasRole("SUPER_ADMIN", "FARM_MANAGER");
   const [activeTab, setActiveTab] = useState("farms");
+  // The farm LIST endpoint omits geofence/check_in_radius, so read the corners
+  // & tolerance from the mirrored Geofence records (keyed by farm id) instead.
+  const [geoByFarm, setGeoByFarm] = useState({});
+  const loadGeofences = () => {
+    geoRepo.list({ page_size: 500 }).then((d) => {
+      const rows = d.results || d;
+      const map = {};
+      rows.forEach((g) => { map[String(g.farm)] = { polygon: g.polygon, radius_m: g.radius_m }; });
+      setGeoByFarm(map);
+    }).catch(() => {});
+  };
+  useEffect(loadGeofences, []);
+
+  // Corners/tolerance for a farm row: farm fields first (if the API ever
+  // includes them), else the mirrored geofence record.
+  const farmCorners = (r) => (Array.isArray(r.geofence) && r.geofence.length ? r.geofence : geoByFarm[String(r.id)]?.polygon);
+  const farmTolerance = (r) => (r.check_in_radius != null ? r.check_in_radius : geoByFarm[String(r.id)]?.radius_m);
+
+  const onFarmSaved = async (farm) => {
+    await syncGeofence(farm);
+    loadGeofences();
+  };
 
   return (
     <div>
@@ -90,7 +112,7 @@ export default function FarmsAndFields() {
           path="farms"
           canWrite={canWrite}
           defaultValues={{ check_in_radius: 10 }}
-          onSaved={syncGeofence}
+          onSaved={onFarmSaved}
           columns={[
             { key: "name", header: t("header.name") },
             { key: "location", header: t("header.location") },
@@ -113,11 +135,11 @@ export default function FarmsAndFields() {
                   <span className="text-gray-400">—</span>
                 ),
             },
-            { key: "c1", header: "Corner 1 (Lat / Lng)", render: (r) => corner(r.geofence, 0) },
-            { key: "c2", header: "Corner 2", render: (r) => corner(r.geofence, 1) },
-            { key: "c3", header: "Corner 3", render: (r) => corner(r.geofence, 2) },
-            { key: "c4", header: "Corner 4", render: (r) => corner(r.geofence, 3) },
-            { key: "check_in_radius", header: "Tolerance (m)", render: (r) => (r.check_in_radius != null ? `${r.check_in_radius} m` : "—") },
+            { key: "c1", header: "Corner 1 (Lat / Lng)", render: (r) => corner(farmCorners(r), 0) },
+            { key: "c2", header: "Corner 2", render: (r) => corner(farmCorners(r), 1) },
+            { key: "c3", header: "Corner 3", render: (r) => corner(farmCorners(r), 2) },
+            { key: "c4", header: "Corner 4", render: (r) => corner(farmCorners(r), 3) },
+            { key: "check_in_radius", header: "Tolerance (m)", render: (r) => { const tol = farmTolerance(r); return tol != null ? `${tol} m` : "—"; } },
             {
               key: "is_active",
               header: t("header.status"),
