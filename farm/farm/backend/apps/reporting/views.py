@@ -288,11 +288,23 @@ class DashboardView(APIView):
             check_in_time__isnull=False,
         ).values("employee__farm_id").annotate(cnt=Count("id")).values("cnt")
 
+        absent_today_subquery = Attendance.objects.filter(
+            employee__farm_id=OuterRef("id"), date=today,
+            status=Attendance.Status.ABSENT,
+        ).values("employee__farm_id").annotate(cnt=Count("id")).values("cnt")
+
+        on_leave_subquery = Attendance.objects.filter(
+            employee__farm_id=OuterRef("id"), date=today,
+            status=Attendance.Status.LEAVE,
+        ).values("employee__farm_id").annotate(cnt=Count("id")).values("cnt")
+
         farms_with_emp_counts = farms_qs.annotate(
             total_count=Count("employees"),
             active_count=Count("employees", filter=Q(employees__is_active=True)),
             checked_in_count=Coalesce(Subquery(checked_in_subquery), Value(0)),
             checkin_today_count=Coalesce(Subquery(checkin_today_subquery), Value(0)),
+            absent_today_count=Coalesce(Subquery(absent_today_subquery), Value(0)),
+            on_leave_count=Coalesce(Subquery(on_leave_subquery), Value(0)),
         )
         farm_user_breakdown = [
             {
@@ -302,9 +314,128 @@ class DashboardView(APIView):
                 "active_count": farm.active_count,
                 "checked_in_count": farm.checked_in_count,
                 "checkin_today_count": farm.checkin_today_count,
+                "absent_today_count": farm.absent_today_count,
+                "on_leave_count": farm.on_leave_count,
             }
             for farm in farms_with_emp_counts
         ]
+
+        # ── Yearly ledger (Varshik Hishab), monthly series, category split ────
+        from django.db.models.functions import ExtractMonth, ExtractYear
+
+        current_year = today.year
+        last_year = current_year - 1
+
+        exp_appr = Expense.objects.filter(
+            farm_id__in=farm_ids, status=Expense.Status.APPROVED
+        )
+        rev_all = RevenueEntry.objects.filter(farm_id__in=farm_ids)
+
+        this_month_expenses = (
+            exp_appr.filter(date__year=current_year, date__month=today.month)
+            .aggregate(s=Sum("amount"))["s"] or 0
+        )
+        this_month_revenue = (
+            rev_all.filter(date__year=current_year, date__month=today.month)
+            .aggregate(s=Sum("amount"))["s"] or 0
+        )
+
+        exp_by_year = dict(
+            exp_appr.annotate(y=ExtractYear("date")).values("y")
+            .annotate(s=Sum("amount")).values_list("y", "s")
+        )
+        rev_by_year = dict(
+            rev_all.annotate(y=ExtractYear("date")).values("y")
+            .annotate(s=Sum("amount")).values_list("y", "s")
+        )
+        year_set = {y for y in (set(exp_by_year) | set(rev_by_year)) if y}
+        year_set.add(current_year)
+        yearly = []
+        for y in sorted(year_set, reverse=True):
+            e = float(exp_by_year.get(y) or 0)
+            r = float(rev_by_year.get(y) or 0)
+            n = r - e
+            yearly.append({
+                "year": y, "expenses": e, "revenue": r, "net": n,
+                "margin": round(n / r * 100, 2) if r else 0,
+            })
+
+        this_year_expenses = float(exp_by_year.get(current_year) or 0)
+        this_year_revenue = float(rev_by_year.get(current_year) or 0)
+        this_year_net = this_year_revenue - this_year_expenses
+
+        def _pct(cur, prev):
+            return round((cur - prev) / prev * 100, 1) if prev else None
+        ly_exp = float(exp_by_year.get(last_year) or 0)
+        ly_rev = float(rev_by_year.get(last_year) or 0)
+
+        # Monthly expenses/revenue keyed by year (for the line + bar charts).
+        monthly = {}
+
+        def _year_months(yr):
+            key = str(yr)
+            if key not in monthly:
+                monthly[key] = [{"month": i + 1, "expenses": 0.0, "revenue": 0.0} for i in range(12)]
+            return monthly[key]
+
+        for row in exp_appr.annotate(y=ExtractYear("date"), m=ExtractMonth("date")).values("y", "m").annotate(s=Sum("amount")):
+            if row["y"] and row["m"]:
+                _year_months(row["y"])[row["m"] - 1]["expenses"] = float(row["s"] or 0)
+        for row in rev_all.annotate(y=ExtractYear("date"), m=ExtractMonth("date")).values("y", "m").annotate(s=Sum("amount")):
+            if row["y"] and row["m"]:
+                _year_months(row["y"])[row["m"] - 1]["revenue"] = float(row["s"] or 0)
+        _year_months(current_year)
+
+        expenses_by_category = [
+            {"category": r["category"], "total": float(r["s"] or 0)}
+            for r in exp_appr.filter(date__year=current_year)
+            .values("category").annotate(s=Sum("amount")).order_by("-s")
+        ]
+
+        # Recent transactions — most recent expenses + revenue, merged.
+        recent_transactions = []
+        for e in exp_appr.select_related("farm").order_by("-date", "-created_at")[:8]:
+            recent_transactions.append({
+                "type": "EXPENSE",
+                "label": (e.description or e.get_category_display()),
+                "farm_name": e.farm.name if e.farm_id else None,
+                "amount": float(e.amount or 0),
+                "date": str(e.date) if e.date else None,
+            })
+        for r in rev_all.select_related("farm").order_by("-date", "-created_at")[:8]:
+            recent_transactions.append({
+                "type": "REVENUE",
+                "label": (r.description or getattr(r, "get_source_display", lambda: "Revenue")()),
+                "farm_name": r.farm.name if r.farm_id else None,
+                "amount": float(r.amount or 0),
+                "date": str(r.date) if r.date else None,
+            })
+        recent_transactions.sort(key=lambda x: x["date"] or "", reverse=True)
+        recent_transactions = recent_transactions[:8]
+
+        upcoming_tasks = [
+            {
+                "id": str(tk.id),
+                "title": tk.title,
+                "farm_name": tk.farm.name if tk.farm_id else None,
+                "due_date": str(tk.due_date) if tk.due_date else None,
+                "priority": tk.priority,
+            }
+            for tk in task_qs.filter(
+                due_date__gte=today,
+                status__in=[Task.Status.TODO, Task.Status.IN_PROGRESS],
+            ).select_related("farm").order_by("due_date")[:6]
+        ]
+
+        on_leave_today = att_qs.filter(date=today, status=Attendance.Status.LEAVE).count()
+        active_employees = emp_qs.filter(is_active=True).count()
+        try:
+            cultivated_fields = (
+                Crop.objects.filter(farm_id__in=farm_ids, field__isnull=False)
+                .values("field").distinct().count()
+            )
+        except Exception:
+            cultivated_fields = active_crops
 
         alerts = []
         if low_stock_items:
@@ -320,11 +451,14 @@ class DashboardView(APIView):
                     "total_farms": total_farms,
                     "total_area": total_area,
                     "total_fields": total_fields,
+                    "cultivated_fields": cultivated_fields,
                 },
                 "workforce_kpis": {
                     "total_employees": emp_qs.count(),
+                    "active_employees": active_employees,
                     "present_today": present_today,
                     "absent_today": absent_today,
+                    "on_leave_today": on_leave_today,
                     "checked_in_now": checked_in_now,
                     "manager_count": manager_count,
                     "pending_approvals": pending_approvals,
@@ -344,7 +478,22 @@ class DashboardView(APIView):
                     "total_deductions": total_deductions,
                     "total_incentives": total_incentives,
                     "total_payments": total_payments,
+                    # This-year / this-month figures for the redesigned dashboard.
+                    "this_year_expenses": this_year_expenses,
+                    "this_year_revenue": this_year_revenue,
+                    "this_year_net": this_year_net,
+                    "this_year_margin": round(this_year_net / this_year_revenue * 100, 2) if this_year_revenue else 0,
+                    "this_month_expenses": float(this_month_expenses or 0),
+                    "this_month_revenue": float(this_month_revenue or 0),
+                    "expenses_change_pct": _pct(this_year_expenses, ly_exp),
+                    "revenue_change_pct": _pct(this_year_revenue, ly_rev),
+                    "net_change_pct": _pct(this_year_net, ly_rev - ly_exp),
+                    "yearly": yearly,
+                    "monthly": monthly,
+                    "expenses_by_category": expenses_by_category,
                 },
+                "recent_transactions": recent_transactions,
+                "upcoming_tasks": upcoming_tasks,
                 "inventory_kpis": {
                     "total_items": items_qs.count(),
                     "low_stock_count": low_stock_count,

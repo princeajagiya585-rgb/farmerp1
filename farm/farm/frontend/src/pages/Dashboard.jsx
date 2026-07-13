@@ -4,10 +4,19 @@ import { useTranslation } from "react-i18next";
 import {
   Tractor, Wallet, Users, Banknote, ClipboardList, MapPin,
   Sprout, Boxes, FileText, AlertTriangle, UserCog, ArrowRight,
-  TrendingUp, TrendingDown, CalendarCheck,
+  TrendingUp, TrendingDown, CalendarCheck, LayoutGrid, Coins, UserMinus, Plane,
 } from "lucide-react";
+import {
+  ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+} from "recharts";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const CAT_COLORS = ["#22c55e", "#3b82f6", "#8b5cf6", "#f59e0b", "#06b6d4", "#ef4444", "#94a3b8", "#ec4899", "#14b8a6"];
+const inr = (v) => `₹${Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+const pctText = (p) => (p == null ? "" : `${p >= 0 ? "▲" : "▼"} ${Math.abs(p)}% vs last year`);
 
 const ALL_ROLES = ["SUPER_ADMIN", "FARM_MANAGER", "EMPLOYEE"];
 const FM = "FARM_MANAGER";
@@ -217,18 +226,16 @@ export default function Dashboard() {
 
   return (
     <div>
-      {/* Welcome banner */}
-      <div className="mb-6 overflow-hidden rounded-2xl bg-gradient-to-r from-brand-700 to-brand-900 p-6 text-white shadow-soft">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">{t("layout.welcome", { name: user?.first_name || user?.username })}</h1>
-            <p className="mt-1 text-sm text-brand-100/80">{t("layout.overview")}</p>
-          </div>
-        </div>
+      {/* Welcome */}
+      <div className="mb-5">
+        <h1 className="text-2xl font-bold text-brand-700">
+          {t("layout.welcome", { name: user?.first_name || user?.username })} 👋
+        </h1>
+        <p className="mt-1 text-sm text-gray-500">{t("layout.overview")}</p>
       </div>
 
-      {/* Per-farm summary — pick a farm (or all) to see its headline numbers */}
-      <FarmSummary kpi={kpi} t={t} />
+      {/* Accounting-style overview — KPIs, yearly ledger, charts & tables */}
+      <DashboardOverview kpi={kpi} t={t} />
 
       {/* Module Overview Cards — only show accessible modules */}
       {visibleModules.length > 0 && (
@@ -326,89 +333,403 @@ export default function Dashboard() {
   );
 }
 
-// A compact, farm-aware headline summary. Pick a farm (or "All Farms") to see
-// its employees, today's check-ins, expenses, revenue and net at a glance —
-// built entirely from the per-farm breakdowns already in the dashboard KPIs.
-function FarmSummary({ kpi, t }) {
-  const [selected, setSelected] = useState("");
-  const fin = kpi.financial_kpis ?? {};
+// ───────────────────────── Redesigned dashboard ─────────────────────────
+function Panel({ title, action, subtitle, children, className = "" }) {
+  return (
+    <div className={`rounded-2xl border border-gray-100 bg-white p-4 shadow-card ${className}`}>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-gray-800">{title}</h3>
+        {action}
+      </div>
+      {subtitle && <p className="mb-2 text-[11px] text-gray-400">{subtitle}</p>}
+      {children}
+    </div>
+  );
+}
+
+function YearSelect({ years, value, onChange }) {
+  if (!years.length) return null;
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="rounded-lg border border-gray-300 px-2 py-1 text-xs text-gray-600 outline-none focus:border-brand-500"
+    >
+      {years.map((y) => <option key={y} value={y}>{y}</option>)}
+    </select>
+  );
+}
+
+function KpiCard({ icon: Icon, iconBg, iconFg, title, value, sub }) {
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-card">
+      <div className="mb-2 flex items-center gap-2">
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
+          <Icon size={18} className={iconFg} />
+        </div>
+        <p className="text-[11px] font-medium leading-tight text-gray-500">{title}</p>
+      </div>
+      <p className="text-xl font-bold text-gray-900">{value}</p>
+      {sub && <p className="mt-1 text-[11px] text-gray-400">{sub}</p>}
+    </div>
+  );
+}
+
+function DashboardOverview({ kpi }) {
+  const fk = kpi.farm_kpis ?? {};
   const wk = kpi.workforce_kpis ?? {};
-  const fmt = (v) => `₹${Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+  const fin = kpi.financial_kpis ?? {};
+  const monthly = fin.monthly ?? {};
+  const years = Object.keys(monthly).sort((a, b) => Number(b) - Number(a));
+  const defaultYear = years[0] || String(new Date().getFullYear());
+  const [lineYear, setLineYear] = useState(defaultYear);
+  const [barYear, setBarYear] = useState(defaultYear);
 
-  // Merge the finance + workforce per-farm rows into one list keyed by farm.
-  const byId = {};
-  (fin.farm_breakdown || []).forEach((f) => {
-    byId[f.farm_id] = {
-      farm_id: f.farm_id, farm_name: f.farm_name,
-      expenses: Number(f.expenses || 0), revenue: Number(f.revenue || 0), net: Number(f.net || 0),
-    };
-  });
-  (wk.farm_breakdown || []).forEach((w) => {
-    byId[w.farm_id] = {
-      farm_id: w.farm_id, farm_name: w.farm_name,
-      ...(byId[w.farm_id] || {}),
-      users: w.total_count ?? 0, checkins: w.checkin_today_count ?? 0,
-    };
-  });
-  const farms = Object.values(byId);
-  if (farms.length === 0) return null;
-
-  const sum = (key) => farms.reduce((s, f) => s + Number(f[key] || 0), 0);
-  let data;
-  if (selected) {
-    const f = farms.find((x) => String(x.farm_id) === String(selected)) || {};
-    data = { users: f.users ?? 0, checkins: f.checkins ?? 0, expenses: f.expenses ?? 0, revenue: f.revenue ?? 0, net: f.net ?? 0 };
-  } else {
-    data = {
-      users: wk.total_employees ?? sum("users"),
-      checkins: wk.present_today ?? sum("checkins"),
-      expenses: fin.total_expenses ?? sum("expenses"),
-      revenue: fin.total_revenue ?? sum("revenue"),
-      net: fin.net ?? sum("net"),
-    };
-  }
-
-  const netUp = Number(data.net) >= 0;
-  const tiles = [
-    { label: t("dashboard.employees"), value: data.users, icon: Users, bg: "bg-violet-50", ring: "ring-violet-200", fg: "text-violet-600" },
-    { label: t("dashboard.presentToday"), value: data.checkins, icon: CalendarCheck, bg: "bg-green-50", ring: "ring-green-200", fg: "text-green-600" },
-    { label: t("header.expenses", "Expenses"), value: fmt(data.expenses), icon: TrendingDown, bg: "bg-rose-50", ring: "ring-rose-200", fg: "text-rose-600" },
-    { label: t("header.revenue"), value: fmt(data.revenue), icon: TrendingUp, bg: "bg-emerald-50", ring: "ring-emerald-200", fg: "text-emerald-600" },
-    { label: t("header.net"), value: fmt(data.net), icon: Wallet, bg: netUp ? "bg-blue-50" : "bg-red-50", ring: netUp ? "ring-blue-200" : "ring-red-200", fg: netUp ? "text-blue-600" : "text-red-600" },
+  const kpis = [
+    { icon: Tractor, iconBg: "bg-emerald-50", iconFg: "text-emerald-600", title: "Total Farms", value: fk.total_farms ?? 0, sub: `Active ${fk.total_farms ?? 0}` },
+    { icon: LayoutGrid, iconBg: "bg-blue-50", iconFg: "text-blue-600", title: "Total Fields", value: fk.total_fields ?? 0, sub: `Cultivated ${fk.cultivated_fields ?? 0}` },
+    { icon: MapPin, iconBg: "bg-teal-50", iconFg: "text-teal-600", title: "Total Area", value: Number(fk.total_area || 0).toLocaleString("en-IN"), sub: "acres" },
+    { icon: Users, iconBg: "bg-violet-50", iconFg: "text-violet-600", title: "Total Employees", value: wk.total_employees ?? 0, sub: `Active ${wk.active_employees ?? 0}` },
+    { icon: Banknote, iconBg: "bg-rose-50", iconFg: "text-rose-600", title: "Total Expenses (This Year)", value: inr(fin.this_year_expenses), sub: `This Month: ${inr(fin.this_month_expenses)}` },
+    { icon: Coins, iconBg: "bg-emerald-50", iconFg: "text-emerald-600", title: "Total Revenue (This Year)", value: inr(fin.this_year_revenue), sub: `This Month: ${inr(fin.this_month_revenue)}` },
+    { icon: TrendingUp, iconBg: "bg-blue-50", iconFg: "text-blue-600", title: "Net Profit (This Year)", value: inr(fin.this_year_net), sub: `Margin: ${fin.this_year_margin ?? 0}%` },
   ];
 
   return (
-    <div className="mb-6 rounded-2xl border border-gray-100 bg-white p-5 shadow-card">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-lg font-bold text-gray-800">
-          <span className="text-xl">🌾</span> {t("dashboard.farmSummary", "Farm Summary")}
-        </h2>
-        <select
-          value={selected}
-          onChange={(e) => setSelected(e.target.value)}
-          className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 outline-none focus:border-brand-500"
-        >
-          <option value="">{t("dashboard.allFarms", "All Farms")}</option>
-          {farms.map((f) => (
-            <option key={f.farm_id} value={f.farm_id}>{f.farm_name}</option>
-          ))}
-        </select>
+    <div className="mb-6 space-y-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+        {kpis.map((k, i) => <KpiCard key={i} {...k} />)}
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {tiles.map((tile, i) => {
-          const Icon = tile.icon;
-          return (
-            <div key={i} className="rounded-xl border border-gray-100 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm">
-              <div className={`mb-2 flex h-9 w-9 items-center justify-center rounded-lg ${tile.bg} ring-1 ${tile.ring}`}>
-                <Icon size={18} className={tile.fg} />
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <FinancialSummaryPanel fin={fin} monthly={monthly} years={years} year={lineYear} setYear={setLineYear} />
+        <VarshikHishabPanel yearly={fin.yearly ?? []} />
+        <ExpenseCategoryPanel fin={fin} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <FarmWisePanel fin={fin} />
+        <MonthlyCashFlowPanel monthly={monthly} years={years} year={barYear} setYear={setBarYear} />
+        <TopExpensesPanel fin={fin} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <HrOverviewPanel wk={wk} />
+        <RecentTransactionsPanel kpi={kpi} />
+        <UpcomingTasksPanel kpi={kpi} />
+      </div>
+    </div>
+  );
+}
+
+function FinancialSummaryPanel({ fin, monthly, years, year, setYear }) {
+  const data = (monthly[year] || []).map((m) => ({
+    name: MONTHS[m.month - 1], Expenses: m.expenses, Revenue: m.revenue, Net: m.revenue - m.expenses,
+  }));
+  return (
+    <Panel title="Financial Summary (This Year)" action={<YearSelect years={years} value={year} onChange={setYear} />}>
+      <div className="mb-3 grid grid-cols-3 gap-2 text-center">
+        <div><p className="text-[10px] text-gray-400">Total Expenses</p><p className="text-sm font-bold text-rose-600">{inr(fin.this_year_expenses)}</p><p className="text-[9px] text-gray-400">{pctText(fin.expenses_change_pct)}</p></div>
+        <div><p className="text-[10px] text-gray-400">Total Revenue</p><p className="text-sm font-bold text-emerald-600">{inr(fin.this_year_revenue)}</p><p className="text-[9px] text-gray-400">{pctText(fin.revenue_change_pct)}</p></div>
+        <div><p className="text-[10px] text-gray-400">Net Profit</p><p className="text-sm font-bold text-blue-600">{inr(fin.this_year_net)}</p><p className="text-[9px] text-gray-400">{pctText(fin.net_change_pct)}</p></div>
+      </div>
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={data} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+          <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+          <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}K` : v)} />
+          <Tooltip formatter={(v) => inr(v)} />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <Line type="monotone" dataKey="Expenses" stroke="#ef4444" strokeWidth={2} dot={false} />
+          <Line type="monotone" dataKey="Revenue" stroke="#22c55e" strokeWidth={2} dot={false} />
+          <Line type="monotone" dataKey="Net" stroke="#3b82f6" strokeWidth={2} dot={false} />
+        </LineChart>
+      </ResponsiveContainer>
+    </Panel>
+  );
+}
+
+function VarshikHishabPanel({ yearly }) {
+  const tExp = yearly.reduce((s, y) => s + Number(y.expenses || 0), 0);
+  const tRev = yearly.reduce((s, y) => s + Number(y.revenue || 0), 0);
+  const tNet = tRev - tExp;
+  return (
+    <Panel title="Varshik Hishab (Yearly Summary)" subtitle="Yearly overview of expenses, revenue & profit">
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-[10px] uppercase tracking-wide text-gray-400">
+              <th className="py-1 text-left">Year</th><th className="py-1 text-right">Expenses</th>
+              <th className="py-1 text-right">Revenue</th><th className="py-1 text-right">Net Profit</th><th className="py-1 text-right">Margin</th>
+            </tr>
+          </thead>
+          <tbody>
+            {yearly.map((y) => (
+              <tr key={y.year} className="border-t border-gray-100">
+                <td className="py-1.5 font-semibold text-gray-700">{y.year}</td>
+                <td className="py-1.5 text-right text-rose-600">{inr(y.expenses)}</td>
+                <td className="py-1.5 text-right text-emerald-600">{inr(y.revenue)}</td>
+                <td className="py-1.5 text-right font-semibold text-blue-600">{inr(y.net)}</td>
+                <td className="py-1.5 text-right text-gray-600">{y.margin}%</td>
+              </tr>
+            ))}
+            <tr className="border-t-2 border-gray-200 font-bold">
+              <td className="py-1.5 text-gray-800">Total (All Years)</td>
+              <td className="py-1.5 text-right text-rose-600">{inr(tExp)}</td>
+              <td className="py-1.5 text-right text-emerald-600">{inr(tRev)}</td>
+              <td className="py-1.5 text-right text-blue-600">{inr(tNet)}</td>
+              <td className="py-1.5 text-right text-gray-700">{tRev ? (tNet / tRev * 100).toFixed(2) : 0}%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  );
+}
+
+function ExpenseCategoryPanel({ fin }) {
+  const cats = fin.expenses_by_category || [];
+  const total = cats.reduce((s, c) => s + Number(c.total || 0), 0);
+  const data = cats.map((c) => ({ name: c.category, value: Number(c.total || 0) }));
+  return (
+    <Panel title="Expense by Category (This Year)">
+      {data.length === 0 ? (
+        <p className="py-10 text-center text-xs text-gray-400">No expense data</p>
+      ) : (
+        <>
+          <div className="flex items-center gap-2">
+            <div className="w-1/2">
+              <ResponsiveContainer width="100%" height={170}>
+                <PieChart>
+                  <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={42} outerRadius={68} paddingAngle={2}>
+                    {data.map((_, i) => <Cell key={i} fill={CAT_COLORS[i % CAT_COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip formatter={(v) => inr(v)} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex-1 space-y-1">
+              {data.map((c, i) => (
+                <div key={i} className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 truncate text-gray-600">
+                    <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: CAT_COLORS[i % CAT_COLORS.length] }} />
+                    <span className="truncate">{c.name}</span>
+                  </span>
+                  <span className="ml-1 shrink-0 font-semibold text-gray-700">{total ? ((c.value / total) * 100).toFixed(1) : 0}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <p className="mt-2 text-center text-[11px] text-gray-400">Total Expenses: {inr(total)}</p>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function FarmWisePanel({ fin }) {
+  const rows = fin.farm_breakdown || [];
+  const tExp = rows.reduce((s, f) => s + Number(f.expenses || 0), 0);
+  const tRev = rows.reduce((s, f) => s + Number(f.revenue || 0), 0);
+  const tNet = tRev - tExp;
+  return (
+    <Panel title="Farm wise Financial Overview (This Year)">
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-[10px] uppercase tracking-wide text-gray-400">
+              <th className="py-1 text-left">Farm</th><th className="py-1 text-right">Expenses</th>
+              <th className="py-1 text-right">Revenue</th><th className="py-1 text-right">Net Profit</th><th className="py-1 text-right">Margin</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((f) => {
+              const rev = Number(f.revenue || 0), net = Number(f.net || 0);
+              return (
+                <tr key={f.farm_id} className="border-t border-gray-100">
+                  <td className="py-1.5 font-semibold text-green-700">{f.farm_name}</td>
+                  <td className="py-1.5 text-right text-rose-600">{inr(f.expenses)}</td>
+                  <td className="py-1.5 text-right text-emerald-600">{inr(f.revenue)}</td>
+                  <td className="py-1.5 text-right font-semibold text-gray-800">{inr(f.net)}</td>
+                  <td className="py-1.5 text-right text-gray-600">{rev ? (net / rev * 100).toFixed(2) : 0}%</td>
+                </tr>
+              );
+            })}
+            <tr className="border-t-2 border-gray-200 font-bold">
+              <td className="py-1.5 text-gray-800">Total</td>
+              <td className="py-1.5 text-right text-rose-600">{inr(tExp)}</td>
+              <td className="py-1.5 text-right text-emerald-600">{inr(tRev)}</td>
+              <td className="py-1.5 text-right text-gray-800">{inr(tNet)}</td>
+              <td className="py-1.5 text-right text-gray-700">{tRev ? (tNet / tRev * 100).toFixed(2) : 0}%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  );
+}
+
+function MonthlyCashFlowPanel({ monthly, years, year, setYear }) {
+  const data = (monthly[year] || []).map((m) => ({ name: MONTHS[m.month - 1], Expenses: m.expenses, Revenue: m.revenue }));
+  return (
+    <Panel title="Monthly Cash Flow (This Year)" action={<YearSelect years={years} value={year} onChange={setYear} />}>
+      <ResponsiveContainer width="100%" height={230}>
+        <BarChart data={data} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+          <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+          <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}K` : v)} />
+          <Tooltip formatter={(v) => inr(v)} />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <Bar dataKey="Expenses" fill="#ef4444" radius={[3, 3, 0, 0]} />
+          <Bar dataKey="Revenue" fill="#22c55e" radius={[3, 3, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </Panel>
+  );
+}
+
+function TopExpensesPanel({ fin }) {
+  const all = fin.expenses_by_category || [];
+  const total = all.reduce((s, c) => s + Number(c.total || 0), 0);
+  const cats = all.slice(0, 5);
+  return (
+    <Panel title="Top Expenses (This Year)">
+      {cats.length === 0 ? (
+        <p className="py-6 text-center text-xs text-gray-400">No expenses</p>
+      ) : (
+        <div className="space-y-2.5">
+          {cats.map((c, i) => {
+            const pct = total ? (Number(c.total) / total) * 100 : 0;
+            return (
+              <div key={i}>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 font-medium text-gray-700">
+                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: CAT_COLORS[i % CAT_COLORS.length] }} />
+                    {c.category}
+                  </span>
+                  <span className="font-bold text-gray-800">{inr(c.total)}<span className="ml-1 text-[10px] font-normal text-gray-400">{pct.toFixed(1)}%</span></span>
+                </div>
+                <div className="mt-1 h-1.5 w-full rounded-full bg-gray-100">
+                  <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, background: CAT_COLORS[i % CAT_COLORS.length] }} />
+                </div>
               </div>
-              <p className="truncate text-xs font-medium text-gray-500">{tile.label}</p>
-              <p className="mt-0.5 text-lg font-bold text-gray-900">{tile.value}</p>
+            );
+          })}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function HrOverviewPanel({ wk }) {
+  const rows = wk.farm_breakdown || [];
+  const stats = [
+    { icon: Users, fg: "text-violet-600", bg: "bg-violet-50", label: "Total Users", value: wk.total_employees ?? 0, sub: `Active: ${wk.active_employees ?? 0}` },
+    { icon: CalendarCheck, fg: "text-green-600", bg: "bg-green-50", label: "Present Today", value: wk.present_today ?? 0 },
+    { icon: Plane, fg: "text-amber-600", bg: "bg-amber-50", label: "On Leave", value: wk.on_leave_today ?? 0 },
+    { icon: UserMinus, fg: "text-rose-600", bg: "bg-rose-50", label: "Absent", value: wk.absent_today ?? 0 },
+  ];
+  return (
+    <Panel title="HR Overview">
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {stats.map((s, i) => {
+          const Icon = s.icon;
+          return (
+            <div key={i} className="rounded-xl bg-gray-50 p-2 text-center">
+              <div className={`mx-auto mb-1 flex h-8 w-8 items-center justify-center rounded-lg ${s.bg}`}><Icon size={16} className={s.fg} /></div>
+              <p className="text-[10px] text-gray-500">{s.label}</p>
+              <p className="text-base font-bold text-gray-800">{s.value}</p>
+              {s.sub && <p className="text-[9px] text-gray-400">{s.sub}</p>}
             </div>
           );
         })}
       </div>
-    </div>
+      {rows.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-wide text-gray-400">
+                <th className="py-1 text-left">Farm</th><th className="py-1 text-right">Total Users</th>
+                <th className="py-1 text-right">Check In</th><th className="py-1 text-right">Absent</th><th className="py-1 text-right">On Leave</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((f) => (
+                <tr key={f.farm_id} className="border-t border-gray-100">
+                  <td className="py-1.5 font-semibold text-green-700">{f.farm_name}</td>
+                  <td className="py-1.5 text-right text-gray-700">{f.total_count}</td>
+                  <td className="py-1.5 text-right text-green-600">{f.checkin_today_count ?? 0}</td>
+                  <td className="py-1.5 text-right text-rose-600">{f.absent_today_count ?? 0}</td>
+                  <td className="py-1.5 text-right text-amber-600">{f.on_leave_count ?? 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function RecentTransactionsPanel({ kpi }) {
+  const tx = kpi.recent_transactions || [];
+  const navigate = useNavigate();
+  return (
+    <Panel title="Recent Transactions">
+      {tx.length === 0 ? (
+        <p className="py-6 text-center text-xs text-gray-400">No transactions</p>
+      ) : (
+        <div className="space-y-1.5">
+          {tx.map((x, i) => {
+            const income = x.type === "REVENUE";
+            return (
+              <div key={i} className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 px-3 py-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${income ? "bg-emerald-50" : "bg-rose-50"}`}>
+                    {income ? <TrendingUp size={14} className="text-emerald-600" /> : <TrendingDown size={14} className="text-rose-600" />}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-medium text-gray-700">{x.label}</p>
+                    <p className="truncate text-[10px] text-gray-400">{x.farm_name || "—"}</p>
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className={`text-xs font-bold ${income ? "text-emerald-600" : "text-rose-600"}`}>{income ? "+" : "-"}{inr(x.amount)}</p>
+                  <p className="text-[10px] text-gray-400">{x.date}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <button onClick={() => navigate("/finance")} className="mt-2 w-full text-center text-xs font-medium text-brand-600 hover:text-brand-800">View All Transactions →</button>
+    </Panel>
+  );
+}
+
+function UpcomingTasksPanel({ kpi }) {
+  const tasks = kpi.upcoming_tasks || [];
+  const navigate = useNavigate();
+  const prColor = { URGENT: "bg-red-100 text-red-700", HIGH: "bg-red-50 text-red-600", MEDIUM: "bg-amber-50 text-amber-600", LOW: "bg-gray-100 text-gray-500" };
+  return (
+    <Panel title="Upcoming Tasks">
+      {tasks.length === 0 ? (
+        <p className="py-6 text-center text-xs text-gray-400">No upcoming tasks</p>
+      ) : (
+        <div className="space-y-1.5">
+          {tasks.map((tk) => (
+            <div key={tk.id} className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 px-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium text-gray-700">{tk.title}</p>
+                <p className="truncate text-[10px] text-gray-400">{tk.farm_name || "—"} · {tk.due_date}</p>
+              </div>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${prColor[tk.priority] || prColor.LOW}`}>{tk.priority}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <button onClick={() => navigate("/tasks")} className="mt-2 w-full text-center text-xs font-medium text-brand-600 hover:text-brand-800">View All Tasks →</button>
+    </Panel>
   );
 }
 
