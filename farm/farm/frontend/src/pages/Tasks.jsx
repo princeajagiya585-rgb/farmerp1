@@ -95,6 +95,25 @@ const scheduleLabelMap = {
   ADHOC: "tasks.scheduleAdhoc",
 };
 
+// Derive the Schedule from the task's start → due date span:
+//   no dates            → Ad-hoc
+//   under a week (≈2–3d) → Daily
+//   a week to ~3 weeks   → Weekly
+//   ~3 weeks to 3 months → Monthly
+//   more than ~3 months  → Annual
+function deriveScheduleType(start, end) {
+  if (!start || !end) return "ADHOC";
+  const s = new Date(start);
+  const e = new Date(end);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return "ADHOC";
+  const days = Math.round((e.getTime() - s.getTime()) / 86400000);
+  if (days < 0) return "ADHOC";
+  if (days < 7) return "DAILY";
+  if (days < 20) return "WEEKLY";
+  if (days <= 90) return "MONTHLY";
+  return "ANNUAL";
+}
+
 const MY_TASKS_PARAMS = { my_tasks: "true" };
 const ALL_TASKS_PARAMS = {};
 
@@ -550,6 +569,7 @@ export default function Tasks() {
         canEdit={canManage}
         showFarmFilter
         showUserFilter
+        defaultValues={{ schedule_type: "ADHOC" }}
         listParams={myTasksOnly ? MY_TASKS_PARAMS : ALL_TASKS_PARAMS}
         extraToolbar={
           canManage && (
@@ -637,6 +657,10 @@ export default function Tasks() {
         rowActions={(row, reload, updateRow) => getActionButtons(row, reload, updateRow)}
         fieldDependencies={[
           { watch: "assigned_employee", target: "farm", mapField: "farm" }
+        ]}
+        computedFields={[
+          // Auto-fill the Schedule as soon as start/due dates are entered.
+          { dependsOn: ["start_date", "due_date"], target: "schedule_type", compute: (form) => deriveScheduleType(form.start_date, form.due_date) },
         ]}
         fields={[
           { name: "title", label: t("tasks.fieldWork"), required: true },
