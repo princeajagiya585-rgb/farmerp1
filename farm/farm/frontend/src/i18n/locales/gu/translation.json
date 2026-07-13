@@ -474,6 +474,8 @@
   "dashboard.title": "ડેશબોર્ડ",
   "dashboard.totalFarms": "કુલ ફાર્મ",
   "dashboard.employees": "કર્મચારીઓ",
+  "dashboard.farmSummary": "ફાર્મ સારાંશ",
+  "dashboard.allFarms": "બધા ફાર્મ",
   "dashboard.activeCrops": "સક્રિય પાક",
   "dashboard.openTasks": "ખુલ્લા કાર્ય",
   "dashboard.totalArea": "કુલ વિસ્તાર (એકર)",

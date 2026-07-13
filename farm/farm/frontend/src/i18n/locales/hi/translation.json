@@ -144,6 +144,8 @@
   "dashboard.title": "डैशबोर्ड",
   "dashboard.totalFarms": "कुल फार्म",
   "dashboard.employees": "कर्मचारी",
+  "dashboard.farmSummary": "फार्म सारांश",
+  "dashboard.allFarms": "सभी फार्म",
   "dashboard.activeCrops": "सक्रिय फसलें",
   "dashboard.openTasks": "खुले कार्य",
   "dashboard.totalArea": "कुल क्षेत्रफल (एकड़)",

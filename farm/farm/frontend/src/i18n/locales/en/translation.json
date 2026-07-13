@@ -475,6 +475,8 @@
   "dashboard.title": "Dashboard",
   "dashboard.totalFarms": "Total Farms",
   "dashboard.employees": "Employees",
+  "dashboard.farmSummary": "Farm Summary",
+  "dashboard.allFarms": "All Farms",
   "dashboard.activeCrops": "Active Crops",
   "dashboard.openTasks": "Open Tasks",
   "dashboard.totalArea": "Total Area (ac)",

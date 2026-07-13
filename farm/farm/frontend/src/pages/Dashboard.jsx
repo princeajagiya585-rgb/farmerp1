@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import {
   Tractor, Wallet, Users, Banknote, ClipboardList, MapPin,
   Sprout, Boxes, FileText, AlertTriangle, UserCog, ArrowRight,
+  TrendingUp, TrendingDown, CalendarCheck,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
@@ -226,7 +227,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-
+      {/* Per-farm summary — pick a farm (or all) to see its headline numbers */}
+      <FarmSummary kpi={kpi} t={t} />
 
       {/* Module Overview Cards — only show accessible modules */}
       {visibleModules.length > 0 && (
@@ -320,6 +322,92 @@ export default function Dashboard() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// A compact, farm-aware headline summary. Pick a farm (or "All Farms") to see
+// its employees, today's check-ins, expenses, revenue and net at a glance —
+// built entirely from the per-farm breakdowns already in the dashboard KPIs.
+function FarmSummary({ kpi, t }) {
+  const [selected, setSelected] = useState("");
+  const fin = kpi.financial_kpis ?? {};
+  const wk = kpi.workforce_kpis ?? {};
+  const fmt = (v) => `₹${Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+
+  // Merge the finance + workforce per-farm rows into one list keyed by farm.
+  const byId = {};
+  (fin.farm_breakdown || []).forEach((f) => {
+    byId[f.farm_id] = {
+      farm_id: f.farm_id, farm_name: f.farm_name,
+      expenses: Number(f.expenses || 0), revenue: Number(f.revenue || 0), net: Number(f.net || 0),
+    };
+  });
+  (wk.farm_breakdown || []).forEach((w) => {
+    byId[w.farm_id] = {
+      farm_id: w.farm_id, farm_name: w.farm_name,
+      ...(byId[w.farm_id] || {}),
+      users: w.total_count ?? 0, checkins: w.checkin_today_count ?? 0,
+    };
+  });
+  const farms = Object.values(byId);
+  if (farms.length === 0) return null;
+
+  const sum = (key) => farms.reduce((s, f) => s + Number(f[key] || 0), 0);
+  let data;
+  if (selected) {
+    const f = farms.find((x) => String(x.farm_id) === String(selected)) || {};
+    data = { users: f.users ?? 0, checkins: f.checkins ?? 0, expenses: f.expenses ?? 0, revenue: f.revenue ?? 0, net: f.net ?? 0 };
+  } else {
+    data = {
+      users: wk.total_employees ?? sum("users"),
+      checkins: wk.present_today ?? sum("checkins"),
+      expenses: fin.total_expenses ?? sum("expenses"),
+      revenue: fin.total_revenue ?? sum("revenue"),
+      net: fin.net ?? sum("net"),
+    };
+  }
+
+  const netUp = Number(data.net) >= 0;
+  const tiles = [
+    { label: t("dashboard.employees"), value: data.users, icon: Users, bg: "bg-violet-50", ring: "ring-violet-200", fg: "text-violet-600" },
+    { label: t("dashboard.presentToday"), value: data.checkins, icon: CalendarCheck, bg: "bg-green-50", ring: "ring-green-200", fg: "text-green-600" },
+    { label: t("header.expenses", "Expenses"), value: fmt(data.expenses), icon: TrendingDown, bg: "bg-rose-50", ring: "ring-rose-200", fg: "text-rose-600" },
+    { label: t("header.revenue"), value: fmt(data.revenue), icon: TrendingUp, bg: "bg-emerald-50", ring: "ring-emerald-200", fg: "text-emerald-600" },
+    { label: t("header.net"), value: fmt(data.net), icon: Wallet, bg: netUp ? "bg-blue-50" : "bg-red-50", ring: netUp ? "ring-blue-200" : "ring-red-200", fg: netUp ? "text-blue-600" : "text-red-600" },
+  ];
+
+  return (
+    <div className="mb-6 rounded-2xl border border-gray-100 bg-white p-5 shadow-card">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-lg font-bold text-gray-800">
+          <span className="text-xl">🌾</span> {t("dashboard.farmSummary", "Farm Summary")}
+        </h2>
+        <select
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 outline-none focus:border-brand-500"
+        >
+          <option value="">{t("dashboard.allFarms", "All Farms")}</option>
+          {farms.map((f) => (
+            <option key={f.farm_id} value={f.farm_id}>{f.farm_name}</option>
+          ))}
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {tiles.map((tile, i) => {
+          const Icon = tile.icon;
+          return (
+            <div key={i} className="rounded-xl border border-gray-100 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm">
+              <div className={`mb-2 flex h-9 w-9 items-center justify-center rounded-lg ${tile.bg} ring-1 ${tile.ring}`}>
+                <Icon size={18} className={tile.fg} />
+              </div>
+              <p className="truncate text-xs font-medium text-gray-500">{tile.label}</p>
+              <p className="mt-0.5 text-lg font-bold text-gray-900">{tile.value}</p>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
