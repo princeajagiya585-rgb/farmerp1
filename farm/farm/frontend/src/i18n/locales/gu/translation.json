@@ -1347,6 +1347,8 @@
   "attendance.title": "હાજરી",
   "attendance.subtitle": "દૈનિક હાજરી નોંધ અને ચેક-ઇન/આઉટ સંચાલન",
   "attendance.remarks": "ટિપ્પણી",
+  "attendance.detectedFarm": "શોધાયેલ ફાર્મ",
+  "attendance.autoFarmHint": "તમે જે ફાર્મમાં છો અથવા જે સૌથી નજીક છે તેના પર આપમેળે સેટ.",
   "attendance.remarksPlaceholder": "કોઈ ટિપ્પણી ઉમેરો...",
   "attendance.approvalStatusLabel": "મંજૂરી સ્થિતિ",
   "attendanceReports.title": "હાજરી અહેવાલો",

@@ -774,6 +774,8 @@
   "attendance.out": "Out",
   "attendance.allStatus": "All Status",
   "attendance.remarks": "Remarks",
+  "attendance.detectedFarm": "Detected farm",
+  "attendance.autoFarmHint": "Automatically set to the farm you are in or closest to.",
   "attendance.remarksPlaceholder": "Add any notes...",
   "attendance.approvalStatusLabel": "Approval Status",
   "attendanceReports.title": "Attendance Reports",

@@ -1268,6 +1268,8 @@
   "attendance.out": "आउट",
   "attendance.allStatus": "सभी स्थितियां",
   "attendance.remarks": "टिप्पणी",
+  "attendance.detectedFarm": "पहचाना गया फार्म",
+  "attendance.autoFarmHint": "आप जिस फार्म में हैं या जो सबसे नज़दीक है, उसी पर स्वतः सेट।",
   "attendance.remarksPlaceholder": "कोई टिप्पणी जोड़ें...",
   "attendance.approvalStatusLabel": "अनुमोदन स्थिति",
   "attendanceReports.allMonths": "सभी महीने",

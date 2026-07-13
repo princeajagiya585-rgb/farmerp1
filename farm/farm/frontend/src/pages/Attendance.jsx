@@ -35,6 +35,52 @@ const getLocation = () =>
     );
   });
 
+// Great-circle distance between two lat/lng points, in metres.
+const haversineM = (lat1, lng1, lat2, lng2) => {
+  const r = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dp = toRad(lat2 - lat1);
+  const dl = toRad(lng2 - lng1);
+  const a = Math.sin(dp / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dl / 2) ** 2;
+  return 2 * r * Math.asin(Math.sqrt(a));
+};
+
+// Ray-casting point-in-polygon. `polygon` is a list of [lat, lng] pairs.
+const pointInPolygon = (lat, lng, polygon) => {
+  let inside = false;
+  const n = polygon.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const yi = Number(polygon[i][0]), xi = Number(polygon[i][1]);
+    const yj = Number(polygon[j][0]), xj = Number(polygon[j][1]);
+    if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-12) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+};
+
+// Auto-pick which farm a multi-farm worker is checking into: the farm whose
+// 4-corner area contains the GPS point, else the nearest farm by centre
+// distance. Falls back to the worker's primary/first farm when coordinates
+// aren't available. `farmsById` maps farm id → full farm record (lat/lng/geofence).
+const pickBestFarm = (loc, emp, farmsById) => {
+  const details = emp?.assigned_farm_details || [];
+  const ids = details.map((f) => String(f.id));
+  const primary = emp?.farm ? String(emp.farm) : (ids[0] || "");
+  if (!loc || loc.lat == null || !ids.length) return primary;
+  let best = null, bestDist = Infinity;
+  for (const id of ids) {
+    const f = farmsById[id];
+    if (!f || f.latitude == null || f.longitude == null) continue;
+    if (Array.isArray(f.geofence) && f.geofence.length >= 3 && pointInPolygon(loc.lat, loc.lng, f.geofence)) {
+      return id; // inside this farm's area → definitive match
+    }
+    const d = haversineM(loc.lat, loc.lng, Number(f.latitude), Number(f.longitude));
+    if (d < bestDist) { bestDist = d; best = id; }
+  }
+  return best || primary;
+};
+
 const statusColor = { PRESENT: "green", ABSENT: "red", HALF_DAY: "yellow", LEAVE: "blue", PRESENT_DONE: "purple" };
 const apprColor = { PENDING: "yellow", APPROVED: "green", REJECTED: "red", FAILED: "red" };
 const statusLabelMap = { PRESENT: "present", ABSENT: "absent", HALF_DAY: "halfDay", LEAVE: "leave", PRESENT_DONE: "presentDone" };
@@ -147,10 +193,9 @@ export default function Attendance() {
         }
       }
     });
-    // Load farms for filter
-    if (!isEmployee) {
-      resource("farms").list({ page_size: 200 }).then((d) => setFarms(d.results || d));
-    }
+    // Load farms — for the manager filter AND so the check-in flow can auto-pick
+    // the farm a multi-farm worker is inside / nearest to (needs lat/lng/geofence).
+    resource("farms").list({ page_size: 200 }).then((d) => setFarms(d.results || d)).catch(() => {});
   }, [currentUser, isEmployee]);
 
   useEffect(() => {
@@ -235,6 +280,13 @@ export default function Attendance() {
     const loc = await getLocation();
     setCheckInPos(loc && loc.lat != null ? loc : null);
     setPosLoading(false);
+    // Auto-attribute to the farm the worker is inside / nearest to — no manual
+    // farm picker. Falls back to the primary farm if GPS/coords are missing.
+    if (loc && loc.lat != null) {
+      const byId = {};
+      farms.forEach((f) => { byId[String(f.id)] = f; });
+      setCheckInFarm(pickBestFarm(loc, emp, byId));
+    }
   };
 
   const applyCheckInPhoto = (file) => {
@@ -887,23 +939,22 @@ export default function Attendance() {
               </button>
             </div>
             <div className="space-y-4 p-5">
-              {/* Multi-farm workers pick which farm they are at — shown first so
-                  it's unmistakable. Present/Absent is checked against the
-                  worker's assigned farms' geofences. */}
+              {/* Multi-farm workers no longer pick a farm — the attendance is
+                  auto-attributed to the farm they are inside / nearest to (by
+                  GPS). We just show which farm was detected. */}
               {(checkInTarget?.assigned_farm_details?.length || 0) > 1 && (
                 <div className="rounded-lg bg-brand-50 p-3 ring-1 ring-brand-200">
-                  <label className="mb-1 block text-sm font-semibold text-brand-800">
-                    {t("attendance.selectFarm", "Select Farm")}
-                  </label>
-                  <select
-                    value={checkInFarm}
-                    onChange={(e) => setCheckInFarm(e.target.value)}
-                    className="w-full rounded-lg border border-brand-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500"
-                  >
-                    {checkInTarget.assigned_farm_details.map((f) => (
-                      <option key={f.id} value={f.id}>{f.name}</option>
-                    ))}
-                  </select>
+                  <p className="flex items-center gap-1.5 text-sm font-semibold text-brand-800">
+                    <MapPin size={14} className="text-brand-600" />
+                    {t("attendance.detectedFarm", "Detected farm")}:{" "}
+                    <span className="font-bold">
+                      {checkInTarget.assigned_farm_details.find((f) => String(f.id) === String(checkInFarm))?.name
+                        || (posLoading ? t("common.gettingLocation") : "—")}
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-xs text-brand-600">
+                    {t("attendance.autoFarmHint", "Automatically set to the farm you are in or closest to.")}
+                  </p>
                 </div>
               )}
               {posLoading ? (
