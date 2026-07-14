@@ -11,10 +11,10 @@ class Geofence(TimeStampedModel):
     name = models.CharField(max_length=255)
     polygon = models.JSONField(default=list, help_text="list of [lat,lng]")
     center_lat = models.DecimalField(
-        max_digits=9, decimal_places=6, null=True, blank=True
+        max_digits=20, decimal_places=15, null=True, blank=True
     )
     center_lng = models.DecimalField(
-        max_digits=9, decimal_places=6, null=True, blank=True
+        max_digits=20, decimal_places=15, null=True, blank=True
     )
     radius_m = models.IntegerField(default=0)
 

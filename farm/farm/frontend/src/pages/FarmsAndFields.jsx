@@ -22,14 +22,15 @@ const corner = (pts, i) => {
 
 // After a farm is saved with its corners (4 or more) + tolerance, mirror them
 // onto a Geofence record so the same area shows up on the Geofences page.
-const round6 = (n) => Math.round(Number(n) * 1e6) / 1e6;
+// Trim only floating-point noise (keep 15 decimals — the DB column's precision).
+const roundCoord = (n) => Number(Number(n).toFixed(15));
 const syncGeofence = async (farm) => {
   if (!farm?.id) return;
   const corners = Array.isArray(farm.geofence) ? farm.geofence : [];
   const tol = Number(farm.check_in_radius) || 0;
   const centroid = corners.length
-    ? [round6(corners.reduce((s, p) => s + Number(p[0]), 0) / corners.length),
-       round6(corners.reduce((s, p) => s + Number(p[1]), 0) / corners.length)]
+    ? [roundCoord(corners.reduce((s, p) => s + Number(p[0]), 0) / corners.length),
+       roundCoord(corners.reduce((s, p) => s + Number(p[1]), 0) / corners.length)]
     : [null, null];
   const payload = {
     farm: farm.id,
@@ -129,7 +130,7 @@ export default function FarmsAndFields() {
                 r.latitude && r.longitude ? (
                   <span className="flex items-center gap-1 text-xs font-mono">
                     <MapPin size={11} className="text-brand-500" />
-                    {Number(r.latitude).toFixed(6)}, {Number(r.longitude).toFixed(6)}
+                    {String(r.latitude)}, {String(r.longitude)}
                   </span>
                 ) : (
                   <span className="text-gray-400">—</span>

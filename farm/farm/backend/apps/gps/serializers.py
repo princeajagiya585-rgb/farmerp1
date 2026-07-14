@@ -20,10 +20,10 @@ def _validate_not_future(value):
 class GeofenceSerializer(serializers.ModelSerializer):
     farm_name = serializers.CharField(source="farm.name", read_only=True)
     farm_lat = serializers.DecimalField(
-        source="farm.latitude", max_digits=9, decimal_places=6, read_only=True
+        source="farm.latitude", max_digits=20, decimal_places=15, read_only=True
     )
     farm_lng = serializers.DecimalField(
-        source="farm.longitude", max_digits=9, decimal_places=6, read_only=True
+        source="farm.longitude", max_digits=20, decimal_places=15, read_only=True
     )
 
     class Meta:
