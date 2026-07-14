@@ -20,6 +20,7 @@ from .models import (
     Shift,
     WorkforceAllocation,
     Attendance,
+    AttendanceMonthlySummary,
     Department,
     Skill,
     EmploymentHistory,
@@ -676,6 +677,14 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             elif att.status == Attendance.Status.LEAVE:
                 row["leave"] += 1
 
+        # Manual per-employee overrides for this exact period. When present, the
+        # admin-edited totals replace the computed ones (Attendance Reports "Edit").
+        override_qs = AttendanceMonthlySummary.objects.filter(
+            employee__in=employees, year=year
+        )
+        override_qs = override_qs.filter(month=month) if month else override_qs.filter(month__isnull=True)
+        overrides = {o.employee_id: o for o in override_qs}
+
         # Build final rows — include ALL employees, fill missing days as Absent
         rows = []
         for emp in employees:
@@ -699,14 +708,83 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             # Ensure farm_name is always set
             if "farm_name" not in row:
                 row["farm_name"] = emp.farm.name if emp.farm else ""
+            # Apply a manual override, if the admin has edited this employee's totals.
+            ov = overrides.get(emp.id)
+            row["overridden"] = bool(ov)
+            if ov:
+                row["present"] = ov.present
+                row["half_day"] = ov.half_day
+                row["absent"] = ov.absent
+                row["leave"] = ov.leave
+                row["overtime_hours"] = float(ov.overtime_hours or 0)
+            # Attendance % — denominator is the marked/edited day total for the period.
+            total = row["present"] + row["half_day"] + row["leave"] + row["absent"]
+            denom = total if total > 0 else row.get("marked", 0)
             effective = row["present"] + 0.5 * row["half_day"]
-            row["attendance_pct"] = (
-                round(100 * effective / row["marked"], 1) if row["marked"] else 0
-            )
+            row["attendance_pct"] = round(100 * effective / denom, 1) if denom else 0
             rows.append(row)
 
         rows.sort(key=lambda r: r["employee"])
         return Response({"count": len(rows), "rows": rows})
+
+    @action(detail=False, methods=["post"], url_path="report_override")
+    def report_override(self, request):
+        """Save admin-edited monthly totals for one employee.
+
+        Powers the Attendance Reports "Edit" action: stores Present / Half-Day /
+        Absent / Leave / OT-hours as a manual override that `report` then shows
+        instead of the computed values, for that (employee, year, month).
+        """
+        if request.user.role == Role.EMPLOYEE:
+            return Response({"detail": "Not allowed."}, status=403)
+
+        data = request.data
+        employee_id = data.get("employee")
+        if not employee_id:
+            return Response({"detail": "employee is required."}, status=400)
+        try:
+            year = int(data.get("year"))
+        except (TypeError, ValueError):
+            return Response({"detail": "year is required (integer)."}, status=400)
+        month = data.get("month")
+        try:
+            month = int(month) if month not in (None, "", "null") else None
+            if month is not None and not (1 <= month <= 12):
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response({"detail": "month must be an integer 1-12."}, status=400)
+
+        try:
+            emp = Employee.objects.get(id=employee_id)
+        except (Employee.DoesNotExist, ValueError, TypeError):
+            return Response({"detail": "employee not found."}, status=404)
+
+        def _int(v):
+            try:
+                return max(0, int(float(v)))
+            except (TypeError, ValueError):
+                return 0
+
+        def _dec(v):
+            try:
+                return max(0.0, float(v))
+            except (TypeError, ValueError):
+                return 0.0
+
+        AttendanceMonthlySummary.objects.update_or_create(
+            employee=emp,
+            year=year,
+            month=month,
+            defaults={
+                "present": _int(data.get("present")),
+                "half_day": _int(data.get("half_day")),
+                "absent": _int(data.get("absent")),
+                "leave": _int(data.get("leave")),
+                "overtime_hours": _dec(data.get("overtime_hours")),
+                "created_by": request.user,
+            },
+        )
+        return Response({"status": "ok"})
 
     @action(detail=False, methods=["post"])
     def mark_absent(self, request):

@@ -236,6 +236,39 @@ class Attendance(OwnedModel):
         return 0
 
 
+class AttendanceMonthlySummary(OwnedModel):
+    """Manually overridden monthly attendance totals for one employee.
+
+    The attendance `report` normally *computes* Present / Half-Day / Absent /
+    Leave / OT hours from the daily Attendance records. When an admin edits
+    those totals on the Attendance Reports page, the edited values are stored
+    here and take precedence over the computed ones for that
+    (employee, year, month) period. `month` is null for the whole-year /
+    all-months view.
+    """
+
+    employee = models.ForeignKey(
+        Employee, on_delete=models.CASCADE, related_name="monthly_summaries"
+    )
+    year = models.IntegerField()
+    month = models.IntegerField(
+        null=True, blank=True, help_text="1-12, or null for a whole-year / all-months view"
+    )
+    present = models.IntegerField(default=0)
+    half_day = models.IntegerField(default=0)
+    absent = models.IntegerField(default=0)
+    leave = models.IntegerField(default=0)
+    overtime_hours = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    class Meta:
+        ordering = ["-year", "-month"]
+        unique_together = ("employee", "year", "month")
+        verbose_name_plural = "Attendance monthly summaries"
+
+    def __str__(self):
+        return f"{self.employee.name} {self.year}-{self.month or 'ALL'} override"
+
+
 class Department(TimeStampedModel):
     """An organizational department workers can be allocated to."""
 
