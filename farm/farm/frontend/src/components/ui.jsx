@@ -222,8 +222,80 @@ export function Table({ columns, rows, empty = "No records found.", rowClassName
 
   const totals = calculateTotals();
 
+  const hasFooter = footerColumns.length > 0 && rows.length > 0;
+
   return (
-    <div className="overflow-x-auto rounded-xl">
+    <>
+    {/* Mobile (phones): each row becomes a stacked card so no column/data is
+        lost — every field shows as a label → value pair. Desktop/tablet keep
+        the normal table below. */}
+    <div className="space-y-3 md:hidden">
+      {rows.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-gray-100 bg-white px-4 py-12 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-300">
+            <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17h6M9 13h6M9 9h2m4 0h-1M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H9l-4 4v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <p className="text-sm font-medium text-gray-400">{empty}</p>
+        </div>
+      ) : (
+        <>
+          {rows.map((row, i) => {
+            const [first, ...rest] = columns;
+            return (
+              <div
+                key={row.id ?? i}
+                className={`rounded-xl border border-gray-100 bg-white p-4 shadow-card ${
+                  rowClassName ? rowClassName(row) : ""
+                }`}
+              >
+                {/* First column as the card title */}
+                <div className="mb-2 border-b border-gray-100 pb-2 text-base font-semibold text-gray-800">
+                  {first.render ? first.render(row) : row[first.key] ?? "—"}
+                </div>
+                <dl className="grid grid-cols-1 gap-x-4 gap-y-2">
+                  {rest.map((c) => (
+                    <div key={c.key} className="flex items-start justify-between gap-3">
+                      <dt className="shrink-0 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                        {c.header}
+                      </dt>
+                      <dd className="min-w-0 break-words text-right text-sm text-gray-800">
+                        {c.render ? c.render(row) : row[c.key] ?? "—"}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            );
+          })}
+          {renderFooter ? (
+            <div className="rounded-xl border border-brand-100 bg-brand-50/60 p-4">
+              <table className="w-full text-sm">
+                <tbody>{renderFooter({ totals, rows })}</tbody>
+              </table>
+            </div>
+          ) : hasFooter && (
+            <div className="rounded-xl border border-brand-100 bg-brand-50/60 p-4">
+              <div className="mb-1.5 text-sm font-bold text-brand-700">{totalLabel}</div>
+              <dl className="grid grid-cols-1 gap-y-1.5">
+                {columns.filter((c) => footerColumns.includes(c.key)).map((c) => (
+                  <div key={c.key} className="flex items-center justify-between gap-3">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">{c.header}</dt>
+                    <dd className="text-sm font-bold text-brand-700">
+                      ₹{Number(totals[c.key] || 0).toLocaleString("en-IN")}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+
+    {/* Desktop / tablet: original scrollable table, unchanged. */}
+    <div className="hidden overflow-x-auto rounded-xl md:block">
       <table className="w-full text-left text-sm">
         <thead>
           <tr className="border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100/80 text-xs uppercase tracking-wider text-gray-500">
@@ -296,6 +368,7 @@ export function Table({ columns, rows, empty = "No records found.", rowClassName
         )}
       </table>
     </div>
+    </>
   );
 }
 
