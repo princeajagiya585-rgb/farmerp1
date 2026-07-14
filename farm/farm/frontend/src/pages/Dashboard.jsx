@@ -338,6 +338,22 @@ function YearSelect({ years, value, onChange }) {
   );
 }
 
+// Month dropdown — value is "ALL" or "01".."12" (matches the date's MM part).
+function MonthSelect({ value, onChange }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="rounded-lg border border-gray-300 px-2 py-1 text-xs text-gray-600 outline-none focus:border-brand-500"
+    >
+      <option value="ALL">All Months</option>
+      {MONTHS.map((m, i) => (
+        <option key={m} value={String(i + 1).padStart(2, "0")}>{m}</option>
+      ))}
+    </select>
+  );
+}
+
 function KpiCard({ icon: Icon, iconBg, iconFg, title, value, sub }) {
   return (
     <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-card">
@@ -354,26 +370,39 @@ function KpiCard({ icon: Icon, iconBg, iconFg, title, value, sub }) {
 }
 
 // Shared fetch for the Balance Sheet + Farm-wise panels: all approved expenses
-// and revenue entries, filtered client-side by farm/year inside each panel.
+// and revenue entries, filtered client-side by farm/year/month inside each
+// panel. Re-fetches every 2 minutes and whenever the tab regains focus, so
+// records deleted elsewhere in the app disappear from the dashboard on their
+// own — no manual reload needed.
 function useFinanceRows() {
   const [rows, setRows] = useState({ expenses: [], revenues: [], loading: true });
   useEffect(() => {
     let alive = true;
-    const params = { page_size: 10000 };
-    Promise.all([
-      resource("finance/expenses").list({ ...params, status: "APPROVED" }),
-      resource("finance/revenues").list(params),
-    ])
-      .then(([exp, rev]) => {
-        if (!alive) return;
-        setRows({
-          expenses: Array.isArray(exp) ? exp : exp.results || [],
-          revenues: Array.isArray(rev) ? rev : rev.results || [],
-          loading: false,
-        });
-      })
-      .catch(() => alive && setRows({ expenses: [], revenues: [], loading: false }));
-    return () => { alive = false; };
+    const load = () => {
+      const params = { page_size: 10000 };
+      Promise.all([
+        resource("finance/expenses").list({ ...params, status: "APPROVED" }),
+        resource("finance/revenues").list(params),
+      ])
+        .then(([exp, rev]) => {
+          if (!alive) return;
+          setRows({
+            expenses: Array.isArray(exp) ? exp : exp.results || [],
+            revenues: Array.isArray(rev) ? rev : rev.results || [],
+            loading: false,
+          });
+        })
+        .catch(() => alive && setRows((r) => ({ ...r, loading: false })));
+    };
+    load();
+    const id = setInterval(load, 120000);
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      alive = false;
+      clearInterval(id);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
   return rows;
 }
@@ -428,17 +457,49 @@ function DashboardOverview({ kpi }) {
         <UpcomingTasksPanel kpi={kpi} />
       </div>
 
-      <PayrollByEmployeePanel kpi={kpi} />
+      <PayrollByEmployeePanel />
     </div>
   );
 }
 
-function PayrollByEmployeePanel({ kpi }) {
-  const rows = kpi.payroll_by_employee || [];
+function PayrollByEmployeePanel() {
+  const currentYear = String(new Date().getFullYear());
+  const [payments, setPayments] = useState(null); // null = loading
+  const [year, setYear] = useState(currentYear);
+  const [month, setMonth] = useState("ALL");
+
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      resource("payroll/payments")
+        .list({ page_size: 10000 })
+        .then((d) => alive && setPayments(Array.isArray(d) ? d : d.results || []))
+        .catch(() => alive && setPayments((p) => p || []));
+    load();
+    const id = setInterval(load, 120000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+
+  const list = payments || [];
+  const years = yearsFromRows(list);
+  const inScope = (r) =>
+    (year === "ALL" || String(r.date || "").startsWith(`${year}-`)) &&
+    (month === "ALL" || String(r.date || "").slice(5, 7) === month);
+
+  const byEmp = new Map();
+  list.filter(inScope).forEach((r) => {
+    const key = `${r.employee_name || "—"}|${r.farm_name || ""}`;
+    const b = byEmp.get(key) || { employee: r.employee_name || "—", farm_name: r.farm_name, paid: 0 };
+    b.paid += Number(r.amount || 0);
+    byEmp.set(key, b);
+  });
+  const rows = [...byEmp.values()].sort((a, b) => b.paid - a.paid);
   const total = rows.reduce((s, r) => s + Number(r.paid || 0), 0);
+
   const download = () => {
     const data = rows.map((r) => ({ employee: r.employee, farm: r.farm_name || "—", paid: Number(r.paid || 0) }));
     data.push({ employee: "Total", farm: "", paid: total });
+    const period = `${year === "ALL" ? "all-years" : year}${month === "ALL" ? "" : `-${MONTHS[Number(month) - 1]}`}`;
     exportExcel(
       data,
       [
@@ -446,7 +507,7 @@ function PayrollByEmployeePanel({ kpi }) {
         { key: "farm", header: "Farm" },
         { key: "paid", header: "Salary Paid" },
       ],
-      "salary-by-employee.xlsx",
+      `salary-by-employee-${period}.xlsx`,
       "Salary",
     );
   };
@@ -455,19 +516,34 @@ function PayrollByEmployeePanel({ kpi }) {
       title="Salary Paid by Employee"
       subtitle="Who received how much — actual payouts"
       action={
-        rows.length > 0 && (
-          <button
-            onClick={download}
-            title="Download salary summary"
-            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 hover:text-brand-600"
+        <div className="flex items-center gap-2">
+          <select
+            value={year}
+            onChange={(e) => setYear(e.target.value)}
+            className="rounded-lg border border-gray-300 px-2 py-1 text-xs text-gray-600 outline-none focus:border-brand-500"
           >
-            <Download size={13} /> Excel
-          </button>
-        )
+            <option value="ALL">All Years</option>
+            {years.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <MonthSelect value={month} onChange={setMonth} />
+          {rows.length > 0 && (
+            <button
+              onClick={download}
+              title="Download salary summary"
+              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 hover:text-brand-600"
+            >
+              <Download size={13} /> Excel
+            </button>
+          )}
+        </div>
       }
     >
-      {rows.length === 0 ? (
-        <p className="py-6 text-center text-xs text-gray-400">No salary paid yet</p>
+      {payments === null ? (
+        <p className="py-6 text-center text-xs text-gray-400">Loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="py-6 text-center text-xs text-gray-400">
+          No salary paid in {month === "ALL" ? "" : `${MONTHS[Number(month) - 1]} `}{year === "ALL" ? "any year" : year}
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -691,11 +767,13 @@ function BalanceSheetPanel({ farms, finRows }) {
   const currentYear = String(new Date().getFullYear());
   const [farm, setFarm] = useState("");
   const [year, setYear] = useState(currentYear);
+  const [month, setMonth] = useState("ALL");
   const loading = finRows.loading;
 
   const inScope = (r) =>
     (!farm || String(r.farm) === String(farm)) &&
-    (year === "ALL" || String(r.date || "").startsWith(`${year}-`));
+    (year === "ALL" || String(r.date || "").startsWith(`${year}-`)) &&
+    (month === "ALL" || String(r.date || "").slice(5, 7) === month);
   const groupByCategory = (list) => {
     const map = new Map();
     list.filter(inScope).forEach((r) => {
@@ -730,6 +808,7 @@ function BalanceSheetPanel({ farms, finRows }) {
     }
     data.push({ debit_category: "Total Debit", debit_amount: debitTotal, credit_category: "Total Credit", credit_amount: creditTotal });
     data.push({ debit_category: "Balance", debit_amount: balance >= 0 ? "CREDIT" : "DEBIT", credit_category: "", credit_amount: Math.abs(balance) });
+    const period = `${year === "ALL" ? "all-years" : year}${month === "ALL" ? "" : `-${MONTHS[Number(month) - 1]}`}`;
     exportExcel(
       data,
       [
@@ -738,7 +817,7 @@ function BalanceSheetPanel({ farms, finRows }) {
         { key: "credit_category", header: "Credit (Revenue Category)" },
         { key: "credit_amount", header: "Credit Amount" },
       ],
-      `balance-sheet-${farmName.replace(/\s+/g, "-").toLowerCase()}-${year}.xlsx`,
+      `balance-sheet-${farmName.replace(/\s+/g, "-").toLowerCase()}-${period}.xlsx`,
       "Balance Sheet",
     );
   };
@@ -765,6 +844,7 @@ function BalanceSheetPanel({ farms, finRows }) {
             <option value="ALL">All Years</option>
             {years.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
+          <MonthSelect value={month} onChange={setMonth} />
           <button
             onClick={download}
             title="Download balance sheet"
@@ -778,7 +858,9 @@ function BalanceSheetPanel({ farms, finRows }) {
       {loading ? (
         <p className="py-8 text-center text-xs text-gray-400">Loading…</p>
       ) : maxRows === 0 ? (
-        <p className="py-8 text-center text-xs text-gray-400">No entries for {farmName} ({year === "ALL" ? "all years" : year})</p>
+        <p className="py-8 text-center text-xs text-gray-400">
+          No entries for {farmName} ({month === "ALL" ? "" : `${MONTHS[Number(month) - 1]} `}{year === "ALL" ? "all years" : year})
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">

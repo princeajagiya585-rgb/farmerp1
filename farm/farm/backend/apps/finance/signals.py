@@ -23,7 +23,7 @@ from django.dispatch import receiver
 
 from apps.assets.models import Asset
 
-from .models import Expense, Purchase, RevenueEntry, Sale
+from .models import Expense, LedgerEntry, Payment, Purchase, RevenueEntry, Sale
 
 
 def _to_decimal(value):
@@ -85,6 +85,9 @@ def mirror_purchase_to_expense(sender, instance, **kwargs):
 @receiver(post_delete, sender=Purchase)
 def unmirror_purchase(sender, instance, **kwargs):
     Expense.objects.filter(
+        source_type="purchase", source_id=str(instance.id)
+    ).delete()
+    LedgerEntry.objects.filter(
         source_type="purchase", source_id=str(instance.id)
     ).delete()
 
@@ -151,4 +154,33 @@ def mirror_sale_to_revenue(sender, instance, **kwargs):
 def unmirror_sale(sender, instance, **kwargs):
     RevenueEntry.objects.filter(
         source_type="sale", source_id=str(instance.id)
+    ).delete()
+    LedgerEntry.objects.filter(
+        source_type="sale", source_id=str(instance.id)
+    ).delete()
+
+
+# ── Ledger cleanup on source deletion ─────────────────────────────────────────
+# Ledger DEBIT/CREDIT rows are posted when an expense is approved or a payment /
+# revenue entry is created (see apps.finance.views). Without these receivers,
+# deleting the source record leaves an orphan ledger row that keeps inflating
+# the Ledger page totals forever.
+@receiver(post_delete, sender=Expense)
+def unledger_expense(sender, instance, **kwargs):
+    LedgerEntry.objects.filter(
+        source_type="expense", source_id=str(instance.id)
+    ).delete()
+
+
+@receiver(post_delete, sender=Payment)
+def unledger_payment(sender, instance, **kwargs):
+    LedgerEntry.objects.filter(
+        source_type="payment", source_id=str(instance.id)
+    ).delete()
+
+
+@receiver(post_delete, sender=RevenueEntry)
+def unledger_revenue(sender, instance, **kwargs):
+    LedgerEntry.objects.filter(
+        source_type="revenue", source_id=str(instance.id)
     ).delete()
