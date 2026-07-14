@@ -623,106 +623,121 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         if employee:
             employees = employees.filter(id=employee)
 
-        # Calculate total days in the selected period
         today = timezone.localdate()
-        if year:
-            y = int(year)
-            if month:
-                _, total_days = monthrange(y, int(month))
-            else:
-                if y == today.year:
-                    # Days elapsed in the current year so far
-                    total_days = (today - date(y, 1, 1)).days + 1
-                else:
-                    # Full year (leap year check)
-                    total_days = 366 if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0) else 365
-        else:
-            # No year specified — default to current month
-            _, total_days = monthrange(today.year, today.month)
+        if not year:
+            year = today.year
 
-        # Get attendance records for the period
-        att_qs = Attendance.objects.all()
+        # Countable days in month `m` of the report year: the current month only
+        # counts the days elapsed so far, a past month counts its full length,
+        # and a future month counts nothing. This keeps Absent from ballooning
+        # with days that haven't happened yet.
+        def days_countable(m):
+            if year > today.year or (year == today.year and m > today.month):
+                return 0
+            if year == today.year and m == today.month:
+                return today.day
+            return monthrange(year, m)[1]
+
+        # Raw attendance for the span, grouped per (employee, month).
+        att_qs = Attendance.objects.filter(date__year=year)
+        if month:
+            att_qs = att_qs.filter(date__month=month)
         if farm:
             att_qs = att_qs.filter(farm_id=farm)
         if employee:
             att_qs = att_qs.filter(employee_id=employee)
-        if month:
-            att_qs = att_qs.filter(date__month=month)
-        if year:
-            att_qs = att_qs.filter(date__year=year)
 
-        # Build per-employee summary from actual records
-        summary = {}
+        raw = {}  # raw[employee_id][month] = {present, half_day, absent, leave, overtime_hours}
         for att in att_qs.select_related("employee", "employee__farm"):
-            row = summary.setdefault(
-                att.employee_id,
-                {
-                    "present": 0,
-                    "half_day": 0,
-                    "absent": 0,
-                    "leave": 0,
-                    "overtime_hours": 0,
-                    "marked": 0,
-                    "farm_name": att.employee.farm.name if att.employee.farm else "",
-                },
+            per_month = raw.setdefault(att.employee_id, {})
+            rec = per_month.setdefault(
+                att.date.month,
+                {"present": 0, "half_day": 0, "absent": 0, "leave": 0, "overtime_hours": 0.0},
             )
-            row["marked"] += 1
-            row["overtime_hours"] += float(att.overtime_hours or 0)
-            if att.status == Attendance.Status.PRESENT or att.status == Attendance.Status.PRESENT_DONE:
-                row["present"] += 1
+            rec["overtime_hours"] += float(att.overtime_hours or 0)
+            if att.status in (Attendance.Status.PRESENT, Attendance.Status.PRESENT_DONE):
+                rec["present"] += 1
             elif att.status == Attendance.Status.HALF_DAY:
-                row["half_day"] += 1
+                rec["half_day"] += 1
             elif att.status == Attendance.Status.ABSENT:
-                row["absent"] += 1
+                rec["absent"] += 1
             elif att.status == Attendance.Status.LEAVE:
-                row["leave"] += 1
+                rec["leave"] += 1
 
-        # Manual per-employee overrides for this exact period. When present, the
-        # admin-edited totals replace the computed ones (Attendance Reports "Edit").
-        override_qs = AttendanceMonthlySummary.objects.filter(
-            employee__in=employees, year=year
-        )
-        override_qs = override_qs.filter(month=month) if month else override_qs.filter(month__isnull=True)
-        overrides = {o.employee_id: o for o in override_qs}
+        # Manual per-employee overrides (Attendance Reports "Edit"). A per-month
+        # override replaces that month's computed totals; a whole-year override
+        # (month is NULL) replaces the entire All-Months aggregate.
+        ov_month = {}  # ov_month[employee_id][month] = summary row
+        ov_year = {}   # ov_year[employee_id] = whole-year summary row
+        for o in AttendanceMonthlySummary.objects.filter(employee__in=employees, year=year):
+            if o.month is None:
+                ov_year[o.employee_id] = o
+            elif not month or o.month == month:
+                ov_month.setdefault(o.employee_id, {})[o.month] = o
 
-        # Build final rows — include ALL employees, fill missing days as Absent
+        def as_summary(ov):
+            return {
+                "present": ov.present,
+                "half_day": ov.half_day,
+                "absent": ov.absent,
+                "leave": ov.leave,
+                "overtime_hours": float(ov.overtime_hours or 0),
+            }
+
         rows = []
         for emp in employees:
-            row = summary.get(emp.id)
-            if row:
-                accounted = row["present"] + row["half_day"] + row["leave"] + row["absent"]
-                unmarked = max(0, total_days - accounted)
-                row["absent"] += unmarked
-                row["marked"] = total_days
+            emp_raw = raw.get(emp.id, {})
+            emp_ov = ov_month.get(emp.id, {})
+
+            agg = {"present": 0, "half_day": 0, "absent": 0, "leave": 0, "overtime_hours": 0.0}
+            overridden = False
+
+            if not month and emp.id in ov_year:
+                # A whole-year manual override wins over everything.
+                agg = as_summary(ov_year[emp.id])
+                overridden = True
             else:
-                row = {
-                    "present": 0,
-                    "half_day": 0,
-                    "absent": total_days,
-                    "leave": 0,
-                    "overtime_hours": 0,
-                    "marked": total_days,
-                    "farm_name": emp.farm.name if emp.farm else "",
-                }
-            row["employee"] = emp.name
-            # Ensure farm_name is always set
-            if "farm_name" not in row:
-                row["farm_name"] = emp.farm.name if emp.farm else ""
-            # Apply a manual override, if the admin has edited this employee's totals.
-            ov = overrides.get(emp.id)
-            row["overridden"] = bool(ov)
-            if ov:
-                row["present"] = ov.present
-                row["half_day"] = ov.half_day
-                row["absent"] = ov.absent
-                row["leave"] = ov.leave
-                row["overtime_hours"] = float(ov.overtime_hours or 0)
-            # Attendance % — denominator is the marked/edited day total for the period.
-            total = row["present"] + row["half_day"] + row["leave"] + row["absent"]
-            denom = total if total > 0 else row.get("marked", 0)
-            effective = row["present"] + 0.5 * row["half_day"]
-            row["attendance_pct"] = round(100 * effective / denom, 1) if denom else 0
-            rows.append(row)
+                # Months to sum:
+                #  • single month → just that month, always shown (a no-show
+                #    employee therefore appears as a full month Absent).
+                #  • All Months → only the months this employee actually has data
+                #    or an edit in, so untouched months never inflate Absent.
+                months = [month] if month else sorted(set(emp_raw) | set(emp_ov))
+                for m in months:
+                    if m in emp_ov:
+                        s = as_summary(emp_ov[m])
+                        overridden = True
+                    else:
+                        td = days_countable(m)
+                        rec = emp_raw.get(m)
+                        if rec:
+                            accounted = rec["present"] + rec["half_day"] + rec["leave"] + rec["absent"]
+                            s = {
+                                "present": rec["present"],
+                                "half_day": rec["half_day"],
+                                "leave": rec["leave"],
+                                "absent": rec["absent"] + max(0, td - accounted),
+                                "overtime_hours": rec["overtime_hours"],
+                            }
+                        else:
+                            s = {"present": 0, "half_day": 0, "leave": 0, "absent": td, "overtime_hours": 0.0}
+                    for k in agg:
+                        agg[k] += s[k]
+
+            total = agg["present"] + agg["half_day"] + agg["leave"] + agg["absent"]
+            effective = agg["present"] + 0.5 * agg["half_day"]
+            rows.append({
+                "employee": emp.name,
+                "farm_name": emp.farm.name if emp.farm else "",
+                "present": agg["present"],
+                "half_day": agg["half_day"],
+                "absent": agg["absent"],
+                "leave": agg["leave"],
+                "overtime_hours": agg["overtime_hours"],
+                "marked": total,
+                "overridden": overridden,
+                "attendance_pct": round(100 * effective / total, 1) if total else 0,
+            })
 
         rows.sort(key=lambda r: r["employee"])
         return Response({"count": len(rows), "rows": rows})
@@ -785,15 +800,16 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             },
         )
 
-        # Salary follows attendance: rebuild this employee's payslip wages for the
-        # edited month so the new Present/Half-Day flows into gross & net pay
-        # right away (only for an existing, un-paid payslip). Never fail the
-        # attendance save if the payroll sync hits a problem.
+        # Salary follows attendance: rebuild this employee's payslip for the
+        # edited month so the new Present/Half-Day flows into the days worked and
+        # the gross/net pay on the Payslips page right away — creating the payslip
+        # if it doesn't exist yet. Never fail the attendance save if the payroll
+        # sync hits a problem.
         if month:
             try:
                 from apps.payroll.views import _resync_payslip_from_attendance
 
-                _resync_payslip_from_attendance(emp, month, year)
+                _resync_payslip_from_attendance(emp, month, year, user=request.user)
             except Exception:
                 pass
 

@@ -157,59 +157,86 @@ def _wage_from_worked(employee, period, days_worked, overtime_hours, worked_hour
     return gross_wage, overtime_amount
 
 
-def _resync_payslip_from_attendance(employee, month, year):
-    """Rebuild the attendance-driven wages of any EXISTING payslip for this
-    employee in (month, year) after the monthly attendance is edited, so salary
-    follows the edited days immediately.
+def _rebuild_payslip_for_period(employee, period):
+    """Recompute and save the employee's payslip for `period` from attendance
+    (honoring the monthly override), including incentives / deductions / advance.
+    Skips a Paid / Finalized payslip. Creates the payslip if it doesn't exist."""
+    slip = Payslip.objects.filter(employee=employee, period=period).first()
+    if slip and slip.status in (Payslip.Status.PAID, Payslip.Status.FINALIZED):
+        return
 
-    Mirrors ``_sync_payslip``: it never creates a payslip (an un-generated period
-    is computed fresh — and correctly — by the next "generate") and never touches
-    a Paid / Finalized payslip.
+    days_worked, overtime_hours, worked_hours = _attendance_worked_days(
+        employee, period.month, period.year
+    )
+    gross_wage, overtime_amount = _wage_from_worked(
+        employee, period, days_worked, overtime_hours, worked_hours
+    )
+
+    incentive_amount = Decimal("0")
+    for inc in Incentive.objects.filter(
+        employee=employee, farm=period.farm, date__month=period.month, date__year=period.year
+    ):
+        incentive_amount += inc.amount or Decimal("0")
+
+    other_deductions = Decimal("0")
+    for ded in Deduction.objects.filter(
+        employee=employee, farm=period.farm, date__month=period.month, date__year=period.year
+    ):
+        other_deductions += ded.amount or Decimal("0")
+
+    advance_deduction = _advance_deduction_for(employee, period.farm, period)
+    net_pay = (
+        gross_wage + overtime_amount + incentive_amount
+        - advance_deduction - other_deductions
+    )
+
+    Payslip.objects.update_or_create(
+        employee=employee,
+        period=period,
+        defaults={
+            "farm": period.farm,
+            "days_worked": days_worked,
+            "overtime_hours": overtime_hours,
+            "gross_wage": gross_wage,
+            "overtime_amount": overtime_amount,
+            "incentive_amount": incentive_amount,
+            "advance_deduction": advance_deduction,
+            "other_deductions": other_deductions,
+            "net_pay": net_pay,
+        },
+    )
+
+
+def _resync_payslip_from_attendance(employee, month, year, user=None):
+    """After the monthly attendance is edited, make the Payslips page reflect it
+    for (month, year): rebuild the employee's payslip so its days worked and
+    salary follow the edited attendance.
+
+    Unlike ``_sync_payslip``, this DOES create the payslip (and its payroll
+    period) when none exists yet, so an edited month's days & pay show on the
+    Payslips page immediately. A Paid / Finalized payslip is never touched.
     """
-    payslips = Payslip.objects.filter(
-        employee=employee, period__month=month, period__year=year
-    ).select_related("period")
-    for slip in payslips:
-        if slip.status in (Payslip.Status.PAID, Payslip.Status.FINALIZED):
-            continue
-        period = slip.period
-        days_worked, overtime_hours, worked_hours = _attendance_worked_days(
-            employee, month, year
-        )
-        gross_wage, overtime_amount = _wage_from_worked(
-            employee, period, days_worked, overtime_hours, worked_hours
-        )
+    farm = employee.farm
+    if farm is None:
+        return  # can't place a payslip without a home farm
 
-        incentive_amount = Decimal("0")
-        for inc in Incentive.objects.filter(
-            employee=employee, farm=period.farm, date__month=month, date__year=year
-        ):
-            incentive_amount += inc.amount or Decimal("0")
+    # Rebuild every existing payslip for this employee in the month (usually one,
+    # under the home farm), then ensure the home-farm period/payslip exists.
+    existing = list(
+        Payslip.objects.filter(
+            employee=employee, period__month=month, period__year=year
+        ).select_related("period")
+    )
+    handled_period_ids = set()
+    for slip in existing:
+        _rebuild_payslip_for_period(employee, slip.period)
+        handled_period_ids.add(slip.period_id)
 
-        other_deductions = Decimal("0")
-        for ded in Deduction.objects.filter(
-            employee=employee, farm=period.farm, date__month=month, date__year=year
-        ):
-            other_deductions += ded.amount or Decimal("0")
-
-        advance_deduction = _advance_deduction_for(employee, period.farm, period)
-        net_pay = (
-            gross_wage + overtime_amount + incentive_amount
-            - advance_deduction - other_deductions
-        )
-
-        slip.days_worked = days_worked
-        slip.overtime_hours = overtime_hours
-        slip.gross_wage = gross_wage
-        slip.overtime_amount = overtime_amount
-        slip.incentive_amount = incentive_amount
-        slip.advance_deduction = advance_deduction
-        slip.other_deductions = other_deductions
-        slip.net_pay = net_pay
-        slip.save(update_fields=[
-            "days_worked", "overtime_hours", "gross_wage", "overtime_amount",
-            "incentive_amount", "advance_deduction", "other_deductions", "net_pay",
-        ])
+    period, _ = PayrollPeriod.objects.get_or_create(
+        farm=farm, month=month, year=year, defaults={"created_by": user}
+    )
+    if period.id not in handled_period_ids:
+        _rebuild_payslip_for_period(employee, period)
 
 
 def _sync_payslip(employee, farm, month, year):
