@@ -64,6 +64,13 @@ class Expense(OwnedModel):
     class Meta:
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["source_type", "source_id"])]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_type", "source_id"],
+                condition=~models.Q(source_type=""),
+                name="uniq_expense_source",
+            )
+        ]
 
     def __str__(self):
         return f"{self.category} - {self.amount} ({self.date})"
@@ -241,6 +248,13 @@ class RevenueEntry(OwnedModel):
     class Meta:
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["source_type", "source_id"])]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_type", "source_id"],
+                condition=~models.Q(source_type=""),
+                name="uniq_revenue_source",
+            )
+        ]
 
     def __str__(self):
         return f"{self.category} {self.amount} ({self.date})"

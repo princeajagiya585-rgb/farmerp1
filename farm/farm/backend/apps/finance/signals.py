@@ -32,6 +32,34 @@ def _to_decimal(value):
     return Decimal(str(value))
 
 
+def _upsert_mirror(model, source_type, source_id, defaults):
+    """Create or update the single mirror row for a source record.
+
+    Unlike ``update_or_create`` this never raises ``MultipleObjectsReturned``:
+    if duplicate mirrors already exist (e.g. from an earlier bug or a re-run
+    backfill) it updates the oldest and deletes the extras, converging back to
+    exactly one mirror per source.
+    """
+    existing = list(
+        model.objects.filter(
+            source_type=source_type, source_id=source_id
+        ).order_by("created_at")
+    )
+    if existing:
+        obj = existing[0]
+        for field, value in defaults.items():
+            setattr(obj, field, value)
+        obj.save()
+        if len(existing) > 1:
+            model.objects.filter(
+                id__in=[e.id for e in existing[1:]]
+            ).delete()
+        return obj
+    return model.objects.create(
+        source_type=source_type, source_id=source_id, **defaults
+    )
+
+
 # ── Purchase → Expense ────────────────────────────────────────────────────────
 @receiver(post_save, sender=Purchase)
 def mirror_purchase_to_expense(sender, instance, **kwargs):
@@ -39,10 +67,9 @@ def mirror_purchase_to_expense(sender, instance, **kwargs):
     desc = instance.notes or (
         f"Purchase {instance.invoice_no}" if instance.invoice_no else "Purchase"
     )
-    Expense.objects.update_or_create(
-        source_type="purchase",
-        source_id=str(instance.id),
-        defaults=dict(
+    _upsert_mirror(
+        Expense, "purchase", str(instance.id),
+        dict(
             farm=instance.farm,
             category=Expense.Category.INPUTS,
             amount=_to_decimal(instance.total_amount),
@@ -76,10 +103,9 @@ def mirror_asset_to_expense(sender, instance, **kwargs):
             source_type="asset", source_id=str(instance.id)
         ).delete()
         return
-    Expense.objects.update_or_create(
-        source_type="asset",
-        source_id=str(instance.id),
-        defaults=dict(
+    _upsert_mirror(
+        Expense, "asset", str(instance.id),
+        dict(
             farm=instance.farm,
             category=Expense.Category.ASSET,
             amount=cost,
@@ -103,10 +129,9 @@ def unmirror_asset(sender, instance, **kwargs):
 @receiver(post_save, sender=Sale)
 def mirror_sale_to_revenue(sender, instance, **kwargs):
     """Every sale appears on the Revenue page as a Crop Sale revenue entry."""
-    RevenueEntry.objects.update_or_create(
-        source_type="sale",
-        source_id=str(instance.id),
-        defaults=dict(
+    _upsert_mirror(
+        RevenueEntry, "sale", str(instance.id),
+        dict(
             farm=instance.farm,
             source=RevenueEntry.Source.HARVEST_SALE,
             category=RevenueEntry.Category.CROP_SALE,
