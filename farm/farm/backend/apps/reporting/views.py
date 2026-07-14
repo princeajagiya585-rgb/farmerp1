@@ -45,13 +45,31 @@ class DashboardView(APIView):
         ]
         today = timezone.now().date()
 
+        # ── Employee self-scope ────────────────────────────────────────────
+        # An EMPLOYEE must only see their OWN personal entries — their salary,
+        # attendance, tasks and advances — not the whole farm's people. Farm
+        # financial totals stay farm-scoped (the employee may still view
+        # "farm ki details"). Managers/Super Admins are unaffected.
+        user = request.user
+        is_employee = user.role == Role.EMPLOYEE
+        own_employee = getattr(user, "employee_profile", None) if is_employee else None
+        own_emp_id = own_employee.id if own_employee else None
+
+        # Filters that narrow a queryset to just this employee's own rows.
+        def only_self_emp(qs, field="employee_id"):
+            if not is_employee:
+                return qs
+            if own_emp_id is None:
+                return qs.none()
+            return qs.filter(**{field: own_emp_id})
+
         farms_qs = Farm.objects.filter(id__in=farm_ids)
         total_farms = farms_qs.count()
         total_area = farms_qs.aggregate(s=Sum("total_area"))["s"] or 0
         total_fields = farms_qs.aggregate(c=Count("fields"))["c"] or 0
 
-        emp_qs = Employee.objects.filter(farm_id__in=farm_ids)
-        att_qs = Attendance.objects.filter(farm_id__in=farm_ids)
+        emp_qs = only_self_emp(Employee.objects.filter(farm_id__in=farm_ids), "id")
+        att_qs = only_self_emp(Attendance.objects.filter(farm_id__in=farm_ids))
         present_today = att_qs.filter(
             date=today,
             status__in=[Attendance.Status.PRESENT, Attendance.Status.PRESENT_DONE],
@@ -123,22 +141,27 @@ class DashboardView(APIView):
             for farm in farms_qs
         ]
 
-        # Payroll extras
+        # Payroll extras — scoped to the employee's own records for EMPLOYEE role.
         total_advances = (
-            Advance.objects.filter(farm_id__in=farm_ids).aggregate(s=Sum("amount"))["s"] or 0
-        )
-        outstanding_advances = (
-            Advance.objects.filter(farm_id__in=farm_ids, status=Advance.Status.OUTSTANDING)
+            only_self_emp(Advance.objects.filter(farm_id__in=farm_ids))
             .aggregate(s=Sum("amount"))["s"] or 0
         )
+        outstanding_advances = (
+            only_self_emp(
+                Advance.objects.filter(farm_id__in=farm_ids, status=Advance.Status.OUTSTANDING)
+            ).aggregate(s=Sum("amount"))["s"] or 0
+        )
         total_deductions = (
-            Deduction.objects.filter(farm_id__in=farm_ids).aggregate(s=Sum("amount"))["s"] or 0
+            only_self_emp(Deduction.objects.filter(farm_id__in=farm_ids))
+            .aggregate(s=Sum("amount"))["s"] or 0
         )
         total_incentives = (
-            Incentive.objects.filter(farm_id__in=farm_ids).aggregate(s=Sum("amount"))["s"] or 0
+            only_self_emp(Incentive.objects.filter(farm_id__in=farm_ids))
+            .aggregate(s=Sum("amount"))["s"] or 0
         )
         total_payments = (
-            Payment.objects.filter(employee__farm_id__in=farm_ids).aggregate(s=Sum("amount"))["s"] or 0
+            only_self_emp(Payment.objects.filter(employee__farm_id__in=farm_ids))
+            .aggregate(s=Sum("amount"))["s"] or 0
         )
 
         # Inventory summary
@@ -147,9 +170,7 @@ class DashboardView(APIView):
         stock_value = sum(i.stock_value for i in items_qs)
 
         # For EMPLOYEE role, scope task data to only the current user
-        user = request.user
-        is_employee = user.role == Role.EMPLOYEE
-
+        # (is_employee / user were resolved above during the self-scope setup).
         task_qs = Task.objects.filter(farm_id__in=farm_ids)
         if is_employee:
             task_qs = task_qs.filter(assigned_to=user)
@@ -233,11 +254,15 @@ class DashboardView(APIView):
             })
 
         # --- GPS: today's active employees with latest location ---
+        # An employee only sees their own location pings.
         today_pings = LocationPing.objects.filter(
             farm_id__in=farm_ids,
             recorded_at__date=today,
             latitude__isnull=False,
-        ).select_related("user", "farm").order_by("user_id", "-recorded_at")
+        )
+        if is_employee:
+            today_pings = today_pings.filter(user=user)
+        today_pings = today_pings.select_related("user", "farm").order_by("user_id", "-recorded_at")
 
         # Get latest ping per user (today only)
         latest_per_user = {}
@@ -447,7 +472,7 @@ class DashboardView(APIView):
                 "paid": float(p["paid"] or 0),
             }
             for p in (
-                Payment.objects.filter(employee__farm_id__in=farm_ids)
+                only_self_emp(Payment.objects.filter(employee__farm_id__in=farm_ids))
                 .values("employee_id", "employee__first_name", "employee__last_name",
                         "employee__employee_code", "employee__farm__name")
                 .annotate(paid=Sum("amount")).order_by("-paid")[:20]
