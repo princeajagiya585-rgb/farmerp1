@@ -784,6 +784,19 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
                 "created_by": request.user,
             },
         )
+
+        # Salary follows attendance: rebuild this employee's payslip wages for the
+        # edited month so the new Present/Half-Day flows into gross & net pay
+        # right away (only for an existing, un-paid payslip). Never fail the
+        # attendance save if the payroll sync hits a problem.
+        if month:
+            try:
+                from apps.payroll.views import _resync_payslip_from_attendance
+
+                _resync_payslip_from_attendance(emp, month, year)
+            except Exception:
+                pass
+
         return Response({"status": "ok"})
 
     @action(detail=False, methods=["post"])

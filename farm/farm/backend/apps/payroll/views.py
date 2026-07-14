@@ -75,6 +75,143 @@ def _advance_deduction_for(employee, farm, period):
     return total
 
 
+def _attendance_worked_days(employee, month, year):
+    """(days_worked, overtime_hours, worked_hours) for an employee in a month.
+
+    Honors the admin attendance override (``AttendanceMonthlySummary``) edited on
+    the Attendance Reports "Edit" screen: when an override exists for
+    (employee, year, month) its Present / Half-Day drive ``days_worked``
+    (present + ½·half_day) and its OT hours drive overtime, so an edited month's
+    attendance flows straight into salary. Without an override the values are
+    summed from the raw daily ``Attendance`` records (same rule as before).
+    """
+    from apps.workforce.models import AttendanceMonthlySummary
+
+    # Excludes only explicitly rejected/failed records — matches generate().
+    raw = Attendance.objects.filter(
+        employee=employee, date__month=month, date__year=year
+    ).exclude(
+        approval_status__in=[
+            Attendance.ApprovalStatus.REJECTED,
+            Attendance.ApprovalStatus.FAILED,
+        ]
+    )
+
+    # Clocked hours (needed for hourly wage) always come from the raw records —
+    # the monthly override does not track them.
+    worked_hours = Decimal("0")
+    for att in raw:
+        worked_hours += Decimal(att.working_seconds or 0) / Decimal("3600")
+
+    ov = AttendanceMonthlySummary.objects.filter(
+        employee=employee, year=year, month=month
+    ).first()
+    if ov is not None:
+        days_worked = Decimal(ov.present or 0) + Decimal("0.5") * Decimal(ov.half_day or 0)
+        overtime_hours = Decimal(ov.overtime_hours or 0)
+        return days_worked, overtime_hours, worked_hours
+
+    days_worked = Decimal("0")
+    overtime_hours = Decimal("0")
+    for att in raw:
+        if att.status in (
+            Attendance.Status.PRESENT,
+            Attendance.Status.PRESENT_DONE,
+        ):
+            days_worked += Decimal("1")
+        elif att.status == Attendance.Status.HALF_DAY:
+            days_worked += Decimal("0.5")
+        overtime_hours += att.overtime_hours or Decimal("0")
+    return days_worked, overtime_hours, worked_hours
+
+
+def _wage_from_worked(employee, period, days_worked, overtime_hours, worked_hours):
+    """(gross_wage, overtime_amount) from worked days/hours.
+
+    The single source of the pay formula, shared by payroll generation and the
+    attendance-driven resync so they can never drift:
+      • Hourly wage   → rate × hours actually worked.
+      • Monthly salary → one day's salary (monthly ÷ days-in-month) per day worked.
+      • daily_wage    → legacy fallback.
+    """
+    daily_wage = employee.daily_wage or Decimal("0")
+    monthly_salary = employee.monthly_salary or Decimal("0")
+    hourly_wage = employee.hourly_wage or Decimal("0")
+    days_in_month = Decimal(monthrange(period.year, period.month)[1])
+
+    if employee.wage_type == Employee.WageType.HOURLY and hourly_wage > 0:
+        gross_wage = worked_hours * hourly_wage
+    elif monthly_salary > 0:
+        gross_wage = days_worked * (monthly_salary / days_in_month)
+    elif daily_wage > 0:
+        gross_wage = days_worked * daily_wage
+    else:
+        gross_wage = monthly_salary
+
+    effective_daily = (
+        daily_wage if daily_wage > 0
+        else (monthly_salary / Decimal("30")) if monthly_salary > 0
+        else Decimal("0")
+    )
+    overtime_amount = overtime_hours * (effective_daily / Decimal("8"))
+    return gross_wage, overtime_amount
+
+
+def _resync_payslip_from_attendance(employee, month, year):
+    """Rebuild the attendance-driven wages of any EXISTING payslip for this
+    employee in (month, year) after the monthly attendance is edited, so salary
+    follows the edited days immediately.
+
+    Mirrors ``_sync_payslip``: it never creates a payslip (an un-generated period
+    is computed fresh — and correctly — by the next "generate") and never touches
+    a Paid / Finalized payslip.
+    """
+    payslips = Payslip.objects.filter(
+        employee=employee, period__month=month, period__year=year
+    ).select_related("period")
+    for slip in payslips:
+        if slip.status in (Payslip.Status.PAID, Payslip.Status.FINALIZED):
+            continue
+        period = slip.period
+        days_worked, overtime_hours, worked_hours = _attendance_worked_days(
+            employee, month, year
+        )
+        gross_wage, overtime_amount = _wage_from_worked(
+            employee, period, days_worked, overtime_hours, worked_hours
+        )
+
+        incentive_amount = Decimal("0")
+        for inc in Incentive.objects.filter(
+            employee=employee, farm=period.farm, date__month=month, date__year=year
+        ):
+            incentive_amount += inc.amount or Decimal("0")
+
+        other_deductions = Decimal("0")
+        for ded in Deduction.objects.filter(
+            employee=employee, farm=period.farm, date__month=month, date__year=year
+        ):
+            other_deductions += ded.amount or Decimal("0")
+
+        advance_deduction = _advance_deduction_for(employee, period.farm, period)
+        net_pay = (
+            gross_wage + overtime_amount + incentive_amount
+            - advance_deduction - other_deductions
+        )
+
+        slip.days_worked = days_worked
+        slip.overtime_hours = overtime_hours
+        slip.gross_wage = gross_wage
+        slip.overtime_amount = overtime_amount
+        slip.incentive_amount = incentive_amount
+        slip.advance_deduction = advance_deduction
+        slip.other_deductions = other_deductions
+        slip.net_pay = net_pay
+        slip.save(update_fields=[
+            "days_worked", "overtime_hours", "gross_wage", "overtime_amount",
+            "incentive_amount", "advance_deduction", "other_deductions", "net_pay",
+        ])
+
+
 def _sync_payslip(employee, farm, month, year):
     """Sync the employee's payslip for the given pay period after an
     advance / incentive / deduction is created, updated or deleted.
@@ -220,63 +357,22 @@ class PayrollPeriodViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                 # attendance day of theirs must count no matter where it was
                 # recorded. Filtering by period.farm silently dropped cross-farm
                 # days (e.g. a half day at another assigned farm → days_worked 0).
-                attendances = Attendance.objects.filter(
-                    employee=employee,
-                    date__month=period.month,
-                    date__year=period.year,
-                ).exclude(
-                    approval_status__in=[
-                        Attendance.ApprovalStatus.REJECTED,
-                        Attendance.ApprovalStatus.FAILED,
-                    ]
+                # Days worked / overtime honor the admin attendance override
+                # (Attendance Reports "Edit"): an edited month's Present/Half-Day
+                # drives pay. Without an override they are summed from the raw
+                # daily records. A HALF_DAY is worth half a day; ABSENT nothing.
+                days_worked, overtime_hours, worked_hours = _attendance_worked_days(
+                    employee, period.month, period.year
                 )
-
-                days_worked = Decimal("0")
-                overtime_hours = Decimal("0")
-                worked_hours = Decimal("0")
-                for att in attendances:
-                    # Days worked drives the pay. A completed day counts whether
-                    # the worker is still checked in (PRESENT) or checked out
-                    # after a full day (PRESENT_DONE); a short check-out is a
-                    # HALF_DAY worth half a day; ABSENT counts as nothing.
-                    if att.status in (
-                        Attendance.Status.PRESENT,
-                        Attendance.Status.PRESENT_DONE,
-                    ):
-                        days_worked += Decimal("1")
-                    elif att.status == Attendance.Status.HALF_DAY:
-                        days_worked += Decimal("0.5")
-                    overtime_hours += att.overtime_hours or Decimal("0")
-                    # Hours actually worked (check-in → check-out), used for
-                    # hourly-wage pay. Stored in seconds on the attendance.
-                    worked_hours += Decimal(att.working_seconds or 0) / Decimal("3600")
-
-                daily_wage = employee.daily_wage or Decimal("0")
-                monthly_salary = employee.monthly_salary or Decimal("0")
-                hourly_wage = employee.hourly_wage or Decimal("0")
-                # Days in this payroll month — one day's salary = monthly ÷ this.
-                days_in_month = Decimal(
-                    monthrange(period.year, period.month)[1]
-                )
-                # Pay is driven purely by attendance:
+                # Pay is driven purely by attendance (see _wage_from_worked):
                 #  • Hourly wage  → rate × hours actually worked.
                 #  • Monthly salary → one day's salary (monthly ÷ days-in-month)
-                #    for every day present; a HALF_DAY earns half. So a full day
-                #    pays the per-day rate and a half day pays exactly half —
-                #    matching the Payslips page and the "Done" payout.
+                #    per day worked; a HALF_DAY earns half — matching the
+                #    Payslips page and the "Done" payout.
                 #  • daily_wage is a legacy fallback (neither monthly nor hourly).
-                if employee.wage_type == Employee.WageType.HOURLY and hourly_wage > 0:
-                    gross_wage = worked_hours * hourly_wage
-                elif monthly_salary > 0:
-                    daily_rate = monthly_salary / days_in_month
-                    gross_wage = days_worked * daily_rate
-                elif daily_wage > 0:
-                    gross_wage = days_worked * daily_wage
-                else:
-                    gross_wage = monthly_salary
-                # Effective daily rate for overtime (≈1/30 of salary if no day rate)
-                effective_daily = daily_wage if daily_wage > 0 else (monthly_salary / Decimal("30")) if monthly_salary > 0 else Decimal("0")
-                overtime_amount = overtime_hours * (effective_daily / Decimal("8"))
+                gross_wage, overtime_amount = _wage_from_worked(
+                    employee, period, days_worked, overtime_hours, worked_hours
+                )
 
                 # Incentives for the period
                 incentive_amount = Decimal("0")
