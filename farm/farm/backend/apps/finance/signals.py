@@ -110,7 +110,7 @@ def mirror_sale_to_revenue(sender, instance, **kwargs):
             farm=instance.farm,
             source=RevenueEntry.Source.HARVEST_SALE,
             category=RevenueEntry.Category.CROP_SALE,
-            name=instance.buyer or "Sale",
+            name=instance.name or instance.buyer or "Sale",
             crop=instance.crop,
             amount=_to_decimal(instance.amount),
             date=instance.date,

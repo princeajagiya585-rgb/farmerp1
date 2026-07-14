@@ -335,6 +335,9 @@ class Sale(OwnedModel):
         blank=True,
         related_name="sales",
     )
+    name = models.CharField(
+        max_length=255, blank=True, help_text="Label for this sale"
+    )
     buyer = models.CharField(max_length=255, blank=True)
     quantity = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     unit = models.CharField(max_length=30, blank=True)

@@ -24,6 +24,7 @@ export default function FinanceSales() {
       defaultValues={{ buyer: userName }}
       footerColumns={["amount"]}
       columns={[
+        { key: "name", header: t("header.name"), render: (r) => r.name || "—" },
         { key: "date", header: t("header.date") },
         { key: "farm_name", header: t("header.farm") },
         { key: "buyer", header: t("header.buyer"), render: (r) => r.buyer || "—" },
@@ -52,6 +53,7 @@ export default function FinanceSales() {
         },
       ]}
       fields={[
+        { name: "name", label: t("header.name") },
         { name: "buyer", label: t("financeSales.soldBy"), readonly: true },
         { name: "farm", label: t("header.farm"), optionsFrom: { path: "farms", label: (f) => f.name }, required: true },
         { name: "crop", label: t("financeSales.cropOptional"), optionsFrom: { path: "agronomy/crops", label: (c) => `${c.name} ${c.variety || ""}`.trim() } },
