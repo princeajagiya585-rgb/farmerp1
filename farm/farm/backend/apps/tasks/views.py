@@ -121,6 +121,10 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         "assigned_employee",
     ]
     search_fields = ["title", "description", "category"]
+    # The month/year filter scopes tasks by their scheduled start date. Tasks
+    # without a start date are excluded only when a month is picked; they still
+    # appear under the "All Months" (cleared) filter.
+    date_range_field = "start_date"
     # The "All Users" filter on the Tasks page should filter by assigned_to
     # (matching the "User" column in the table), not by created_by.
     user_filter_field = "assigned_to_id"

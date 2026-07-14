@@ -569,6 +569,8 @@ export default function Tasks() {
         canEdit={canManage}
         showFarmFilter
         showUserFilter
+        defaultCurrentPeriod
+        disablePagination
         defaultValues={{ schedule_type: "ADHOC" }}
         listParams={myTasksOnly ? MY_TASKS_PARAMS : ALL_TASKS_PARAMS}
         extraToolbar={

@@ -158,6 +158,9 @@ class LedgerEntryViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     readonly_roles = [Role.FARM_MANAGER]
     filterset_fields = ["farm", "entry_type", "account", "created_by"]
     search_fields = ["reference", "description", "account"]
+    # The month/year filter should scope by the entry's transaction date, not
+    # the row-creation timestamp.
+    date_range_field = "date"
 
 
 class PaymentViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):

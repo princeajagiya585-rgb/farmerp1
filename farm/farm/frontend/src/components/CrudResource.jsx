@@ -47,6 +47,8 @@ export default function CrudResource({
   showUserFilter, // show user dropdown filter
   showBuyerFilter, // show buyer text filter
   selectable, // show per-row checkboxes + bulk delete (super admin only)
+  disablePagination, // fetch all matching rows on one page and hide the Prev/Next bar
+  defaultCurrentPeriod, // seed the month/year filter to the current real-time month
 }) {
   const { t, i18n } = useTranslation();
   const { hasRole, user } = useAuth();
@@ -62,10 +64,16 @@ export default function CrudResource({
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [search, setSearch] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [selMonth, setSelMonth] = useState("");
-  const [selYear, setSelYear] = useState("");
+  // When defaultCurrentPeriod is set, seed the date filter to the current month
+  // so the page opens on this real-time month's data.
+  const _now = new Date();
+  const _p2 = (n) => String(n).padStart(2, "0");
+  const _monthFirst = `${_now.getFullYear()}-${_p2(_now.getMonth() + 1)}-01`;
+  const _monthLast = `${_now.getFullYear()}-${_p2(_now.getMonth() + 1)}-${_p2(new Date(_now.getFullYear(), _now.getMonth() + 1, 0).getDate())}`;
+  const [dateFrom, setDateFrom] = useState(defaultCurrentPeriod ? _monthFirst : "");
+  const [dateTo, setDateTo] = useState(defaultCurrentPeriod ? _monthLast : "");
+  const [selMonth, setSelMonth] = useState(defaultCurrentPeriod ? String(_now.getMonth() + 1) : "");
+  const [selYear, setSelYear] = useState(defaultCurrentPeriod ? String(_now.getFullYear()) : "");
   const [page, setPage] = useState(1);
   const [count, setCount] = useState(0);
   const [hasNext, setHasNext] = useState(false);
@@ -147,6 +155,9 @@ export default function CrudResource({
     setLoading(true);
     try {
       const params = { page, ...listParams };
+      // Show every matching row on one page (no Prev/Next) when requested.
+      // 1000 is the backend's max_page_size; a single month stays well under it.
+      if (disablePagination) params.page_size = 1000;
       if (options.forceRefresh) params._t = Date.now();
       if (search) params.search = search;
       if (dateFrom) params.date_from = dateFrom;
@@ -170,7 +181,7 @@ export default function CrudResource({
     } finally {
       setLoading(false);
     }
-  }, [path, search, page, dateFrom, dateTo, appliedFarmFilter, appliedEmpFilter, appliedUserFilter, appliedBuyerFilter, listParams, isEmployee, t]);
+  }, [path, search, page, dateFrom, dateTo, appliedFarmFilter, appliedEmpFilter, appliedUserFilter, appliedBuyerFilter, listParams, isEmployee, disablePagination, t]);
 
   // Auto-refresh interval
   const intervalRef = useRef(null);
@@ -700,7 +711,7 @@ export default function CrudResource({
           />
         )}
 
-        {(count > PAGE_SIZE || page > 1) && (
+        {!disablePagination && (count > PAGE_SIZE || page > 1) && (
           <div className="mt-4 flex items-center justify-between text-sm text-gray-500">
             <span>
               {count} {count === 1 ? t("crud.record") : t("crud.records")} · {t("crud.page")} {page}

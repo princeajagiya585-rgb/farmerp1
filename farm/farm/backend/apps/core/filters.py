@@ -44,11 +44,24 @@ class DateRangeFilterBackend(BaseFilterBackend):
             return queryset
         date_from = request.query_params.get("date_from")
         date_to = request.query_params.get("date_to")
+        if not (date_from or date_to):
+            return queryset
+        # A DateTimeField (e.g. created_at) needs the __date transform to compare
+        # against a YYYY-MM-DD string; a plain DateField (e.g. a ledger entry's
+        # `date`) is compared directly — its __date lookup is unsupported and
+        # would raise, silently disabling the filter.
+        from django.db import models as _models
+        try:
+            base = queryset.model._meta.get_field(field.split("__")[0])
+            is_datetime = isinstance(base, _models.DateTimeField)
+        except Exception:
+            is_datetime = True
+        lookup = f"{field}__date" if is_datetime else field
         try:
             if date_from:
-                queryset = queryset.filter(**{f"{field}__date__gte": date_from})
+                queryset = queryset.filter(**{f"{lookup}__gte": date_from})
             if date_to:
-                queryset = queryset.filter(**{f"{field}__date__lte": date_to})
+                queryset = queryset.filter(**{f"{lookup}__lte": date_to})
         except Exception:
             # Bad date string or field — ignore rather than 500.
             return queryset
