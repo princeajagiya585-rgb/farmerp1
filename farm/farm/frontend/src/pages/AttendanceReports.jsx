@@ -18,7 +18,8 @@ export default function AttendanceReports() {
   // In-page editing of the monthly totals (opened from the "Edit" action) — no navigation.
   const [editOpen, setEditOpen] = useState(false);
   const [editRow, setEditRow] = useState(null); // the report row being edited
-  const [editForm, setEditForm] = useState({ present: 0, half_day: 0, absent: 0, leave: 0, overtime_hours: 0 });
+  // Absent is not edited directly — it is auto-derived from the days in the period.
+  const [editForm, setEditForm] = useState({ present: 0, half_day: 0, leave: 0, overtime_hours: 0 });
   const [savingRow, setSavingRow] = useState(false);
   const [farms, setFarms] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -58,12 +59,36 @@ export default function AttendanceReports() {
     setEditForm({
       present: Number(row.present) || 0,
       half_day: Number(row.half_day) || 0,
-      absent: Number(row.absent) || 0,
       leave: Number(row.leave) || 0,
       overtime_hours: Number(row.overtime_hours) || 0,
     });
     setEditOpen(true);
   };
+
+  // Total days for the selected period. With a month picked, this is the exact
+  // number of days in that month (28/29/30/31). Without a month (whole year /
+  // all months), fall back to the row's own total so that view keeps working.
+  const daysInPeriod = () => {
+    if (month) return new Date(Number(year), Number(month), 0).getDate();
+    if (editRow) {
+      return (
+        (Number(editRow.present) || 0) +
+        (Number(editRow.half_day) || 0) +
+        (Number(editRow.absent) || 0) +
+        (Number(editRow.leave) || 0)
+      );
+    }
+    return 0;
+  };
+
+  // Absent = days in the period − everything else, clamped at 0. Auto-generated,
+  // never entered by hand.
+  const computedAbsent = () =>
+    Math.max(
+      0,
+      daysInPeriod() -
+        ((Number(editForm.present) || 0) + (Number(editForm.half_day) || 0) + (Number(editForm.leave) || 0))
+    );
 
   const closeEdit = () => {
     setEditOpen(false);
@@ -86,7 +111,7 @@ export default function AttendanceReports() {
         month: month ? Number(month) : null,
         present: Number(editForm.present) || 0,
         half_day: Number(editForm.half_day) || 0,
-        absent: Number(editForm.absent) || 0,
+        absent: computedAbsent(),
         leave: Number(editForm.leave) || 0,
         overtime_hours: Number(editForm.overtime_hours) || 0,
       });
@@ -282,14 +307,28 @@ export default function AttendanceReports() {
               ].map((f) => (
                 <div key={f.key}>
                   <label className="mb-1 block text-sm font-medium text-gray-700">{f.label}</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step={f.key === "overtime_hours" ? "0.01" : "1"}
-                    value={editForm[f.key]}
-                    onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
-                  />
+                  {f.key === "absent" ? (
+                    <>
+                      <div className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                        {computedAbsent()}
+                      </div>
+                      <p className="mt-1 text-xs text-gray-400">
+                        {t("attendanceReports.absentAuto", {
+                          days: daysInPeriod(),
+                          defaultValue: "Auto ({{days}} days − present/half/leave)",
+                        })}
+                      </p>
+                    </>
+                  ) : (
+                    <input
+                      type="number"
+                      min="0"
+                      step={f.key === "overtime_hours" ? "0.01" : "1"}
+                      value={editForm[f.key]}
+                      onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
+                    />
+                  )}
                 </div>
               ))}
             </div>
