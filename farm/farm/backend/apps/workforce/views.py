@@ -627,14 +627,12 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         if not year:
             year = today.year
 
-        # Countable days in month `m` of the report year. A month that hasn't
-        # started yet contributes nothing; every past or current month counts its
-        # FULL length, so Absent = month days − present − half − leave. This
-        # matches the Attendance Reports "Edit" modal exactly (which uses the
-        # month's full day count), so the table and the editor never disagree.
+        # Every month counts its FULL calendar length (28-31, leap-aware), so
+        # Absent = month days − present − half − leave. This matches the
+        # Attendance Reports "Edit" modal exactly. Summed over all 12 months an
+        # All-Months report therefore totals 365 days (366 in a leap year); a
+        # single selected month totals that month's own day count.
         def days_countable(m):
-            if year > today.year or (year == today.year and m > today.month):
-                return 0
             return monthrange(year, m)[1]
 
         # Raw attendance for the span, grouped per (employee, month).
@@ -697,11 +695,12 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
                 overridden = True
             else:
                 # Months to sum:
-                #  • single month → just that month, always shown (a no-show
-                #    employee therefore appears as a full month Absent).
-                #  • All Months → only the months this employee actually has data
-                #    or an edit in, so untouched months never inflate Absent.
-                months = [month] if month else sorted(set(emp_raw) | set(emp_ov))
+                #  • single month → just that month (a no-show employee therefore
+                #    appears as a full month Absent).
+                #  • All Months → every month of the year, so the totals span the
+                #    whole year (365 days, 366 in a leap year); months with no
+                #    attendance simply count as fully Absent.
+                months = [month] if month else list(range(1, 13))
                 for m in months:
                     if m in emp_ov:
                         s = as_summary(emp_ov[m])
