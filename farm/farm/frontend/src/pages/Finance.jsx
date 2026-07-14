@@ -8,7 +8,11 @@ import { useAuth } from "../context/AuthContext";
 
 const expRepo = resource("finance/expenses");
 const stColor = { PENDING: "yellow", APPROVED: "green", REJECTED: "red" };
-const EXPENSE_CATEGORIES = ["LABOUR", "INPUTS", "FUEL", "MAINTENANCE", "UTILITIES", "TRANSPORT", "MISC"];
+const EXPENSE_CATEGORIES = ["LABOUR", "INPUTS", "FUEL", "MAINTENANCE", "UTILITIES", "TRANSPORT", "ASSET", "MISC"];
+const REVENUE_CATEGORIES = ["CROP_SALE", "LIVESTOCK", "SUBSIDY", "RENT", "EQUIPMENT_SALE", "OTHER"];
+// Where an auto-mirrored expense came from (blank source_type = entered manually).
+const EXPENSE_ORIGIN = { purchase: "Purchase", asset: "Asset", sale: "Sale" };
+const originLabel = (r) => EXPENSE_ORIGIN[r.source_type] || "Manual";
 
 export default function Finance() {
   const { t } = useTranslation();
@@ -76,6 +80,11 @@ export default function Finance() {
             { key: "date", header: t("header.date") },
             { key: "status", header: t("header.status"), render: (r) => <Badge color={stColor[r.status]}>{r.status}</Badge> },
             {
+              key: "source_type",
+              header: t("header.source"),
+              render: (r) => <Badge color={r.source_type ? "gray" : "blue"}>{originLabel(r)}</Badge>,
+            },
+            {
               key: "bill_file_url",
               header: t("header.bill"),
               render: (r) =>
@@ -114,7 +123,7 @@ export default function Finance() {
               name: "category",
               label: t("header.category"),
               type: "select",
-              options: ["LABOUR", "INPUTS", "FUEL", "MAINTENANCE", "UTILITIES", "TRANSPORT", "MISC"],
+              options: EXPENSE_CATEGORIES,
             },
             { name: "amount", label: t("header.amount"), type: "number", required: true },
             { name: "date", label: t("header.date"), type: "date", required: true },
@@ -135,17 +144,26 @@ export default function Finance() {
           showUserFilter
           footerColumns={["amount"]}
           columns={[
-            { key: "source", header: t("header.source") },
+            { key: "name", header: t("header.name"), render: (r) => r.name || "—" },
+            { key: "category", header: t("header.category"), render: (r) => <Badge color="blue">{r.category}</Badge> },
             { key: "farm_name", header: t("header.farm") },
             { key: "amount", header: t("header.amount"), render: (r) => `₹${Number(r.amount || 0).toLocaleString("en-IN")}` },
             { key: "date", header: t("header.date") },
             { key: "description", header: t("header.description") },
+            {
+              key: "source_type",
+              header: t("header.source"),
+              render: (r) => <Badge color={r.source_type ? "gray" : "blue"}>{r.source_type === "sale" ? "Sale" : "Manual"}</Badge>,
+            },
             { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
           ]}
-          fields={[{ name: "source",
-              label: t("finance.source"),
+          fields={[
+            { name: "name", label: t("header.name") },
+            {
+              name: "category",
+              label: t("header.category"),
               type: "select",
-              options: ["HARVEST_SALE", "SUBSIDY", "OTHER"],
+              options: REVENUE_CATEGORIES,
             },
             { name: "amount", label: t("header.amount"), type: "number", required: true },
             { name: "date", label: t("header.date"), type: "date", required: true },

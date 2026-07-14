@@ -302,17 +302,18 @@ class FinanceReportViewSet(viewsets.ViewSet):
         end = parse_date(request.query_params.get("end") or "")
         group = request.query_params.get("group", "day")
 
+        # Sales are mirrored into RevenueEntry, so inflow comes from RevenueEntry
+        # ONLY (adding Sale again would double-count). Outflow stays cash Payments.
         rev = self._scope(RevenueEntry.objects.all())
-        sale = self._scope(Sale.objects.all())
         pay = self._scope(Payment.objects.all())
         if farm:
-            rev, sale, pay = rev.filter(farm_id=farm), sale.filter(farm_id=farm), pay.filter(farm_id=farm)
+            rev, pay = rev.filter(farm_id=farm), pay.filter(farm_id=farm)
         if user_param:
-            rev, sale, pay = rev.filter(created_by_id=user_param), sale.filter(created_by_id=user_param), pay.filter(created_by_id=user_param)
+            rev, pay = rev.filter(created_by_id=user_param), pay.filter(created_by_id=user_param)
         if start:
-            rev, sale, pay = rev.filter(date__gte=start), sale.filter(date__gte=start), pay.filter(date__gte=start)
+            rev, pay = rev.filter(date__gte=start), pay.filter(date__gte=start)
         if end:
-            rev, sale, pay = rev.filter(date__lte=end), sale.filter(date__lte=end), pay.filter(date__lte=end)
+            rev, pay = rev.filter(date__lte=end), pay.filter(date__lte=end)
 
         def key_for(d):
             if group == "week":
@@ -331,8 +332,6 @@ class FinanceReportViewSet(viewsets.ViewSet):
 
         for r in rev:
             add(r.date, inflow=r.amount or Decimal("0"))
-        for s in sale:
-            add(s.date, inflow=s.amount or Decimal("0"))
         for p in pay:
             add(p.date, outflow=p.amount or Decimal("0"))
 
@@ -365,10 +364,11 @@ class FinanceReportViewSet(viewsets.ViewSet):
         start = parse_date(request.query_params.get("start") or "")
         end = parse_date(request.query_params.get("end") or "")
 
+        # Sales are mirrored into RevenueEntry and Purchases into Expense, so
+        # income/expenses are computed from the unified tables ONLY — counting
+        # Sale/Purchase again here would double-count.
         rev = self._scope(RevenueEntry.objects.all())
-        sale = self._scope(Sale.objects.all())
         exp = self._scope(Expense.objects.filter(status=Expense.Status.APPROVED))
-        pur = self._scope(Purchase.objects.filter(status=Purchase.Status.APPROVED))
 
         def flt(qs):
             if farm:
@@ -385,10 +385,10 @@ class FinanceReportViewSet(viewsets.ViewSet):
                 qs = qs.filter(date__lte=end)
             return qs
 
-        rev, sale, exp, pur = flt(rev), flt(sale), flt(exp), flt(pur)
+        rev, exp = flt(rev), flt(exp)
 
-        income = self._total(rev) + self._total(sale)
-        expense_total = self._total(exp) + self._total(pur, "total_amount")
+        income = self._total(rev)
+        expense_total = self._total(exp)
 
         by_category = []
         for row in (
@@ -396,17 +396,21 @@ class FinanceReportViewSet(viewsets.ViewSet):
         ):
             by_category.append({"category": row["category"], "total": row["total"]})
 
+        # Breakdowns derived from the source link on the unified rows.
+        sales_income = self._total(rev.filter(source_type="sale"))
+        purchases_total = self._total(exp.filter(source_type="purchase"))
+
         return Response(
             {
                 "income": income,
                 "expenses": expense_total,
                 "profit": income - expense_total,
                 "income_breakdown": {
-                    "revenue": self._total(rev),
-                    "sales": self._total(sale),
+                    "revenue": income - sales_income,
+                    "sales": sales_income,
                 },
                 "expense_by_category": by_category,
-                "purchases": self._total(pur, "total_amount"),
+                "purchases": purchases_total,
             }
         )
 
@@ -418,26 +422,21 @@ class FinanceReportViewSet(viewsets.ViewSet):
         farms = self._scope(Farm.objects.all(), "id")
         rows = []
         for farm in farms:
+            # Unified tables only — sales live in RevenueEntry, purchases in Expense.
             rev = RevenueEntry.objects.filter(farm=farm)
-            sale = Sale.objects.filter(farm=farm)
             exp = Expense.objects.filter(farm=farm, status=Expense.Status.APPROVED)
-            pur = Purchase.objects.filter(farm=farm, status=Purchase.Status.APPROVED)
             if user_param:
-                rev, sale, exp, pur = (
+                rev, exp = (
                     rev.filter(created_by_id=user_param),
-                    sale.filter(created_by_id=user_param),
                     exp.filter(created_by_id=user_param),
-                    pur.filter(created_by_id=user_param),
                 )
             if year:
-                rev, sale, exp, pur = (
+                rev, exp = (
                     rev.filter(date__year=year),
-                    sale.filter(date__year=year),
                     exp.filter(date__year=year),
-                    pur.filter(date__year=year),
                 )
-            income = self._total(rev) + self._total(sale)
-            expense_total = self._total(exp) + self._total(pur, "total_amount")
+            income = self._total(rev)
+            expense_total = self._total(exp)
             rows.append(
                 {
                     "farm": farm.name,
@@ -458,15 +457,17 @@ class FinanceReportViewSet(viewsets.ViewSet):
         crops = self._scope(Crop.objects.all())
         rows = []
         for crop in crops:
-            sale = Sale.objects.filter(crop=crop)
+            # Sales are mirrored into RevenueEntry (carrying the crop link), so
+            # crop income now reads from RevenueEntry instead of Sale.
+            rev = RevenueEntry.objects.filter(crop=crop)
             exp = Expense.objects.filter(crop=crop, status=Expense.Status.APPROVED)
             if user_param:
-                sale = sale.filter(created_by_id=user_param)
+                rev = rev.filter(created_by_id=user_param)
                 exp = exp.filter(created_by_id=user_param)
             if year:
-                sale = sale.filter(date__year=year)
+                rev = rev.filter(date__year=year)
                 exp = exp.filter(date__year=year)
-            income = self._total(sale)
+            income = self._total(rev)
             expense_total = self._total(exp)
             if income == 0 and expense_total == 0:
                 continue

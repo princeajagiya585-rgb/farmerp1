@@ -105,6 +105,7 @@ class PaymentSerializer(serializers.ModelSerializer):
 
 class RevenueEntrySerializer(serializers.ModelSerializer):
     farm_name = serializers.CharField(source="farm.name", read_only=True)
+    crop_name = serializers.CharField(source="crop.name", read_only=True, default=None)
     created_by_name = serializers.CharField(source="created_by.get_full_name", read_only=True, default=None)
 
     class Meta:

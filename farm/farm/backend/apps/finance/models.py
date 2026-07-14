@@ -12,6 +12,7 @@ class Expense(OwnedModel):
         MAINTENANCE = "MAINTENANCE", "Maintenance"
         UTILITIES = "UTILITIES", "Utilities"
         TRANSPORT = "TRANSPORT", "Transport"
+        ASSET = "ASSET", "Asset"
         MISC = "MISC", "Miscellaneous"
 
     class Status(models.TextChoices):
@@ -54,6 +55,15 @@ class Expense(OwnedModel):
     )
     is_paid = models.BooleanField(default=False)
     bill_file = models.FileField(upload_to="finance/bills/expenses/", blank=True)
+    # Link to the source record when this expense was auto-mirrored from another
+    # module (e.g. a purchase, an asset, a salary payout). Blank for expenses
+    # created directly on the Expenses page.
+    source_type = models.CharField(max_length=32, blank=True)
+    source_id = models.CharField(max_length=64, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["source_type", "source_id"])]
 
     def __str__(self):
         return f"{self.category} - {self.amount} ({self.date})"
@@ -193,18 +203,47 @@ class RevenueEntry(OwnedModel):
         SUBSIDY = "SUBSIDY", "Subsidy"
         OTHER = "OTHER", "Other"
 
+    class Category(models.TextChoices):
+        CROP_SALE = "CROP_SALE", "Crop / Harvest Sale"
+        LIVESTOCK = "LIVESTOCK", "Livestock / Dairy"
+        SUBSIDY = "SUBSIDY", "Subsidy"
+        RENT = "RENT", "Rent / Lease"
+        EQUIPMENT_SALE = "EQUIPMENT_SALE", "Equipment Sale"
+        OTHER = "OTHER", "Other"
+
     farm = models.ForeignKey(
         "farms.Farm", on_delete=models.CASCADE, related_name="revenues"
     )
     source = models.CharField(
         max_length=15, choices=Source.choices, default=Source.HARVEST_SALE
     )
+    category = models.CharField(
+        max_length=20, choices=Category.choices, default=Category.CROP_SALE
+    )
+    name = models.CharField(
+        max_length=255, blank=True, help_text="Label for this income entry"
+    )
+    crop = models.ForeignKey(
+        "agronomy.Crop",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="revenue_entries",
+    )
     amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     date = models.DateField()
     description = models.TextField(blank=True)
+    # Link to the source record when this revenue was auto-mirrored from another
+    # module (e.g. a sale). Blank for revenue created on the Revenue page.
+    source_type = models.CharField(max_length=32, blank=True)
+    source_id = models.CharField(max_length=64, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["source_type", "source_id"])]
 
     def __str__(self):
-        return f"{self.source} {self.amount} ({self.date})"
+        return f"{self.category} {self.amount} ({self.date})"
 
 
 class CostCenter(OwnedModel):
