@@ -627,15 +627,14 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         if not year:
             year = today.year
 
-        # Countable days in month `m` of the report year: the current month only
-        # counts the days elapsed so far, a past month counts its full length,
-        # and a future month counts nothing. This keeps Absent from ballooning
-        # with days that haven't happened yet.
+        # Countable days in month `m` of the report year. A month that hasn't
+        # started yet contributes nothing; every past or current month counts its
+        # FULL length, so Absent = month days − present − half − leave. This
+        # matches the Attendance Reports "Edit" modal exactly (which uses the
+        # month's full day count), so the table and the editor never disagree.
         def days_countable(m):
             if year > today.year or (year == today.year and m > today.month):
                 return 0
-            if year == today.year and m == today.month:
-                return today.day
             return monthrange(year, m)[1]
 
         # Raw attendance for the span, grouped per (employee, month).
