@@ -40,14 +40,9 @@ class Migration(migrations.Migration):
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
+    # Only data cleanup here. The UNIQUE constraints are added in 0014 — a
+    # SEPARATE migration/transaction — because Postgres refuses to CREATE INDEX
+    # in a transaction that already ran DELETEs ("pending trigger events").
     operations = [
         migrations.RunPython(dedupe_mirrors, migrations.RunPython.noop),
-        migrations.AddConstraint(
-            model_name='expense',
-            constraint=models.UniqueConstraint(condition=models.Q(('source_type', ''), _negated=True), fields=('source_type', 'source_id'), name='uniq_expense_source'),
-        ),
-        migrations.AddConstraint(
-            model_name='revenueentry',
-            constraint=models.UniqueConstraint(condition=models.Q(('source_type', ''), _negated=True), fields=('source_type', 'source_id'), name='uniq_revenue_source'),
-        ),
     ]
