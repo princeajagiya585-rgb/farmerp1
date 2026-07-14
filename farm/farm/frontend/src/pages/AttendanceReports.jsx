@@ -25,7 +25,9 @@ export default function AttendanceReports() {
   const [employees, setEmployees] = useState([]);
   const [farm, setFarm] = useState("");
   const [employee, setEmployee] = useState("");
-  const [month, setMonth] = useState("");
+  // Default to the current (real-time) month so the page opens on this month's
+  // report rather than the whole-year "All Months" view.
+  const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
   const [report, setReport] = useState(null);
 
