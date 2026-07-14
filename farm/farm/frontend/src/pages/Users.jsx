@@ -61,6 +61,9 @@ export default function Users() {
   const [removingAll, setRemovingAll] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null); // user to delete
   const [deleting, setDeleting] = useState(false);
+  const [selectedUserIds, setSelectedUserIds] = useState(() => new Set()); // multi-select for bulk delete
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Load users, farms, employees & attendance
   const loadData = useCallback(async () => {
@@ -101,6 +104,16 @@ export default function Users() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Drop selected ids that no longer exist after a reload
+  useEffect(() => {
+    setSelectedUserIds((prev) => {
+      if (prev.size === 0) return prev;
+      const valid = new Set(users.map((u) => u.id));
+      const next = new Set([...prev].filter((id) => valid.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [users]);
 
   const getLocation = () =>
     new Promise((resolve) => {
@@ -332,6 +345,60 @@ export default function Users() {
     }
   };
 
+  // ── Multi-select (bulk delete) ─────────────────────────────────────
+  const toggleUserSelect = (id) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allInListSelected = (list) => list.length > 0 && list.every((u) => selectedUserIds.has(u.id));
+
+  const toggleSelectList = (list) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      const everySelected = list.length > 0 && list.every((u) => next.has(u.id));
+      if (everySelected) list.forEach((u) => next.delete(u.id));
+      else list.forEach((u) => next.add(u.id));
+      return next;
+    });
+  };
+
+  const executeBulkDelete = async () => {
+    const ids = [...selectedUserIds];
+    if (ids.length === 0) return;
+    const superAdmins = users.filter((u) => u.role === "SUPER_ADMIN" && u.is_active);
+    setBulkDeleting(true);
+    let removed = 0;
+    let skipped = 0;
+    try {
+      for (const id of ids) {
+        const u = users.find((x) => x.id === id);
+        if (!u) continue;
+        // Never delete yourself or the last remaining super admin
+        if (u.id === currentUser?.id) { skipped++; continue; }
+        if (u.role === "SUPER_ADMIN" && superAdmins.length <= 1) { skipped++; continue; }
+        await usersRepo.destroy(id);
+        removed++;
+      }
+      setSelectedUserIds(new Set());
+      setBulkDeleteConfirm(false);
+      addToast(
+        `Removed ${removed} user(s)${skipped ? `, skipped ${skipped} (own / last admin account)` : ""}.`,
+        skipped && !removed ? "error" : "success"
+      );
+      loadData();
+    } catch (e) {
+      const detail = e?.response?.data?.detail || "Failed to remove selected users.";
+      addToast(typeof detail === "string" ? detail : JSON.stringify(detail), "error");
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const saveUser = async (e) => {
     e.preventDefault();
     // Validate password confirmation
@@ -446,6 +513,16 @@ export default function Users() {
 
     return (
       <tr key={user.id} className={`border-b ${getRowStyle()} hover:bg-opacity-80`}>
+        {canDelete && (
+          <td className="px-4 py-3 whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={selectedUserIds.has(user.id)}
+              onChange={() => toggleUserSelect(user.id)}
+              className="h-4 w-4 cursor-pointer rounded border-gray-300 accent-purple-600"
+            />
+          </td>
+        )}
         <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{user.username}</td>
         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{user.full_name || "—"}</td>
         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{user.role === "SUPER_ADMIN" ? user.email : "—"}</td>
@@ -579,6 +656,16 @@ export default function Users() {
 
     return (
       <tr key={user.id} className={`border-b ${getRowStyle()} hover:bg-opacity-80`}>
+        {canDelete && (
+          <td className="px-4 py-3 whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={selectedUserIds.has(user.id)}
+              onChange={() => toggleUserSelect(user.id)}
+              className="h-4 w-4 cursor-pointer rounded border-gray-300 accent-blue-600"
+            />
+          </td>
+        )}
         <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{user.username}</td>
         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{user.full_name || "—"}</td>
         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
@@ -767,6 +854,12 @@ export default function Users() {
           </div>
           {canManage && (
             <div className="flex items-center gap-3">
+              {canDelete && selectedUserIds.size > 0 && (
+                <Button variant="danger" onClick={() => setBulkDeleteConfirm(true)} disabled={bulkDeleting}>
+                  <Trash2 size={16} />
+                  Remove Selected ({selectedUserIds.size})
+                </Button>
+              )}
               <Button variant="danger" onClick={() => setRemoveAllConfirm(true)} disabled={otherUsers.length === 0}>
                 <UserMinus size={16} />
                 Remove Users Data
@@ -851,6 +944,17 @@ export default function Users() {
                       <table className="min-w-full divide-y divide-purple-300">
                         <thead className="bg-gradient-to-r from-purple-200 to-indigo-200">
                           <tr>
+                            {canDelete && (
+                              <th scope="col" className="px-4 py-3 text-left">
+                                <input
+                                  type="checkbox"
+                                  checked={allInListSelected(adminUsers)}
+                                  onChange={() => toggleSelectList(adminUsers)}
+                                  className="h-4 w-4 cursor-pointer rounded border-gray-300 accent-purple-600"
+                                  title={t("common.selectAll", "Select all")}
+                                />
+                              </th>
+                            )}
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-purple-900">{t("header.username")}</th>
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-purple-900">{t("header.name")}</th>
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-purple-900">{t("header.email")}</th>
@@ -879,6 +983,17 @@ export default function Users() {
                       <table className="min-w-full divide-y divide-blue-300">
                         <thead className="bg-gradient-to-r from-blue-200 to-slate-200">
                           <tr>
+                            {canDelete && (
+                              <th scope="col" className="px-4 py-3 text-left">
+                                <input
+                                  type="checkbox"
+                                  checked={allInListSelected(otherUsers)}
+                                  onChange={() => toggleSelectList(otherUsers)}
+                                  className="h-4 w-4 cursor-pointer rounded border-gray-300 accent-blue-600"
+                                  title={t("common.selectAll", "Select all")}
+                                />
+                              </th>
+                            )}
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-blue-900">{t("header.username")}</th>
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-blue-900">{t("header.name")}</th>
                             <th scope="col" className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-blue-900">{t("header.farm")}</th>
@@ -949,6 +1064,28 @@ export default function Users() {
             </Button>
             <Button type="button" variant="danger" onClick={executeRemoveAll} disabled={removingAll}>
               {removingAll ? "Removing..." : <><UserMinus size={15} /> Remove Users Data</>}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Bulk Delete Selected Confirmation Modal ────────────────────── */}
+      <Modal open={bulkDeleteConfirm} onClose={() => setBulkDeleteConfirm(false)} title="Remove Selected Users" width="max-w-md">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 rounded-xl bg-red-50 p-4 text-sm text-red-800 ring-1 ring-red-200">
+            <AlertTriangle size={20} className="shrink-0 text-red-600" />
+            <p>Are you sure you want to remove the selected users? They will be moved to Deleted Users and can be restored later.</p>
+          </div>
+          <div className="rounded-lg bg-gray-50 p-3 text-sm">
+            <p><span className="font-medium text-gray-700">Number of users selected:</span> <strong>{selectedUserIds.size}</strong></p>
+            <p className="mt-1 text-xs text-gray-500">Your own account and the last active Super Administrator are skipped automatically.</p>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={() => setBulkDeleteConfirm(false)} disabled={bulkDeleting}>
+              Cancel
+            </Button>
+            <Button type="button" variant="danger" onClick={executeBulkDelete} disabled={bulkDeleting}>
+              {bulkDeleting ? "Removing..." : <><Trash2 size={15} /> Remove Selected</>}
             </Button>
           </div>
         </div>

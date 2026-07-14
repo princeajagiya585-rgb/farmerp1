@@ -46,6 +46,7 @@ export default function CrudResource({
   showEmployeeFilter, // show employee dropdown filter
   showUserFilter, // show user dropdown filter
   showBuyerFilter, // show buyer text filter
+  selectable, // show per-row checkboxes + bulk delete (super admin only)
 }) {
   const { t, i18n } = useTranslation();
   const { hasRole, user } = useAuth();
@@ -56,6 +57,10 @@ export default function CrudResource({
   const repo = resource(path);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Multi-select (bulk delete) state — only used when `selectable` is set.
+  const showSelect = selectable && canDelete;
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -354,6 +359,47 @@ export default function CrudResource({
     }
   };
 
+  // Clear the selection whenever the visible rows change (new page / filter / reload)
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [rows]);
+
+  const toggleRow = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.id));
+
+  const toggleAll = () => {
+    setSelectedIds((prev) => {
+      if (rows.length > 0 && rows.every((r) => prev.has(r.id))) return new Set();
+      return new Set(rows.map((r) => r.id));
+    });
+  };
+
+  const bulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(t("crud.confirmBulkDelete", { count: selectedIds.size }))) return;
+    setBulkDeleting(true);
+    setError("");
+    try {
+      for (const id of selectedIds) {
+        await repo.remove(id);
+      }
+      setSelectedIds(new Set());
+      load();
+    } catch (e) {
+      setError(formatApiError(e, t("crud.saveFailed")));
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   // Build a total row object from footer column sums
   const buildTotalRow = (dataRows, footerCols) => {
     const totals = {};
@@ -594,6 +640,14 @@ export default function CrudResource({
             </div>
           )}
           {extraToolbar}
+          {showSelect && selectedIds.size > 0 && (
+            <Button variant="danger" disabled={bulkDeleting} onClick={bulkDelete}>
+              <Trash2 size={15} />
+              {bulkDeleting
+                ? t("crud.deleting", "Removing…")
+                : t("crud.removeSelected", { count: selectedIds.size })}
+            </Button>
+          )}
           <div className="flex items-center gap-3 ml-auto">
             {refreshInterval && (
               <span className="hidden sm:inline-flex items-center gap-1.5 text-xs text-gray-500">
@@ -638,6 +692,11 @@ export default function CrudResource({
             footerColumns={footerColumns}
             totalLabel={t("common.total")}
             renderFooter={renderFooter}
+            selectable={showSelect}
+            selectedIds={selectedIds}
+            onToggleRow={toggleRow}
+            onToggleAll={toggleAll}
+            allSelected={allSelected}
           />
         )}
 

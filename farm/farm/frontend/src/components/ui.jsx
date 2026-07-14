@@ -207,7 +207,8 @@ export function Modal({ open, onClose, title, children, width = "max-w-lg" }) {
   );
 }
 
-export function Table({ columns, rows, empty = "No records found.", rowClassName, footerColumns = [], totalLabel = "Total", renderFooter }) {
+export function Table({ columns, rows, empty = "No records found.", rowClassName, footerColumns = [], totalLabel = "Total", renderFooter, selectable = false, selectedIds, onToggleRow, onToggleAll, allSelected = false }) {
+  const isSelected = (row) => (selectedIds ? selectedIds.has(row.id) : false);
   // Calculate totals for footer columns
   const calculateTotals = () => {
     const totals = {};
@@ -251,8 +252,16 @@ export function Table({ columns, rows, empty = "No records found.", rowClassName
                 }`}
               >
                 {/* First column as the card title */}
-                <div className="mb-2 border-b border-gray-100 pb-2 text-base font-semibold text-gray-800">
-                  {first.render ? first.render(row) : row[first.key] ?? "—"}
+                <div className="mb-2 flex items-center gap-2 border-b border-gray-100 pb-2 text-base font-semibold text-gray-800">
+                  {selectable && (
+                    <input
+                      type="checkbox"
+                      checked={isSelected(row)}
+                      onChange={() => onToggleRow?.(row.id)}
+                      className="h-4 w-4 shrink-0 cursor-pointer rounded border-gray-300 accent-brand-600"
+                    />
+                  )}
+                  <span className="min-w-0 flex-1">{first.render ? first.render(row) : row[first.key] ?? "—"}</span>
                 </div>
                 <dl className="grid grid-cols-1 gap-x-4 gap-y-2">
                   {rest.map((c) => (
@@ -299,6 +308,17 @@ export function Table({ columns, rows, empty = "No records found.", rowClassName
       <table className="w-full text-left text-sm">
         <thead>
           <tr className="border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100/80 text-xs uppercase tracking-wider text-gray-500">
+            {selectable && (
+              <th className="w-10 rounded-tl-xl px-4 py-3.5">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={onToggleAll}
+                  className="h-4 w-4 cursor-pointer rounded border-gray-300 accent-brand-600"
+                  title="Select all"
+                />
+              </th>
+            )}
             {columns.map((c, i) => (
               <th
                 key={c.key}
@@ -316,7 +336,7 @@ export function Table({ columns, rows, empty = "No records found.", rowClassName
         <tbody className="divide-y divide-gray-100">
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="px-4 py-16 text-center">
+              <td colSpan={columns.length + (selectable ? 1 : 0)} className="px-4 py-16 text-center">
                 <div className="flex flex-col items-center gap-2">
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-300">
                     <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -336,6 +356,16 @@ export function Table({ columns, rows, empty = "No records found.", rowClassName
                   rowClassName ? rowClassName(row) : ""
                 }`}
               >
+                {selectable && (
+                  <td className="w-10 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={isSelected(row)}
+                      onChange={() => onToggleRow?.(row.id)}
+                      className="h-4 w-4 cursor-pointer rounded border-gray-300 accent-brand-600"
+                    />
+                  </td>
+                )}
                 {columns.map((c) => (
                   <td key={c.key} className="whitespace-nowrap px-4 py-3 text-gray-700 group-hover:text-gray-900">
                     {c.render ? c.render(row) : row[c.key] ?? "—"}
@@ -350,6 +380,7 @@ export function Table({ columns, rows, empty = "No records found.", rowClassName
         ) : footerColumns.length > 0 && rows.length > 0 && (
           <tfoot>
             <tr className="border-t-2 border-brand-200 bg-gradient-to-r from-brand-50 to-brand-100/60 font-bold text-gray-800">
+              {selectable && <td className="px-4 py-3" />}
               {columns.map((c, i) => (
                 <td key={c.key} className={`px-4 py-3 ${
                   i === 0 ? "rounded-bl-xl" : ""

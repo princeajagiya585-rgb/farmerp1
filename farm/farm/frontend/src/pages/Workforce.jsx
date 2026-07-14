@@ -279,6 +279,7 @@ export default function Workforce() {
         subtitle={t("workforce.monthlyEmployeesSub")}
         path="workforce/employees"
         canWrite={canWrite}
+        selectable
         showFarmFilter
         listParams={monthlyParams}
         defaultValues={{ employee_code: newCode(), wage_type: "MONTHLY" }}
@@ -295,6 +296,7 @@ export default function Workforce() {
           subtitle={t("workforce.hourlyEmployeesSub")}
           path="workforce/employees"
           canWrite={canWrite}
+          selectable
           showFarmFilter
           listParams={hourlyParams}
           defaultValues={{ employee_code: newCode(), wage_type: "HOURLY" }}
