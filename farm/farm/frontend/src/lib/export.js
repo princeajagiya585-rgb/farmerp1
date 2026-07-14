@@ -1,5 +1,7 @@
 // Client-side export helpers — CSV (plain) and Excel (.xlsx via SheetJS).
-import * as XLSX from "xlsx";
+// SheetJS is ~1MB minified, so it is loaded on demand (first Excel download)
+// instead of being bundled into the initial page load.
+const loadXLSX = () => import("xlsx");
 
 function cell(value) {
   if (value == null) return "";
@@ -53,7 +55,8 @@ function downloadBlob(blob, filename) {
  * @param {string} filename  (e.g. "field-activities.xlsx")
  * @param {string} [sheetName="Data"]
  */
-export function exportExcel(rows, columns, filename = "export.xlsx", sheetName = "Data") {
+export async function exportExcel(rows, columns, filename = "export.xlsx", sheetName = "Data") {
+  const XLSX = await loadXLSX();
   const cols = columns.filter((c) => c.key !== "_actions");
   const header = cols.map((c) => c.header);
   const data = rows.map((r) =>
@@ -121,7 +124,8 @@ function extractText(vnode) {
  * @param {string} filename - e.g. "analysis.xlsx"
  * @param {string} [title="Data"]
  */
-export function exportExcelMultiSheet(data, filename = "export.xlsx", title = "Data") {
+export async function exportExcelMultiSheet(data, filename = "export.xlsx", title = "Data") {
+  const XLSX = await loadXLSX();
   const wb = XLSX.utils.book_new();
 
   data.forEach((sheet) => {

@@ -196,11 +196,11 @@ export default function Dashboard() {
   loadDashboard();
 
   if (!pollingRef.current) {
-    const base = 120000;
+    const base = 300000;
     const jitter = Math.floor(Math.random() * base * 0.4) - Math.floor(base * 0.2); // ±20%
     pollingRef.current = setInterval(() => {
       loadDashboard(0);
-    }, base + jitter); // ~2 minutes with jitter
+    }, base + jitter); // ~5 minutes with jitter — the dashboard endpoint is heavy
   }
 
   return () => {
@@ -388,9 +388,9 @@ function KpiCard({ icon: Icon, iconBg, iconFg, title, value, sub, to }) {
 
 // Shared fetch for the Balance Sheet + Farm-wise panels: all approved expenses
 // and revenue entries, filtered client-side by farm/year/month inside each
-// panel. Re-fetches every 2 minutes and whenever the tab regains focus, so
-// records deleted elsewhere in the app disappear from the dashboard on their
-// own — no manual reload needed.
+// panel. Loads once per visit and re-fetches when the tab regains focus, so
+// records deleted elsewhere disappear without hammering the backend on a
+// timer (navigating back to the dashboard also remounts and reloads).
 function useFinanceRows() {
   const [rows, setRows] = useState({ expenses: [], revenues: [], loading: true });
   useEffect(() => {
@@ -412,12 +412,10 @@ function useFinanceRows() {
         .catch(() => alive && setRows((r) => ({ ...r, loading: false })));
     };
     load();
-    const id = setInterval(load, 120000);
     const onFocus = () => load();
     window.addEventListener("focus", onFocus);
     return () => {
       alive = false;
-      clearInterval(id);
       window.removeEventListener("focus", onFocus);
     };
   }, []);
@@ -487,14 +485,11 @@ function PayrollByEmployeePanel() {
 
   useEffect(() => {
     let alive = true;
-    const load = () =>
-      resource("payroll/payments")
-        .list({ page_size: 10000 })
-        .then((d) => alive && setPayments(Array.isArray(d) ? d : d.results || []))
-        .catch(() => alive && setPayments((p) => p || []));
-    load();
-    const id = setInterval(load, 120000);
-    return () => { alive = false; clearInterval(id); };
+    resource("payroll/payments")
+      .list({ page_size: 10000 })
+      .then((d) => alive && setPayments(Array.isArray(d) ? d : d.results || []))
+      .catch(() => alive && setPayments((p) => p || []));
+    return () => { alive = false; };
   }, []);
 
   const list = payments || [];

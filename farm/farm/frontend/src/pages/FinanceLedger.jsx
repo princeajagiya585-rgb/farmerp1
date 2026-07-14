@@ -1,5 +1,4 @@
 import { useTranslation } from "react-i18next";
-import * as XLSX from "xlsx";
 import CrudResource from "../components/CrudResource";
 import { Badge } from "../components/ui";
 import { resource } from "../lib/api";
@@ -113,6 +112,8 @@ export default function FinanceLedger() {
   const extraToolbar = (
     <button
       onClick={async () => {
+        // SheetJS is loaded on demand so it doesn't weigh down the page load.
+        const XLSX = await import("xlsx");
         let allRows = [];
         try {
           const data = await repo.list({ page_size: 10000 });

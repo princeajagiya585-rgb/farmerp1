@@ -172,7 +172,11 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ["react", "react-dom", "react-router-dom"],
-          ui: ["lucide-react", "recharts", "xlsx"],
+          // icons load with the shell; recharts only with pages that chart.
+          // xlsx is dynamically imported (lib/export.js) so rollup gives it
+          // its own lazy chunk — do NOT list it here or it turns eager.
+          icons: ["lucide-react"],
+          charts: ["recharts"],
           maps: ["leaflet", "react-leaflet", "@react-google-maps/api"],
           i18n: ["i18next", "react-i18next", "i18next-browser-languagedetector"],
         },

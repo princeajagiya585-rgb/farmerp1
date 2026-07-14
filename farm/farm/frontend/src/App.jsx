@@ -1,78 +1,109 @@
+import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import FarmsAndFields from "./pages/FarmsAndFields";
-import Assets from "./pages/Assets";
-import Equipment from "./pages/Equipment";
-import AssetMaintenance from "./pages/AssetMaintenance";
-import Workforce from "./pages/Workforce";
-import WorkerDetail from "./pages/WorkerDetail";
-import Departments from "./pages/Departments";
-import Skills from "./pages/Skills";
-import EmploymentHistory from "./pages/EmploymentHistory";
-import LabourAllocation from "./pages/LabourAllocation";
-import Performance from "./pages/Performance";
-import AvailabilityPage from "./pages/Availability";
-import AttendanceReports from "./pages/AttendanceReports";
-import WorkforceMonitor from "./pages/WorkforceMonitor";
-import Attendance from "./pages/Attendance";
-import Payroll from "./pages/Payroll";
-import PayrollAdvances from "./pages/PayrollAdvances";
-import PayrollPayments from "./pages/PayrollPayments";
-import PayrollReports from "./pages/PayrollReports";
-import Tasks from "./pages/Tasks";
-import TaskScheduling from "./pages/TaskScheduling";
-import DailyTaskReport from "./pages/DailyTaskReport";
-import TaskMonitor from "./pages/TaskMonitor";
-import TimeTrackingReports from "./pages/TimeTrackingReports";
-import Agronomy from "./pages/Agronomy";
-import AgronomyObservations from "./pages/AgronomyObservations";
-import AgronomyInputs from "./pages/AgronomyInputs";
-import AgronomyGrowth from "./pages/AgronomyGrowth";
-import AgronomyHarvest from "./pages/AgronomyHarvest";
-import AgronomyPlantation from "./pages/AgronomyPlantation";
-import AgronomyAnalysis from "./pages/AgronomyAnalysis";
-import CropMonitoring from "./pages/CropMonitoring";
-import Inventory from "./pages/Inventory";
-import InventoryMovements from "./pages/InventoryMovements";
-import InventoryAlerts from "./pages/InventoryAlerts";
-import InventoryReports from "./pages/InventoryReports";
-import Documents from "./pages/Documents";
-import DocumentVersions from "./pages/DocumentVersions";
-import Finance from "./pages/Finance";
-import FinanceSales from "./pages/FinanceSales";
-import FinancePurchases from "./pages/FinancePurchases";
-import FinancePayments from "./pages/FinancePayments";
-import FinanceCostCenters from "./pages/FinanceCostCenters";
-import FinanceBudgets from "./pages/FinanceBudgets";
-import FinanceLedger from "./pages/FinanceLedger";
-import FinanceReports from "./pages/FinanceReports";
-import GPS from "./pages/GPS";
-import GpsActivities from "./pages/GpsActivities";
-import RouteTracking from "./pages/RouteTracking";
-import Geofences from "./pages/Geofences";
-import GpsMonitor from "./pages/GpsMonitor";
-import Breakdowns from "./pages/Breakdowns";
-import Reports from "./pages/Reports";
-import Users from "./pages/Users";
-import DeletedUsers from "./pages/DeletedUsers";
-import AuditLogs from "./pages/AuditLogs";
-import Notifications from "./pages/Notifications";
-import NotificationSettings from "./pages/NotificationSettings";
-import Profile from "./pages/Profile";
-import CropDetail from "./pages/CropDetail";
-import CropAllocation from "./pages/CropAllocation";
-import FarmDashboard from "./pages/FarmDashboard";
-import FarmDetail from "./pages/FarmDetail";
-import NotFound from "./pages/NotFound";
+// Every page is lazy-loaded into its own chunk so the first paint only ships
+// the app shell + the page being visited, instead of all ~65 pages at once.
+// If a deploy replaced the hashed chunk files while a tab was open, the
+// dynamic import fails — reload once to pick up the fresh build.
+const lazyLoad = (importer) =>
+  lazy(() =>
+    importer()
+      .then((m) => {
+        sessionStorage.removeItem("chunk-reload");
+        return m;
+      })
+      .catch((err) => {
+        if (!sessionStorage.getItem("chunk-reload")) {
+          sessionStorage.setItem("chunk-reload", "1");
+          window.location.reload();
+          return new Promise(() => {}); // page is reloading
+        }
+        throw err;
+      })
+  );
+
+const Login = lazyLoad(() => import("./pages/Login"));
+const Dashboard = lazyLoad(() => import("./pages/Dashboard"));
+const FarmsAndFields = lazyLoad(() => import("./pages/FarmsAndFields"));
+const Assets = lazyLoad(() => import("./pages/Assets"));
+const Equipment = lazyLoad(() => import("./pages/Equipment"));
+const AssetMaintenance = lazyLoad(() => import("./pages/AssetMaintenance"));
+const Workforce = lazyLoad(() => import("./pages/Workforce"));
+const WorkerDetail = lazyLoad(() => import("./pages/WorkerDetail"));
+const Departments = lazyLoad(() => import("./pages/Departments"));
+const Skills = lazyLoad(() => import("./pages/Skills"));
+const EmploymentHistory = lazyLoad(() => import("./pages/EmploymentHistory"));
+const LabourAllocation = lazyLoad(() => import("./pages/LabourAllocation"));
+const Performance = lazyLoad(() => import("./pages/Performance"));
+const AvailabilityPage = lazyLoad(() => import("./pages/Availability"));
+const AttendanceReports = lazyLoad(() => import("./pages/AttendanceReports"));
+const WorkforceMonitor = lazyLoad(() => import("./pages/WorkforceMonitor"));
+const Attendance = lazyLoad(() => import("./pages/Attendance"));
+const Payroll = lazyLoad(() => import("./pages/Payroll"));
+const PayrollAdvances = lazyLoad(() => import("./pages/PayrollAdvances"));
+const PayrollPayments = lazyLoad(() => import("./pages/PayrollPayments"));
+const PayrollReports = lazyLoad(() => import("./pages/PayrollReports"));
+const Tasks = lazyLoad(() => import("./pages/Tasks"));
+const TaskScheduling = lazyLoad(() => import("./pages/TaskScheduling"));
+const DailyTaskReport = lazyLoad(() => import("./pages/DailyTaskReport"));
+const TaskMonitor = lazyLoad(() => import("./pages/TaskMonitor"));
+const TimeTrackingReports = lazyLoad(() => import("./pages/TimeTrackingReports"));
+const Agronomy = lazyLoad(() => import("./pages/Agronomy"));
+const AgronomyObservations = lazyLoad(() => import("./pages/AgronomyObservations"));
+const AgronomyInputs = lazyLoad(() => import("./pages/AgronomyInputs"));
+const AgronomyGrowth = lazyLoad(() => import("./pages/AgronomyGrowth"));
+const AgronomyHarvest = lazyLoad(() => import("./pages/AgronomyHarvest"));
+const AgronomyPlantation = lazyLoad(() => import("./pages/AgronomyPlantation"));
+const AgronomyAnalysis = lazyLoad(() => import("./pages/AgronomyAnalysis"));
+const CropMonitoring = lazyLoad(() => import("./pages/CropMonitoring"));
+const Inventory = lazyLoad(() => import("./pages/Inventory"));
+const InventoryMovements = lazyLoad(() => import("./pages/InventoryMovements"));
+const InventoryAlerts = lazyLoad(() => import("./pages/InventoryAlerts"));
+const InventoryReports = lazyLoad(() => import("./pages/InventoryReports"));
+const Documents = lazyLoad(() => import("./pages/Documents"));
+const DocumentVersions = lazyLoad(() => import("./pages/DocumentVersions"));
+const Finance = lazyLoad(() => import("./pages/Finance"));
+const FinanceSales = lazyLoad(() => import("./pages/FinanceSales"));
+const FinancePurchases = lazyLoad(() => import("./pages/FinancePurchases"));
+const FinancePayments = lazyLoad(() => import("./pages/FinancePayments"));
+const FinanceCostCenters = lazyLoad(() => import("./pages/FinanceCostCenters"));
+const FinanceBudgets = lazyLoad(() => import("./pages/FinanceBudgets"));
+const FinanceLedger = lazyLoad(() => import("./pages/FinanceLedger"));
+const FinanceReports = lazyLoad(() => import("./pages/FinanceReports"));
+const GPS = lazyLoad(() => import("./pages/GPS"));
+const GpsActivities = lazyLoad(() => import("./pages/GpsActivities"));
+const RouteTracking = lazyLoad(() => import("./pages/RouteTracking"));
+const Geofences = lazyLoad(() => import("./pages/Geofences"));
+const GpsMonitor = lazyLoad(() => import("./pages/GpsMonitor"));
+const Breakdowns = lazyLoad(() => import("./pages/Breakdowns"));
+const Reports = lazyLoad(() => import("./pages/Reports"));
+const Users = lazyLoad(() => import("./pages/Users"));
+const DeletedUsers = lazyLoad(() => import("./pages/DeletedUsers"));
+const AuditLogs = lazyLoad(() => import("./pages/AuditLogs"));
+const Notifications = lazyLoad(() => import("./pages/Notifications"));
+const NotificationSettings = lazyLoad(() => import("./pages/NotificationSettings"));
+const Profile = lazyLoad(() => import("./pages/Profile"));
+const CropDetail = lazyLoad(() => import("./pages/CropDetail"));
+const CropAllocation = lazyLoad(() => import("./pages/CropAllocation"));
+const FarmDashboard = lazyLoad(() => import("./pages/FarmDashboard"));
+const FarmDetail = lazyLoad(() => import("./pages/FarmDetail"));
+const NotFound = lazyLoad(() => import("./pages/NotFound"));
 
 const R = (roles, el) => <ProtectedRoute roles={roles}>{el}</ProtectedRoute>;
 
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center py-20">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-200 border-t-brand-600" />
+    </div>
+  );
+}
+
 export default function App() {
   return (
+    <Suspense fallback={<PageLoader />}>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route
@@ -149,5 +180,6 @@ export default function App() {
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </Suspense>
   );
 }
