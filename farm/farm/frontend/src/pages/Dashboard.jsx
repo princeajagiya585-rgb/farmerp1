@@ -7,17 +7,19 @@ import {
   TrendingUp, TrendingDown, CalendarCheck, LayoutGrid, Coins, UserMinus, Plane, Download,
 } from "lucide-react";
 import {
-  ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from "recharts";
-import { api } from "../lib/api";
+import { api, resource } from "../lib/api";
 import { exportExcel } from "../lib/export";
 import { useAuth } from "../context/AuthContext";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const CAT_COLORS = ["#22c55e", "#3b82f6", "#8b5cf6", "#f59e0b", "#06b6d4", "#ef4444", "#94a3b8", "#ec4899", "#14b8a6"];
 const inr = (v) => `₹${Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
-const pctText = (p) => (p == null ? "" : `${p >= 0 ? "▲" : "▼"} ${Math.abs(p)}% vs last year`);
+// "CROP_SALE" → "Crop Sale" for readable category labels
+const prettyLabel = (s) =>
+  String(s || "OTHER").replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 
 const ALL_ROLES = ["SUPER_ADMIN", "FARM_MANAGER", "EMPLOYEE"];
 const FM = "FARM_MANAGER";
@@ -359,7 +361,6 @@ function DashboardOverview({ kpi }) {
   const years = Object.keys(monthly).sort((a, b) => Number(b) - Number(a));
   const defaultYear = years[0] || String(new Date().getFullYear());
   const [lineYear, setLineYear] = useState(defaultYear);
-  const [barYear, setBarYear] = useState(defaultYear);
 
   const kpis = [
     { icon: Tractor, iconBg: "bg-emerald-50", iconFg: "text-emerald-600", title: "Total Farms", value: fk.total_farms ?? 0, sub: `Active ${fk.total_farms ?? 0}` },
@@ -378,15 +379,14 @@ function DashboardOverview({ kpi }) {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <FinancialSummaryPanel fin={fin} monthly={monthly} years={years} year={lineYear} setYear={setLineYear} />
+        <FinancialSummaryPanel monthly={monthly} years={years} year={lineYear} setYear={setLineYear} />
         <VarshikHishabPanel yearly={fin.yearly ?? []} />
         <ExpenseCategoryPanel fin={fin} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <BalanceSheetPanel farms={kpi.farms || []} />
         <FarmWisePanel fin={fin} />
-        <MonthlyCashFlowPanel monthly={monthly} years={years} year={barYear} setYear={setBarYear} />
-        <TopExpensesPanel fin={fin} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -465,18 +465,17 @@ function PayrollByEmployeePanel({ kpi }) {
   );
 }
 
-function FinancialSummaryPanel({ fin, monthly, years, year, setYear }) {
+function FinancialSummaryPanel({ monthly, years, year, setYear }) {
   const data = (monthly[year] || []).map((m) => ({
     name: MONTHS[m.month - 1], Expenses: m.expenses, Revenue: m.revenue, Net: m.revenue - m.expenses,
   }));
   return (
-    <Panel title="Financial Summary (This Year)" action={<YearSelect years={years} value={year} onChange={setYear} />}>
-      <div className="mb-3 grid grid-cols-3 gap-2 text-center">
-        <div><p className="text-[10px] text-gray-400">Total Expenses</p><p className="text-sm font-bold text-rose-600">{inr(fin.this_year_expenses)}</p><p className="text-[9px] text-gray-400">{pctText(fin.expenses_change_pct)}</p></div>
-        <div><p className="text-[10px] text-gray-400">Total Revenue</p><p className="text-sm font-bold text-emerald-600">{inr(fin.this_year_revenue)}</p><p className="text-[9px] text-gray-400">{pctText(fin.revenue_change_pct)}</p></div>
-        <div><p className="text-[10px] text-gray-400">Net Profit</p><p className="text-sm font-bold text-blue-600">{inr(fin.this_year_net)}</p><p className="text-[9px] text-gray-400">{pctText(fin.net_change_pct)}</p></div>
-      </div>
-      <ResponsiveContainer width="100%" height={200}>
+    <Panel
+      title="Monthly Trend (Revenue vs Expenses)"
+      subtitle="Month-by-month movement for the selected year"
+      action={<YearSelect years={years} value={year} onChange={setYear} />}
+    >
+      <ResponsiveContainer width="100%" height={230}>
         <LineChart data={data} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
           <XAxis dataKey="name" tick={{ fontSize: 10 }} />
@@ -556,9 +555,12 @@ function ExpenseCategoryPanel({ fin }) {
                 <div key={i} className="flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5 truncate text-gray-600">
                     <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: CAT_COLORS[i % CAT_COLORS.length] }} />
-                    <span className="truncate">{c.name}</span>
+                    <span className="truncate">{prettyLabel(c.name)}</span>
                   </span>
-                  <span className="ml-1 shrink-0 font-semibold text-gray-700">{total ? ((c.value / total) * 100).toFixed(1) : 0}%</span>
+                  <span className="ml-1 shrink-0 text-right">
+                    <span className="font-semibold text-gray-700">{inr(c.value)}</span>
+                    <span className="ml-1 text-[10px] text-gray-400">{total ? ((c.value / total) * 100).toFixed(1) : 0}%</span>
+                  </span>
                 </div>
               ))}
             </div>
@@ -653,52 +655,165 @@ function FarmWisePanel({ fin }) {
   );
 }
 
-function MonthlyCashFlowPanel({ monthly, years, year, setYear }) {
-  const data = (monthly[year] || []).map((m) => ({ name: MONTHS[m.month - 1], Expenses: m.expenses, Revenue: m.revenue }));
-  return (
-    <Panel title="Monthly Cash Flow (This Year)" action={<YearSelect years={years} value={year} onChange={setYear} />}>
-      <ResponsiveContainer width="100%" height={230}>
-        <BarChart data={data} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-          <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-          <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}K` : v)} />
-          <Tooltip formatter={(v) => inr(v)} />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
-          <Bar dataKey="Expenses" fill="#ef4444" radius={[3, 3, 0, 0]} />
-          <Bar dataKey="Revenue" fill="#22c55e" radius={[3, 3, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </Panel>
-  );
-}
+// ── Farm-wise Balance Sheet ──────────────────────────────────────────────
+// Debit side = approved expenses grouped by category, Credit side = revenue
+// grouped by category. Own farm + year selectors, independent of the global
+// dashboard scope, so any farm's sheet can be checked without reloading.
+function BalanceSheetPanel({ farms }) {
+  const currentYear = String(new Date().getFullYear());
+  const [farm, setFarm] = useState("");
+  const [year, setYear] = useState(currentYear);
+  const [raw, setRaw] = useState({ expenses: [], revenues: [] });
+  const [loading, setLoading] = useState(false);
 
-function TopExpensesPanel({ fin }) {
-  const all = fin.expenses_by_category || [];
-  const total = all.reduce((s, c) => s + Number(c.total || 0), 0);
-  const cats = all.slice(0, 5);
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    const params = { page_size: 10000, ...(farm ? { farm } : {}) };
+    Promise.all([
+      resource("finance/expenses").list({ ...params, status: "APPROVED" }),
+      resource("finance/revenues").list(params),
+    ])
+      .then(([exp, rev]) => {
+        if (!alive) return;
+        setRaw({
+          expenses: Array.isArray(exp) ? exp : exp.results || [],
+          revenues: Array.isArray(rev) ? rev : rev.results || [],
+        });
+      })
+      .catch(() => alive && setRaw({ expenses: [], revenues: [] }))
+      .finally(() => alive && setLoading(false));
+    return () => { alive = false; };
+  }, [farm]);
+
+  const inYear = (r) => year === "ALL" || String(r.date || "").startsWith(`${year}-`);
+  const groupByCategory = (list) => {
+    const map = new Map();
+    list.filter(inYear).forEach((r) => {
+      const key = r.category || "OTHER";
+      map.set(key, (map.get(key) || 0) + Number(r.amount || 0));
+    });
+    return [...map.entries()]
+      .map(([category, total]) => ({ category, total }))
+      .sort((a, b) => b.total - a.total);
+  };
+
+  const debits = groupByCategory(raw.expenses);
+  const credits = groupByCategory(raw.revenues);
+  const debitTotal = debits.reduce((s, r) => s + r.total, 0);
+  const creditTotal = credits.reduce((s, r) => s + r.total, 0);
+  const balance = creditTotal - debitTotal;
+
+  const yearSet = new Set([currentYear]);
+  [...raw.expenses, ...raw.revenues].forEach((r) => {
+    const y = String(r.date || "").slice(0, 4);
+    if (/^\d{4}$/.test(y)) yearSet.add(y);
+  });
+  const years = [...yearSet].sort((a, b) => Number(b) - Number(a));
+
+  const maxRows = Math.max(debits.length, credits.length);
+  const farmName = farm ? (farms.find((f) => String(f.id) === String(farm))?.name || "") : "All Farms";
+
+  const download = () => {
+    const data = [];
+    for (let i = 0; i < maxRows; i++) {
+      data.push({
+        debit_category: debits[i] ? prettyLabel(debits[i].category) : "",
+        debit_amount: debits[i] ? debits[i].total : "",
+        credit_category: credits[i] ? prettyLabel(credits[i].category) : "",
+        credit_amount: credits[i] ? credits[i].total : "",
+      });
+    }
+    data.push({ debit_category: "Total Debit", debit_amount: debitTotal, credit_category: "Total Credit", credit_amount: creditTotal });
+    data.push({ debit_category: "Balance", debit_amount: balance >= 0 ? "CREDIT" : "DEBIT", credit_category: "", credit_amount: Math.abs(balance) });
+    exportExcel(
+      data,
+      [
+        { key: "debit_category", header: "Debit (Expense Category)" },
+        { key: "debit_amount", header: "Debit Amount" },
+        { key: "credit_category", header: "Credit (Revenue Category)" },
+        { key: "credit_amount", header: "Credit Amount" },
+      ],
+      `balance-sheet-${farmName.replace(/\s+/g, "-").toLowerCase()}-${year}.xlsx`,
+      "Balance Sheet",
+    );
+  };
+
   return (
-    <Panel title="Top Expenses (This Year)">
-      {cats.length === 0 ? (
-        <p className="py-6 text-center text-xs text-gray-400">No expenses</p>
+    <Panel
+      title="Balance Sheet (Farm wise)"
+      subtitle="Category-wise Debit (expenses) vs Credit (revenue)"
+      className="lg:col-span-2"
+      action={
+        <div className="flex items-center gap-2">
+          <select
+            value={farm}
+            onChange={(e) => setFarm(e.target.value)}
+            className="rounded-lg border border-gray-300 px-2 py-1 text-xs text-gray-600 outline-none focus:border-brand-500"
+          >
+            <option value="">All Farms</option>
+            {farms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+          <select
+            value={year}
+            onChange={(e) => setYear(e.target.value)}
+            className="rounded-lg border border-gray-300 px-2 py-1 text-xs text-gray-600 outline-none focus:border-brand-500"
+          >
+            <option value="ALL">All Years</option>
+            {years.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <button
+            onClick={download}
+            title="Download balance sheet"
+            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 hover:text-brand-600"
+          >
+            <Download size={13} /> Excel
+          </button>
+        </div>
+      }
+    >
+      {loading ? (
+        <p className="py-8 text-center text-xs text-gray-400">Loading…</p>
+      ) : maxRows === 0 ? (
+        <p className="py-8 text-center text-xs text-gray-400">No entries for {farmName} ({year === "ALL" ? "all years" : year})</p>
       ) : (
-        <div className="space-y-2.5">
-          {cats.map((c, i) => {
-            const pct = total ? (Number(c.total) / total) * 100 : 0;
-            return (
-              <div key={i}>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-1.5 font-medium text-gray-700">
-                    <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: CAT_COLORS[i % CAT_COLORS.length] }} />
-                    {c.category}
-                  </span>
-                  <span className="font-bold text-gray-800">{inr(c.total)}<span className="ml-1 text-[10px] font-normal text-gray-400">{pct.toFixed(1)}%</span></span>
-                </div>
-                <div className="mt-1 h-1.5 w-full rounded-full bg-gray-100">
-                  <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, background: CAT_COLORS[i % CAT_COLORS.length] }} />
-                </div>
-              </div>
-            );
-          })}
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-wide">
+                <th className="rounded-tl-lg bg-rose-50 py-1.5 pl-2 text-left text-rose-600" colSpan={2}>Debit (Kharch)</th>
+                <th className="rounded-tr-lg bg-emerald-50 py-1.5 pl-2 text-left text-emerald-600" colSpan={2}>Credit (Aavak)</th>
+              </tr>
+              <tr className="text-[10px] uppercase tracking-wide text-gray-400">
+                <th className="py-1 pl-2 text-left">Category</th>
+                <th className="py-1 pr-2 text-right">Amount</th>
+                <th className="border-l border-gray-100 py-1 pl-2 text-left">Category</th>
+                <th className="py-1 pr-2 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: maxRows }, (_, i) => (
+                <tr key={i} className="border-t border-gray-100">
+                  <td className="py-1.5 pl-2 font-medium text-gray-700">{debits[i] ? prettyLabel(debits[i].category) : ""}</td>
+                  <td className="py-1.5 pr-2 text-right font-semibold text-rose-600">{debits[i] ? inr(debits[i].total) : ""}</td>
+                  <td className="border-l border-gray-100 py-1.5 pl-2 font-medium text-gray-700">{credits[i] ? prettyLabel(credits[i].category) : ""}</td>
+                  <td className="py-1.5 pr-2 text-right font-semibold text-emerald-600">{credits[i] ? inr(credits[i].total) : ""}</td>
+                </tr>
+              ))}
+              <tr className="border-t-2 border-gray-200 font-bold">
+                <td className="py-2 pl-2 text-gray-800">Total Debit</td>
+                <td className="py-2 pr-2 text-right text-rose-600">{inr(debitTotal)}</td>
+                <td className="border-l border-gray-100 py-2 pl-2 text-gray-800">Total Credit</td>
+                <td className="py-2 pr-2 text-right text-emerald-600">{inr(creditTotal)}</td>
+              </tr>
+              <tr className={`font-bold ${balance >= 0 ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>
+                <td className="rounded-bl-lg py-2 pl-2" colSpan={2}>
+                  Balance ({balance >= 0 ? "Credit" : "Debit"}) — {farmName}
+                </td>
+                <td className="rounded-br-lg py-2 pr-2 text-right text-sm" colSpan={2}>{inr(Math.abs(balance))}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       )}
     </Panel>
