@@ -353,11 +353,47 @@ function KpiCard({ icon: Icon, iconBg, iconFg, title, value, sub }) {
   );
 }
 
+// Shared fetch for the Balance Sheet + Farm-wise panels: all approved expenses
+// and revenue entries, filtered client-side by farm/year inside each panel.
+function useFinanceRows() {
+  const [rows, setRows] = useState({ expenses: [], revenues: [], loading: true });
+  useEffect(() => {
+    let alive = true;
+    const params = { page_size: 10000 };
+    Promise.all([
+      resource("finance/expenses").list({ ...params, status: "APPROVED" }),
+      resource("finance/revenues").list(params),
+    ])
+      .then(([exp, rev]) => {
+        if (!alive) return;
+        setRows({
+          expenses: Array.isArray(exp) ? exp : exp.results || [],
+          revenues: Array.isArray(rev) ? rev : rev.results || [],
+          loading: false,
+        });
+      })
+      .catch(() => alive && setRows({ expenses: [], revenues: [], loading: false }));
+    return () => { alive = false; };
+  }, []);
+  return rows;
+}
+
+// Distinct years (desc) present in the rows' dates, always including this year.
+function yearsFromRows(...lists) {
+  const set = new Set([String(new Date().getFullYear())]);
+  lists.flat().forEach((r) => {
+    const y = String(r.date || "").slice(0, 4);
+    if (/^\d{4}$/.test(y)) set.add(y);
+  });
+  return [...set].sort((a, b) => Number(b) - Number(a));
+}
+
 function DashboardOverview({ kpi }) {
   const fk = kpi.farm_kpis ?? {};
   const wk = kpi.workforce_kpis ?? {};
   const fin = kpi.financial_kpis ?? {};
   const monthly = fin.monthly ?? {};
+  const finRows = useFinanceRows();
   const years = Object.keys(monthly).sort((a, b) => Number(b) - Number(a));
   const defaultYear = years[0] || String(new Date().getFullYear());
   const [lineYear, setLineYear] = useState(defaultYear);
@@ -380,14 +416,11 @@ function DashboardOverview({ kpi }) {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <FinancialSummaryPanel monthly={monthly} years={years} year={lineYear} setYear={setLineYear} />
-        <VarshikHishabPanel yearly={fin.yearly ?? []} />
         <ExpenseCategoryPanel fin={fin} />
+        <FarmWisePanel farms={kpi.farms || []} finRows={finRows} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <BalanceSheetPanel farms={kpi.farms || []} />
-        <FarmWisePanel fin={fin} />
-      </div>
+      <BalanceSheetPanel farms={kpi.farms || []} finRows={finRows} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <HrOverviewPanel wk={wk} />
@@ -491,44 +524,6 @@ function FinancialSummaryPanel({ monthly, years, year, setYear }) {
   );
 }
 
-function VarshikHishabPanel({ yearly }) {
-  const tExp = yearly.reduce((s, y) => s + Number(y.expenses || 0), 0);
-  const tRev = yearly.reduce((s, y) => s + Number(y.revenue || 0), 0);
-  const tNet = tRev - tExp;
-  return (
-    <Panel title="Varshik Hishab (Yearly Summary)" subtitle="Yearly overview of expenses, revenue & profit">
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-[10px] uppercase tracking-wide text-gray-400">
-              <th className="py-1 text-left">Year</th><th className="py-1 text-right">Expenses</th>
-              <th className="py-1 text-right">Revenue</th><th className="py-1 text-right">Net Profit</th><th className="py-1 text-right">Margin</th>
-            </tr>
-          </thead>
-          <tbody>
-            {yearly.map((y) => (
-              <tr key={y.year} className="border-t border-gray-100">
-                <td className="py-1.5 font-semibold text-gray-700">{y.year}</td>
-                <td className="py-1.5 text-right text-rose-600">{inr(y.expenses)}</td>
-                <td className="py-1.5 text-right text-emerald-600">{inr(y.revenue)}</td>
-                <td className="py-1.5 text-right font-semibold text-blue-600">{inr(y.net)}</td>
-                <td className="py-1.5 text-right text-gray-600">{y.margin}%</td>
-              </tr>
-            ))}
-            <tr className="border-t-2 border-gray-200 font-bold">
-              <td className="py-1.5 text-gray-800">Total (All Years)</td>
-              <td className="py-1.5 text-right text-rose-600">{inr(tExp)}</td>
-              <td className="py-1.5 text-right text-emerald-600">{inr(tRev)}</td>
-              <td className="py-1.5 text-right text-blue-600">{inr(tNet)}</td>
-              <td className="py-1.5 text-right text-gray-700">{tRev ? (tNet / tRev * 100).toFixed(2) : 0}%</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </Panel>
-  );
-}
-
 function ExpenseCategoryPanel({ fin }) {
   const cats = fin.expenses_by_category || [];
   const total = cats.reduce((s, c) => s + Number(c.total || 0), 0);
@@ -572,8 +567,27 @@ function ExpenseCategoryPanel({ fin }) {
   );
 }
 
-function FarmWisePanel({ fin }) {
-  const rows = fin.farm_breakdown || [];
+function FarmWisePanel({ farms, finRows }) {
+  const currentYear = String(new Date().getFullYear());
+  const [year, setYear] = useState(currentYear);
+  const inYear = (r) => year === "ALL" || String(r.date || "").startsWith(`${year}-`);
+  const years = yearsFromRows(finRows.expenses, finRows.revenues);
+
+  // Seed with every farm (so zero-activity farms still show), then add sums.
+  const byFarm = new Map(
+    farms.map((f) => [String(f.id), { farm_id: String(f.id), farm_name: f.name, expenses: 0, revenue: 0 }])
+  );
+  const bucket = (r) => {
+    const key = String(r.farm);
+    if (!byFarm.has(key)) {
+      byFarm.set(key, { farm_id: key, farm_name: r.farm_name || "—", expenses: 0, revenue: 0 });
+    }
+    return byFarm.get(key);
+  };
+  finRows.expenses.filter(inYear).forEach((r) => { bucket(r).expenses += Number(r.amount || 0); });
+  finRows.revenues.filter(inYear).forEach((r) => { bucket(r).revenue += Number(r.amount || 0); });
+  const rows = [...byFarm.values()].map((f) => ({ ...f, net: f.revenue - f.expenses }));
+
   const tExp = rows.reduce((s, f) => s + Number(f.expenses || 0), 0);
   const tRev = rows.reduce((s, f) => s + Number(f.revenue || 0), 0);
   const tNet = tRev - tExp;
@@ -600,26 +614,39 @@ function FarmWisePanel({ fin }) {
         { key: "net", header: "Net Profit" },
         { key: "margin", header: "Margin" },
       ],
-      "farm-wise-financial-summary.xlsx",
+      `farm-wise-financial-summary-${year === "ALL" ? "all-years" : year}.xlsx`,
       "Farm Summary",
     );
   };
 
   return (
     <Panel
-      title="Farm wise Financial Overview (This Year)"
+      title="Farm wise Financial Overview"
       action={
-        rows.length > 0 && (
-          <button
-            onClick={download}
-            title="Download farm-wise summary"
-            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 hover:text-brand-600"
+        <div className="flex items-center gap-2">
+          <select
+            value={year}
+            onChange={(e) => setYear(e.target.value)}
+            className="rounded-lg border border-gray-300 px-2 py-1 text-xs text-gray-600 outline-none focus:border-brand-500"
           >
-            <Download size={13} /> Excel
-          </button>
-        )
+            <option value="ALL">All Years</option>
+            {years.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+          {rows.length > 0 && (
+            <button
+              onClick={download}
+              title="Download farm-wise summary"
+              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 hover:text-brand-600"
+            >
+              <Download size={13} /> Excel
+            </button>
+          )}
+        </div>
       }
     >
+      {finRows.loading ? (
+        <p className="py-8 text-center text-xs text-gray-400">Loading…</p>
+      ) : (
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
@@ -651,6 +678,7 @@ function FarmWisePanel({ fin }) {
           </tbody>
         </table>
       </div>
+      )}
     </Panel>
   );
 }
@@ -659,37 +687,18 @@ function FarmWisePanel({ fin }) {
 // Debit side = approved expenses grouped by category, Credit side = revenue
 // grouped by category. Own farm + year selectors, independent of the global
 // dashboard scope, so any farm's sheet can be checked without reloading.
-function BalanceSheetPanel({ farms }) {
+function BalanceSheetPanel({ farms, finRows }) {
   const currentYear = String(new Date().getFullYear());
   const [farm, setFarm] = useState("");
   const [year, setYear] = useState(currentYear);
-  const [raw, setRaw] = useState({ expenses: [], revenues: [] });
-  const [loading, setLoading] = useState(false);
+  const loading = finRows.loading;
 
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    const params = { page_size: 10000, ...(farm ? { farm } : {}) };
-    Promise.all([
-      resource("finance/expenses").list({ ...params, status: "APPROVED" }),
-      resource("finance/revenues").list(params),
-    ])
-      .then(([exp, rev]) => {
-        if (!alive) return;
-        setRaw({
-          expenses: Array.isArray(exp) ? exp : exp.results || [],
-          revenues: Array.isArray(rev) ? rev : rev.results || [],
-        });
-      })
-      .catch(() => alive && setRaw({ expenses: [], revenues: [] }))
-      .finally(() => alive && setLoading(false));
-    return () => { alive = false; };
-  }, [farm]);
-
-  const inYear = (r) => year === "ALL" || String(r.date || "").startsWith(`${year}-`);
+  const inScope = (r) =>
+    (!farm || String(r.farm) === String(farm)) &&
+    (year === "ALL" || String(r.date || "").startsWith(`${year}-`));
   const groupByCategory = (list) => {
     const map = new Map();
-    list.filter(inYear).forEach((r) => {
+    list.filter(inScope).forEach((r) => {
       const key = r.category || "OTHER";
       map.set(key, (map.get(key) || 0) + Number(r.amount || 0));
     });
@@ -698,18 +707,13 @@ function BalanceSheetPanel({ farms }) {
       .sort((a, b) => b.total - a.total);
   };
 
-  const debits = groupByCategory(raw.expenses);
-  const credits = groupByCategory(raw.revenues);
+  const debits = groupByCategory(finRows.expenses);
+  const credits = groupByCategory(finRows.revenues);
   const debitTotal = debits.reduce((s, r) => s + r.total, 0);
   const creditTotal = credits.reduce((s, r) => s + r.total, 0);
   const balance = creditTotal - debitTotal;
 
-  const yearSet = new Set([currentYear]);
-  [...raw.expenses, ...raw.revenues].forEach((r) => {
-    const y = String(r.date || "").slice(0, 4);
-    if (/^\d{4}$/.test(y)) yearSet.add(y);
-  });
-  const years = [...yearSet].sort((a, b) => Number(b) - Number(a));
+  const years = yearsFromRows(finRows.expenses, finRows.revenues);
 
   const maxRows = Math.max(debits.length, credits.length);
   const farmName = farm ? (farms.find((f) => String(f.id) === String(farm))?.name || "") : "All Farms";
@@ -743,7 +747,6 @@ function BalanceSheetPanel({ farms }) {
     <Panel
       title="Balance Sheet (Farm wise)"
       subtitle="Category-wise Debit (expenses) vs Credit (revenue)"
-      className="lg:col-span-2"
       action={
         <div className="flex items-center gap-2">
           <select
