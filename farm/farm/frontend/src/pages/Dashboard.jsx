@@ -312,15 +312,25 @@ export default function Dashboard() {
 }
 
 // ───────────────────────── Redesigned dashboard ─────────────────────────
-function Panel({ title, action, subtitle, children, className = "" }) {
+// `to` renders a full-width "View All →" footer that opens the module page.
+function Panel({ title, action, subtitle, children, className = "", to, viewLabel = "View All" }) {
+  const navigate = useNavigate();
   return (
-    <div className={`rounded-2xl border border-gray-100 bg-white p-4 shadow-card ${className}`}>
+    <div className={`flex flex-col rounded-2xl border border-gray-100 bg-white p-4 shadow-card ${className}`}>
       <div className="mb-1 flex items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-gray-800">{title}</h3>
         {action}
       </div>
       {subtitle && <p className="mb-2 text-[11px] text-gray-400">{subtitle}</p>}
-      {children}
+      <div className="flex-1">{children}</div>
+      {to && (
+        <button
+          onClick={() => navigate(to)}
+          className="mt-3 w-full rounded-lg border border-gray-100 bg-gray-50 py-2 text-center text-xs font-semibold text-brand-600 transition-colors hover:bg-brand-50 hover:text-brand-800"
+        >
+          {viewLabel} →
+        </button>
+      )}
     </div>
   );
 }
@@ -354,9 +364,15 @@ function MonthSelect({ value, onChange }) {
   );
 }
 
-function KpiCard({ icon: Icon, iconBg, iconFg, title, value, sub }) {
+function KpiCard({ icon: Icon, iconBg, iconFg, title, value, sub, to }) {
+  const navigate = useNavigate();
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-card">
+    <div
+      onClick={to ? () => navigate(to) : undefined}
+      className={`rounded-2xl border border-gray-100 bg-white p-4 shadow-card ${
+        to ? "cursor-pointer transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-soft" : ""
+      }`}
+    >
       <div className="mb-2 flex items-center gap-2">
         <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
           <Icon size={18} className={iconFg} />
@@ -365,6 +381,7 @@ function KpiCard({ icon: Icon, iconBg, iconFg, title, value, sub }) {
       </div>
       <p className="text-xl font-bold text-gray-900">{value}</p>
       {sub && <p className="mt-1 text-[11px] text-gray-400">{sub}</p>}
+      {to && <p className="mt-1.5 text-[11px] font-semibold text-brand-600">View →</p>}
     </div>
   );
 }
@@ -428,13 +445,13 @@ function DashboardOverview({ kpi }) {
   const [lineYear, setLineYear] = useState(defaultYear);
 
   const kpis = [
-    { icon: Tractor, iconBg: "bg-emerald-50", iconFg: "text-emerald-600", title: "Total Farms", value: fk.total_farms ?? 0, sub: `Active ${fk.total_farms ?? 0}` },
-    { icon: LayoutGrid, iconBg: "bg-blue-50", iconFg: "text-blue-600", title: "Total Fields", value: fk.total_fields ?? 0, sub: `Cultivated ${fk.cultivated_fields ?? 0}` },
-    { icon: MapPin, iconBg: "bg-teal-50", iconFg: "text-teal-600", title: "Total Area", value: Number(fk.total_area || 0).toLocaleString("en-IN"), sub: "acres" },
-    { icon: Users, iconBg: "bg-violet-50", iconFg: "text-violet-600", title: "Total Employees", value: wk.total_employees ?? 0, sub: `Active ${wk.active_employees ?? 0}` },
-    { icon: Banknote, iconBg: "bg-rose-50", iconFg: "text-rose-600", title: "Total Expenses (This Year)", value: inr(fin.this_year_expenses), sub: `This Month: ${inr(fin.this_month_expenses)}` },
-    { icon: Coins, iconBg: "bg-emerald-50", iconFg: "text-emerald-600", title: "Total Revenue (This Year)", value: inr(fin.this_year_revenue), sub: `This Month: ${inr(fin.this_month_revenue)}` },
-    { icon: TrendingUp, iconBg: "bg-blue-50", iconFg: "text-blue-600", title: "Net Profit (This Year)", value: inr(fin.this_year_net), sub: `Margin: ${fin.this_year_margin ?? 0}%` },
+    { icon: Tractor, iconBg: "bg-emerald-50", iconFg: "text-emerald-600", title: "Total Farms", value: fk.total_farms ?? 0, sub: `Active ${fk.total_farms ?? 0}`, to: "/farms" },
+    { icon: LayoutGrid, iconBg: "bg-blue-50", iconFg: "text-blue-600", title: "Total Fields", value: fk.total_fields ?? 0, sub: `Cultivated ${fk.cultivated_fields ?? 0}`, to: "/farms" },
+    { icon: MapPin, iconBg: "bg-teal-50", iconFg: "text-teal-600", title: "Total Area", value: Number(fk.total_area || 0).toLocaleString("en-IN"), sub: "acres", to: "/farms" },
+    { icon: Users, iconBg: "bg-violet-50", iconFg: "text-violet-600", title: "Total Employees", value: wk.total_employees ?? 0, sub: `Active ${wk.active_employees ?? 0}`, to: "/workforce" },
+    { icon: Banknote, iconBg: "bg-rose-50", iconFg: "text-rose-600", title: "Total Expenses (This Year)", value: inr(fin.this_year_expenses), sub: `This Month: ${inr(fin.this_month_expenses)}`, to: "/finance" },
+    { icon: Coins, iconBg: "bg-emerald-50", iconFg: "text-emerald-600", title: "Total Revenue (This Year)", value: inr(fin.this_year_revenue), sub: `This Month: ${inr(fin.this_month_revenue)}`, to: "/finance" },
+    { icon: TrendingUp, iconBg: "bg-blue-50", iconFg: "text-blue-600", title: "Net Profit (This Year)", value: inr(fin.this_year_net), sub: `Margin: ${fin.this_year_margin ?? 0}%`, to: "/finance/reports" },
   ];
 
   return (
@@ -515,6 +532,8 @@ function PayrollByEmployeePanel() {
     <Panel
       title="Salary Paid by Employee"
       subtitle="Who received how much — actual payouts"
+      to="/payroll/payments"
+      viewLabel="View Employee Payments"
       action={
         <div className="flex items-center gap-2">
           <select
@@ -583,6 +602,8 @@ function FinancialSummaryPanel({ monthly, years, year, setYear }) {
       title="Monthly Trend (Revenue vs Expenses)"
       subtitle="Month-by-month movement for the selected year"
       action={<YearSelect years={years} value={year} onChange={setYear} />}
+      to="/finance/reports"
+      viewLabel="View Financial Reports"
     >
       <ResponsiveContainer width="100%" height={230}>
         <LineChart data={data} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
@@ -605,7 +626,7 @@ function ExpenseCategoryPanel({ fin }) {
   const total = cats.reduce((s, c) => s + Number(c.total || 0), 0);
   const data = cats.map((c) => ({ name: c.category, value: Number(c.total || 0) }));
   return (
-    <Panel title="Expense by Category (This Year)">
+    <Panel title="Expense by Category (This Year)" to="/finance" viewLabel="View Expenses">
       {data.length === 0 ? (
         <p className="py-10 text-center text-xs text-gray-400">No expense data</p>
       ) : (
@@ -698,6 +719,8 @@ function FarmWisePanel({ farms, finRows }) {
   return (
     <Panel
       title="Farm wise Financial Overview"
+      to="/finance/reports"
+      viewLabel="View Financial Reports"
       action={
         <div className="flex items-center gap-2">
           <select
@@ -826,6 +849,8 @@ function BalanceSheetPanel({ farms, finRows }) {
     <Panel
       title="Balance Sheet (Farm wise)"
       subtitle="Category-wise Debit (expenses) vs Credit (revenue)"
+      to="/finance/ledger"
+      viewLabel="View Ledger"
       action={
         <div className="flex items-center gap-2">
           <select
@@ -914,7 +939,7 @@ function HrOverviewPanel({ wk }) {
     { icon: UserMinus, fg: "text-rose-600", bg: "bg-rose-50", label: "Absent", value: wk.absent_today ?? 0 },
   ];
   return (
-    <Panel title="HR Overview">
+    <Panel title="HR Overview" to="/workforce" viewLabel="View Employees">
       <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {stats.map((s, i) => {
           const Icon = s.icon;
@@ -957,9 +982,8 @@ function HrOverviewPanel({ wk }) {
 
 function RecentTransactionsPanel({ kpi }) {
   const tx = kpi.recent_transactions || [];
-  const navigate = useNavigate();
   return (
-    <Panel title="Recent Transactions">
+    <Panel title="Recent Transactions" to="/finance" viewLabel="View All Transactions">
       {tx.length === 0 ? (
         <p className="py-6 text-center text-xs text-gray-400">No transactions</p>
       ) : (
@@ -986,17 +1010,15 @@ function RecentTransactionsPanel({ kpi }) {
           })}
         </div>
       )}
-      <button onClick={() => navigate("/finance")} className="mt-2 w-full text-center text-xs font-medium text-brand-600 hover:text-brand-800">View All Transactions →</button>
     </Panel>
   );
 }
 
 function UpcomingTasksPanel({ kpi }) {
   const tasks = kpi.upcoming_tasks || [];
-  const navigate = useNavigate();
   const prColor = { URGENT: "bg-red-100 text-red-700", HIGH: "bg-red-50 text-red-600", MEDIUM: "bg-amber-50 text-amber-600", LOW: "bg-gray-100 text-gray-500" };
   return (
-    <Panel title="Upcoming Tasks">
+    <Panel title="Upcoming Tasks" to="/tasks" viewLabel="View All Tasks">
       {tasks.length === 0 ? (
         <p className="py-6 text-center text-xs text-gray-400">No upcoming tasks</p>
       ) : (
@@ -1012,7 +1034,6 @@ function UpcomingTasksPanel({ kpi }) {
           ))}
         </div>
       )}
-      <button onClick={() => navigate("/tasks")} className="mt-2 w-full text-center text-xs font-medium text-brand-600 hover:text-brand-800">View All Tasks →</button>
     </Panel>
   );
 }

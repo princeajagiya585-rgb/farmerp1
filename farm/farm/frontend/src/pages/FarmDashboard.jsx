@@ -16,26 +16,25 @@ const inr = (v) => `₹${Number(v || 0).toLocaleString("en-IN", { maximumFractio
 const prettyLabel = (s) =>
   String(s || "—").replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 
-// Same panel design as the main Dashboard overview boxes.
-function Panel({ title, to, subtitle, action, children, className = "" }) {
+// Same panel design as the main Dashboard overview boxes — the "View All →"
+// footer at the bottom opens the module's page.
+function Panel({ title, to, subtitle, action, children, className = "", viewLabel = "View All" }) {
   return (
-    <div className={`rounded-2xl border border-gray-100 bg-white p-4 shadow-card ${className}`}>
+    <div className={`flex flex-col rounded-2xl border border-gray-100 bg-white p-4 shadow-card ${className}`}>
       <div className="mb-1 flex items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-gray-800">{title}</h3>
-        <div className="flex items-center gap-2">
-          {action}
-          {to && (
-            <Link
-              to={to}
-              className="flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-800"
-            >
-              View <ArrowRight size={12} />
-            </Link>
-          )}
-        </div>
+        {action}
       </div>
       {subtitle && <p className="mb-2 text-[11px] text-gray-400">{subtitle}</p>}
-      {children}
+      <div className="flex-1">{children}</div>
+      {to && (
+        <Link
+          to={to}
+          className="mt-3 block w-full rounded-lg border border-gray-100 bg-gray-50 py-2 text-center text-xs font-semibold text-brand-600 transition-colors hover:bg-brand-50 hover:text-brand-800"
+        >
+          {viewLabel} →
+        </Link>
+      )}
     </div>
   );
 }
