@@ -416,7 +416,7 @@ function ReorderAlertsPanel() {
                 <th className="py-1.5 pr-2 text-right">Live Stock</th>
                 <th className="py-1.5 pr-2 text-right">Reorder Alert</th>
                 <th className="py-1.5 pr-2 text-right">Required (Kitni Chahiye)</th>
-                <th className="py-1.5 pl-2 text-left">Supplier</th>
+                <th className="py-1.5 pl-2 text-left">Employee</th>
               </tr>
             </thead>
             <tbody>

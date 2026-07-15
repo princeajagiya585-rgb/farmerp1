@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle } from "lucide-react";
 import CrudResource from "../components/CrudResource";
 import { Badge } from "../components/ui";
+import { resource } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 
 const catColor = {
@@ -13,6 +15,16 @@ export default function InventoryAlerts() {
   const { t } = useTranslation();
   const { hasRole } = useAuth();
   const canWrite = hasRole("SUPER_ADMIN", "FARM_MANAGER");
+
+  // Employee names for the "Employee" dropdown — stored in the item's
+  // supplier text field, so no backend change is needed.
+  const [employees, setEmployees] = useState([]);
+  useEffect(() => {
+    resource("workforce/employees")
+      .list({ page_size: 500 })
+      .then((d) => setEmployees(Array.isArray(d) ? d : d.results || []))
+      .catch(() => {});
+  }, []);
 
   return (
     <CrudResource
@@ -76,7 +88,7 @@ export default function InventoryAlerts() {
               : "—";
           },
         },
-        { key: "supplier",    header: "Supplier",    render: (r) => r.supplier || "—" },
+        { key: "supplier",    header: "Employee",    render: (r) => r.supplier || "—" },
         { key: "description", header: "Description", render: (r) => r.description || "—" },
       ]}
       fields={[
@@ -91,7 +103,7 @@ export default function InventoryAlerts() {
         { name: "farm",          label: "Farm",               optionsFrom: { path: "farms", label: (f) => f.name }, required: true },
         { name: "current_stock", label: "Live Stock",         type: "number" },
         { name: "reorder_level", label: "Reorder Alert",      type: "number" },
-        { name: "supplier",      label: "Supplier" },
+        { name: "supplier",      label: "Employee", type: "select", options: employees.map((e) => e.name) },
         { name: "description",   label: "Description (optional)", type: "textarea" },
       ]}
     />
