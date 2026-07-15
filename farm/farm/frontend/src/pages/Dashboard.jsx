@@ -410,9 +410,11 @@ function ReorderAlertsPanel() {
             <thead>
               <tr className="text-[10px] uppercase tracking-wide text-gray-400">
                 <th className="py-1.5 pl-2 text-left">Item</th>
-                <th className="py-1.5 pl-2 text-left">Farm</th>
+                <th className="py-1.5 pl-2 text-left">Stock Keeping Unit</th>
                 <th className="py-1.5 pl-2 text-left">Category</th>
-                <th className="py-1.5 pr-2 text-right">Available (Kitni Hai)</th>
+                <th className="py-1.5 pl-2 text-left">Farm</th>
+                <th className="py-1.5 pr-2 text-right">Live Stock</th>
+                <th className="py-1.5 pr-2 text-right">Reorder Alert</th>
                 <th className="py-1.5 pr-2 text-right">Required (Kitni Chahiye)</th>
                 <th className="py-1.5 pl-2 text-left">Supplier</th>
               </tr>
@@ -428,9 +430,11 @@ function ReorderAlertsPanel() {
                         {r.name}
                       </span>
                     </td>
-                    <td className="py-1.5 pl-2 text-gray-600">{r.farm_name || "—"}</td>
+                    <td className="py-1.5 pl-2 text-gray-600">{r.sku || "—"}</td>
                     <td className="py-1.5 pl-2"><Badge color={ALERT_CAT_COLOR[r.category] || "gray"}>{r.category}</Badge></td>
+                    <td className="py-1.5 pl-2 text-gray-600">{r.farm_name || "—"}</td>
                     <td className="py-1.5 pr-2 text-right font-semibold text-red-600">{`${Number(r.current_stock || 0)} ${r.unit || ""}`.trim()}</td>
+                    <td className="py-1.5 pr-2 text-right text-gray-700">{Number(r.reorder_level || 0)}</td>
                     <td className="py-1.5 pr-2 text-right font-semibold text-amber-600">{`${need} ${r.unit || ""}`.trim()}</td>
                     <td className="py-1.5 pl-2 text-gray-600">{r.supplier || "—"}</td>
                   </tr>

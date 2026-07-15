@@ -39,7 +39,7 @@ export default function InventoryAlerts() {
       columns={[
         {
           key: "name",
-          header: t("header.item"),
+          header: "Item",
           render: (r) => (
             <span className="flex items-center gap-2">
               {Number(r.current_stock) <= Number(r.reorder_level) && (
@@ -49,21 +49,23 @@ export default function InventoryAlerts() {
             </span>
           ),
         },
-        { key: "farm_name", header: t("header.farm") },
+        { key: "sku", header: "Stock Keeping Unit" },
         {
           key: "category",
-          header: t("header.category"),
+          header: "Category",
           render: (r) => <Badge color={catColor[r.category] || "gray"}>{r.category}</Badge>,
         },
+        { key: "farm_name", header: "Farm" },
         {
           key: "current_stock",
-          header: "Available (Kitni Hai)",
+          header: "Live Stock",
           render: (r) => (
             <span className={Number(r.current_stock) <= Number(r.reorder_level) ? "font-semibold text-red-600" : ""}>
               {`${r.current_stock} ${r.unit || ""}`.trim()}
             </span>
           ),
         },
+        { key: "reorder_level", header: "Reorder Alert" },
         {
           key: "required",
           header: "Required (Kitni Chahiye)",
@@ -74,25 +76,23 @@ export default function InventoryAlerts() {
               : "—";
           },
         },
-        { key: "reorder_level", header: t("header.reorderAt") },
-        { key: "supplier",      header: t("header.supplier"),  render: (r) => r.supplier || "—" },
+        { key: "supplier",    header: "Supplier",    render: (r) => r.supplier || "—" },
+        { key: "description", header: "Description", render: (r) => r.description || "—" },
       ]}
       fields={[
-        { name: "name",          label: t("header.item"),      required: true },
-        { name: "sku",           label: "SKU",                 required: true },
+        { name: "name",          label: "Item",               required: true },
+        { name: "sku",           label: "Stock Keeping Unit", required: true },
         {
           name: "category",
-          label: t("header.category"),
+          label: "Category",
           type: "select",
           options: ["FERTILIZER", "PESTICIDE", "SEED", "CONSUMABLE", "SPARE_PART"],
         },
-        { name: "farm",          label: t("header.farm"),      optionsFrom: { path: "farms", label: (f) => f.name }, required: true },
-        { name: "unit",          label: "Unit",                placeholder: "kg / L / pcs" },
-        { name: "current_stock", label: t("header.stock"),     type: "number" },
-        { name: "reorder_level", label: t("header.reorderAt"), type: "number" },
-        { name: "unit_cost",     label: "Unit Cost (₹)",       type: "number" },
-        { name: "supplier",      label: t("header.supplier") },
-        { name: "description",   label: "Description",         type: "textarea" },
+        { name: "farm",          label: "Farm",               optionsFrom: { path: "farms", label: (f) => f.name }, required: true },
+        { name: "current_stock", label: "Live Stock",         type: "number" },
+        { name: "reorder_level", label: "Reorder Alert",      type: "number" },
+        { name: "supplier",      label: "Supplier" },
+        { name: "description",   label: "Description (optional)", type: "textarea" },
       ]}
     />
   );
