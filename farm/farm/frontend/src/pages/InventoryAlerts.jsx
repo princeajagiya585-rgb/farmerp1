@@ -22,12 +22,20 @@ export default function InventoryAlerts() {
       canWrite={canWrite}
       showFarmFilter
       showUserFilter
-      footerColumns={["current_stock", "reorder_level"]}
+      footerColumns={["current_stock"]}
       rowClassName={(r) =>
         Number(r.current_stock) <= Number(r.reorder_level)
           ? "bg-red-50"
           : ""
       }
+      sortRows={(a, b) => {
+        // Alerts (low-stock items) float to the top, most-short first.
+        const needA = Math.max(Number(a.reorder_level || 0) - Number(a.current_stock || 0), 0);
+        const needB = Math.max(Number(b.reorder_level || 0) - Number(b.current_stock || 0), 0);
+        const lowA = Number(a.current_stock) <= Number(a.reorder_level) ? 1 : 0;
+        const lowB = Number(b.current_stock) <= Number(b.reorder_level) ? 1 : 0;
+        return lowB - lowA || needB - needA;
+      }}
       columns={[
         {
           key: "name",
@@ -47,12 +55,27 @@ export default function InventoryAlerts() {
           header: t("header.category"),
           render: (r) => <Badge color={catColor[r.category] || "gray"}>{r.category}</Badge>,
         },
-        { key: "sku",           header: "SKU" },
-        { key: "current_stock", header: t("header.stock"),     render: (r) => `${r.current_stock} ${r.unit || ""}`.trim() },
+        {
+          key: "current_stock",
+          header: "Available (Kitni Hai)",
+          render: (r) => (
+            <span className={Number(r.current_stock) <= Number(r.reorder_level) ? "font-semibold text-red-600" : ""}>
+              {`${r.current_stock} ${r.unit || ""}`.trim()}
+            </span>
+          ),
+        },
+        {
+          key: "required",
+          header: "Required (Kitni Chahiye)",
+          render: (r) => {
+            const need = Math.max(Number(r.reorder_level || 0) - Number(r.current_stock || 0), 0);
+            return need > 0
+              ? <span className="font-semibold text-amber-600">{`${need} ${r.unit || ""}`.trim()}</span>
+              : "—";
+          },
+        },
         { key: "reorder_level", header: t("header.reorderAt") },
-        { key: "unit_cost",     header: "Unit Cost",           render: (r) => `₹${r.unit_cost}` },
         { key: "supplier",      header: t("header.supplier"),  render: (r) => r.supplier || "—" },
-        { key: "created_by_name", header: t("header.user"), render: (r) => r.created_by_name || "—" },
       ]}
       fields={[
         { name: "name",          label: t("header.item"),      required: true },

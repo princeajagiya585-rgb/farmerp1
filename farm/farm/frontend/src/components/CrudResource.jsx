@@ -251,6 +251,20 @@ export default function CrudResource({
     setCurrentRow(null);
     setModal({ mode: "create" });
   };
+  // Arriving with ?new=1 (e.g. the dashboard "+ New" shortcut) opens the
+  // create modal immediately, then strips the flag so refresh/back don't
+  // reopen it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new") === "1" && canModify) {
+      openCreate();
+      params.delete("new");
+      const qs = params.toString();
+      window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const openEdit = (row) => {
     const f = {};
     fields.forEach((fl) => {

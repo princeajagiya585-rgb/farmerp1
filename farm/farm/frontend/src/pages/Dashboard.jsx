@@ -358,6 +358,7 @@ const ALERT_CAT_COLOR = {
 };
 
 function ReorderAlertsPanel() {
+  const navigate = useNavigate();
   const [items, setItems] = useState(null); // null = loading
 
   useEffect(() => {
@@ -386,9 +387,17 @@ function ReorderAlertsPanel() {
       to="/inventory/alerts"
       viewLabel="View All Alerts"
       action={
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${list.length ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
-          {list.length} low stock
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${list.length ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
+            {list.length} low stock
+          </span>
+          <button
+            onClick={() => navigate("/inventory/alerts?new=1")}
+            className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-brand-700"
+          >
+            + New
+          </button>
+        </div>
       }
     >
       {items === null ? (
@@ -403,29 +412,30 @@ function ReorderAlertsPanel() {
                 <th className="py-1.5 pl-2 text-left">Item</th>
                 <th className="py-1.5 pl-2 text-left">Farm</th>
                 <th className="py-1.5 pl-2 text-left">Category</th>
-                <th className="py-1.5 pl-2 text-left">SKU</th>
-                <th className="py-1.5 pr-2 text-right">Stock</th>
-                <th className="py-1.5 pr-2 text-right">Reorder At</th>
+                <th className="py-1.5 pr-2 text-right">Available (Kitni Hai)</th>
+                <th className="py-1.5 pr-2 text-right">Required (Kitni Chahiye)</th>
                 <th className="py-1.5 pl-2 text-left">Supplier</th>
               </tr>
             </thead>
             <tbody>
-              {list.map((r) => (
-                <tr key={r.id} className="border-t border-gray-100 bg-red-50">
-                  <td className="py-1.5 pl-2 font-medium text-gray-700">
-                    <span className="flex items-center gap-2">
-                      <AlertTriangle size={14} className="shrink-0 text-red-500" />
-                      {r.name}
-                    </span>
-                  </td>
-                  <td className="py-1.5 pl-2 text-gray-600">{r.farm_name || "—"}</td>
-                  <td className="py-1.5 pl-2"><Badge color={ALERT_CAT_COLOR[r.category] || "gray"}>{r.category}</Badge></td>
-                  <td className="py-1.5 pl-2 text-gray-600">{r.sku || "—"}</td>
-                  <td className="py-1.5 pr-2 text-right font-semibold text-red-600">{`${r.current_stock} ${r.unit || ""}`.trim()}</td>
-                  <td className="py-1.5 pr-2 text-right text-gray-700">{r.reorder_level}</td>
-                  <td className="py-1.5 pl-2 text-gray-600">{r.supplier || "—"}</td>
-                </tr>
-              ))}
+              {list.map((r) => {
+                const need = Math.max(Number(r.reorder_level || 0) - Number(r.current_stock || 0), 0);
+                return (
+                  <tr key={r.id} className="border-t border-gray-100 bg-red-50">
+                    <td className="py-1.5 pl-2 font-medium text-gray-700">
+                      <span className="flex items-center gap-2">
+                        <AlertTriangle size={14} className="shrink-0 text-red-500" />
+                        {r.name}
+                      </span>
+                    </td>
+                    <td className="py-1.5 pl-2 text-gray-600">{r.farm_name || "—"}</td>
+                    <td className="py-1.5 pl-2"><Badge color={ALERT_CAT_COLOR[r.category] || "gray"}>{r.category}</Badge></td>
+                    <td className="py-1.5 pr-2 text-right font-semibold text-red-600">{`${Number(r.current_stock || 0)} ${r.unit || ""}`.trim()}</td>
+                    <td className="py-1.5 pr-2 text-right font-semibold text-amber-600">{`${need} ${r.unit || ""}`.trim()}</td>
+                    <td className="py-1.5 pl-2 text-gray-600">{r.supplier || "—"}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
