@@ -40,6 +40,7 @@ export default function CrudResource({
   refreshInterval, computedFields = [], rowClassName, sortRows, createOptions, footerColumns = [],
   fieldDependencies = [], // [{ watch: "fieldName", target: "targetField", mapField: "sourceFieldInRecord" }]
   renderFooter, // optional custom tfoot footer: (totals) => JSX
+  beforeSave, // optional payload transform before submit: (payload, mode) => payload
   hideExport, // hide the default Excel/Print buttons
   hideDateFilter, // hide the date-range filter
   showFarmFilter, // show farm dropdown filter
@@ -296,6 +297,7 @@ export default function CrudResource({
     setError("");
     try {
       let payload = { ...form };
+      if (beforeSave) payload = beforeSave(payload, modal?.mode) || payload;
       // Remove virtual coords field, keep the split targets
       fields.forEach((fl) => {
         if (fl.type === "coords") delete payload[fl.name];

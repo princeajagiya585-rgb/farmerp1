@@ -11,6 +11,14 @@ const catColor = {
   CONSUMABLE: "gray",  SPARE_PART: "orange",
 };
 
+// Auto Stock Keeping Unit when left blank: item name slug + time suffix,
+// because the backend requires a unique sku for every item.
+const genSku = (name) => {
+  const slug = String(name || "ITEM").toUpperCase().trim()
+    .replace(/[^A-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 20) || "ITEM";
+  return `${slug}-${Date.now().toString().slice(-5)}`;
+};
+
 export default function InventoryAlerts() {
   const { t } = useTranslation();
   const { hasRole } = useAuth();
@@ -34,6 +42,15 @@ export default function InventoryAlerts() {
       canWrite={canWrite}
       showFarmFilter
       showUserFilter
+      beforeSave={(payload, mode) => {
+        // Blank Stock Keeping Unit: keep the existing one on edit, or
+        // auto-generate a unique one on create (backend requires it).
+        if (!String(payload.sku || "").trim()) {
+          if (mode === "edit") delete payload.sku;
+          else payload.sku = genSku(payload.name);
+        }
+        return payload;
+      }}
       footerColumns={["current_stock"]}
       rowClassName={(r) =>
         Number(r.current_stock) <= Number(r.reorder_level)
@@ -93,7 +110,7 @@ export default function InventoryAlerts() {
       ]}
       fields={[
         { name: "name",          label: "Item",               required: true },
-        { name: "sku",           label: "Stock Keeping Unit", required: true, placeholder: "e.g. FERT-UREA-50 (item ka unique code)" },
+        { name: "sku",           label: "Stock Keeping Unit (optional)", placeholder: "e.g. FERT-UREA-50 — khali chhodo to auto ban jayega" },
         {
           name: "category",
           label: "Category",
