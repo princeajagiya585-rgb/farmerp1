@@ -788,6 +788,7 @@ export default function CrudResource({
               onChange: handleChange,
               required: fl.required,
               disabled: isReadonly,
+              placeholder: fl.placeholder,
             };
             if (isReadonly) {
               return (

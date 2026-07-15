@@ -93,7 +93,7 @@ export default function InventoryAlerts() {
       ]}
       fields={[
         { name: "name",          label: "Item",               required: true },
-        { name: "sku",           label: "Stock Keeping Unit", required: true },
+        { name: "sku",           label: "Stock Keeping Unit", required: true, placeholder: "e.g. FERT-UREA-50 (item ka unique code)" },
         {
           name: "category",
           label: "Category",
