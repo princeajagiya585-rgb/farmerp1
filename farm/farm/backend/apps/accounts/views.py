@@ -445,16 +445,31 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ("me", "change_password", "update_fcm"):
             return [IsAuthenticated()]
+        if self.action == "list":
+            # Any signed-in user may list users so "Assign to User" dropdowns
+            # work for managers; get_queryset scopes non-admins to their farms.
+            return [IsAuthenticated()]
         # All other actions (including activate, suspend, create, update, list_deleted, restore, etc.) require SUPER_ADMIN
         return [IsSuperAdmin()]
 
     def get_queryset(self):
         """Exclude soft-deleted users from the default list."""
         logger.info("[GET_QUERYSET] action=%s", self.action)
+        from .models import Role
+
         qs = User.objects.prefetch_related("farms").all()
         if self.action == "list_deleted":
             return qs.filter(deleted_at__isnull=False).order_by("-deleted_at")
-        return qs.filter(deleted_at__isnull=True)
+        qs = qs.filter(deleted_at__isnull=True)
+        user = self.request.user
+        role = getattr(user, "role", None)
+        if self.action == "list" and role != Role.SUPER_ADMIN:
+            if role == Role.FARM_MANAGER:
+                # Managers only see users assigned to their own farms.
+                qs = qs.filter(farms__in=user.farms.all()).distinct()
+            else:
+                qs = qs.filter(pk=user.pk)
+        return qs
 
     def perform_create(self, serializer):
         """Create the user, then auto-create an Employee record linked to it."""
