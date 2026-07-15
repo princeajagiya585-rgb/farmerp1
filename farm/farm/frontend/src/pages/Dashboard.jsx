@@ -1,9 +1,8 @@
 import { useEffect, useState, useRef } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  Tractor, Wallet, Users, Banknote, ClipboardList, MapPin,
-  Sprout, Boxes, FileText, AlertTriangle, UserCog, ArrowRight,
+  Tractor, Users, Banknote, MapPin,
   TrendingUp, TrendingDown, CalendarCheck, LayoutGrid, Coins, UserMinus, Plane, Download,
 } from "lucide-react";
 import {
@@ -21,104 +20,9 @@ const inr = (v) => `₹${Number(v || 0).toLocaleString("en-IN", { maximumFractio
 const prettyLabel = (s) =>
   String(s || "OTHER").replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 
-const ALL_ROLES = ["SUPER_ADMIN", "FARM_MANAGER", "EMPLOYEE"];
-const FM = "FARM_MANAGER";
-const EM = "EMPLOYEE";
-
-const ALL_MODULES = [
-  {
-    key: "farmAdmin",
-    icon: Tractor,
-    color: "from-emerald-500 to-emerald-700",
-    bg: "bg-emerald-50",
-    path: "/farms/dashboard",
-    label: "nav.farmAdmin",
-    roles: [FM],
-  },
-  {
-    key: "finance",
-    icon: Banknote,
-    color: "from-blue-500 to-blue-700",
-    bg: "bg-blue-50",
-    path: "/finance",
-    label: "nav.finance",
-    roles: [FM],
-  },
-  {
-    key: "hr",
-    icon: Users,
-    color: "from-violet-500 to-violet-700",
-    bg: "bg-violet-50",
-    path: "/workforce",
-    label: "nav.hr",
-    roles: [FM],
-  },
-  {
-    key: "payroll",
-    icon: Wallet,
-    color: "from-amber-500 to-amber-700",
-    bg: "bg-amber-50",
-    path: "/payroll",
-    label: "nav.payroll",
-    roles: [FM, EM],
-  },
-  {
-    key: "tasks",
-    icon: ClipboardList,
-    color: "from-rose-500 to-rose-700",
-    bg: "bg-rose-50",
-    path: "/tasks",
-    label: "nav.tasksScheduling",
-    roles: ALL_ROLES,
-  },
-  {
-    key: "agronomy",
-    icon: Sprout,
-    color: "from-green-500 to-green-700",
-    bg: "bg-green-50",
-    path: "/agronomy",
-    label: "nav.agronomyCrops",
-    roles: [FM, EM],
-  },
-  {
-    key: "inventory",
-    icon: Boxes,
-    color: "from-orange-500 to-orange-700",
-    bg: "bg-orange-50",
-    path: "/inventory",
-    label: "nav.inventory",
-    roles: [FM],
-  },
-  {
-    key: "documents",
-    icon: FileText,
-    color: "from-sky-500 to-sky-700",
-    bg: "bg-sky-50",
-    path: "/documents",
-    label: "nav.documents",
-    roles: [FM],
-  },
-  {
-    key: "administration",
-    icon: UserCog,
-    color: "from-slate-500 to-slate-700",
-    bg: "bg-slate-50",
-    path: "/users",
-    label: "nav.administration",
-    roles: ["SUPER_ADMIN"],
-  },
-];
-
-function canAccess(roles, userRole) {
-  if (userRole === "SUPER_ADMIN") return true;
-  return roles.includes(userRole);
-}
-
 export default function Dashboard() {
   const { t } = useTranslation();
   const { user, loading: authLoading } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
 
   const [kpi, setKpi] = useState(null);
   const [error, setError] = useState("");
@@ -195,15 +99,21 @@ export default function Dashboard() {
 
   loadDashboard();
 
+  // Near real-time dashboard: poll every ~30s (with jitter so many open tabs
+  // don't hit the backend at the same instant) and refresh immediately when
+  // the tab regains focus.
   if (!pollingRef.current) {
-    const base = 300000;
+    const base = 30000;
     const jitter = Math.floor(Math.random() * base * 0.4) - Math.floor(base * 0.2); // ±20%
     pollingRef.current = setInterval(() => {
       loadDashboard(0);
-    }, base + jitter); // ~5 minutes with jitter — the dashboard endpoint is heavy
+    }, base + jitter);
   }
+  const onFocus = () => loadDashboard(0);
+  window.addEventListener("focus", onFocus);
 
   return () => {
+    window.removeEventListener("focus", onFocus);
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
@@ -237,8 +147,6 @@ export default function Dashboard() {
     );
   }
 
-  const visibleModules = ALL_MODULES.filter((m) => canAccess(m.roles, user?.role));
-
   return (
     <div>
       {/* Welcome + farm scope selector */}
@@ -266,47 +174,6 @@ export default function Dashboard() {
 
       {/* Accounting-style overview — KPIs, yearly ledger, charts & tables */}
       <DashboardOverview kpi={kpi} t={t} />
-
-      {/* Quick Access — clean navigation tiles (detail lives in the panels above) */}
-      {visibleModules.length > 0 && (
-        <>
-          <h2 className="mb-4 text-lg font-bold text-gray-800">{t("dashboard.quickAccess")}</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {visibleModules.map((mod) => {
-              // HR & Tasks keep their richer detail cards in Quick Access.
-              if (mod.key === "hr") return <HrCard key="hr" mod={mod} kpi={kpi} navigate={navigate} t={t} />;
-              if (mod.key === "tasks") return <TasksCard key="tasks" mod={mod} kpi={kpi} navigate={navigate} t={t} />;
-              const Icon = mod.icon;
-              const metrics = getModuleMetrics(mod, kpi, t).slice(0, 2);
-              return (
-                <div
-                  key={mod.key}
-                  onClick={() => navigate(mod.path)}
-                  className="group cursor-pointer rounded-2xl border border-gray-100 bg-white p-4 shadow-card transition-all hover:-translate-y-1 hover:border-brand-200 hover:shadow-soft"
-                >
-                  <div className="mb-3 flex items-center gap-3">
-                    <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${mod.color} text-white shadow-sm`}>
-                      <Icon size={20} />
-                    </div>
-                    <p className="flex-1 text-sm font-bold leading-tight text-gray-800">{t(mod.label)}</p>
-                    <ArrowRight size={16} className="shrink-0 text-gray-300 transition-all group-hover:translate-x-0.5 group-hover:text-brand-600" />
-                  </div>
-                  {metrics.length > 0 && (
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {metrics.map((m, i) => (
-                        <div key={i} className="rounded-lg bg-gray-50 px-2.5 py-1.5">
-                          <p className="truncate text-[10px] text-gray-500">{m.label.includes(".") ? t(m.label) : m.label}</p>
-                          <p className="truncate text-sm font-bold text-gray-800">{m.value}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -388,9 +255,8 @@ function KpiCard({ icon: Icon, iconBg, iconFg, title, value, sub, to }) {
 
 // Shared fetch for the Balance Sheet + Farm-wise panels: all approved expenses
 // and revenue entries, filtered client-side by farm/year/month inside each
-// panel. Loads once per visit and re-fetches when the tab regains focus, so
-// records deleted elsewhere disappear without hammering the backend on a
-// timer (navigating back to the dashboard also remounts and reloads).
+// panel. Kept near real-time: re-fetches every 60s and when the tab regains
+// focus, so records added/deleted elsewhere show up without a manual reload.
 function useFinanceRows() {
   const [rows, setRows] = useState({ expenses: [], revenues: [], loading: true });
   useEffect(() => {
@@ -412,10 +278,12 @@ function useFinanceRows() {
         .catch(() => alive && setRows((r) => ({ ...r, loading: false })));
     };
     load();
+    const timer = setInterval(load, 60000);
     const onFocus = () => load();
     window.addEventListener("focus", onFocus);
     return () => {
       alive = false;
+      clearInterval(timer);
       window.removeEventListener("focus", onFocus);
     };
   }, []);
@@ -469,7 +337,7 @@ function DashboardOverview({ kpi }) {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <HrOverviewPanel wk={wk} />
         <RecentTransactionsPanel kpi={kpi} />
-        <UpcomingTasksPanel kpi={kpi} />
+        <TasksSchedulingPanel kpi={kpi} />
       </div>
 
       <PayrollByEmployeePanel />
@@ -485,11 +353,20 @@ function PayrollByEmployeePanel() {
 
   useEffect(() => {
     let alive = true;
-    resource("payroll/payments")
-      .list({ page_size: 10000 })
-      .then((d) => alive && setPayments(Array.isArray(d) ? d : d.results || []))
-      .catch(() => alive && setPayments((p) => p || []));
-    return () => { alive = false; };
+    const load = () =>
+      resource("payroll/payments")
+        .list({ page_size: 10000 })
+        .then((d) => alive && setPayments(Array.isArray(d) ? d : d.results || []))
+        .catch(() => alive && setPayments((p) => p || []));
+    load();
+    const timer = setInterval(load, 60000);
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   const list = payments || [];
@@ -778,8 +655,8 @@ function FarmWisePanel({ farms, finRows }) {
 }
 
 // ── Farm-wise Balance Sheet ──────────────────────────────────────────────
-// Debit side = approved expenses grouped by category, Credit side = revenue
-// grouped by category. Own farm + year selectors, independent of the global
+// Expenses side = approved expenses grouped by category, Revenue side =
+// revenue grouped by category. Own farm + year selectors, independent of the global
 // dashboard scope, so any farm's sheet can be checked without reloading.
 function BalanceSheetPanel({ farms, finRows }) {
   const currentYear = String(new Date().getFullYear());
@@ -824,16 +701,16 @@ function BalanceSheetPanel({ farms, finRows }) {
         credit_amount: credits[i] ? credits[i].total : "",
       });
     }
-    data.push({ debit_category: "Total Debit", debit_amount: debitTotal, credit_category: "Total Credit", credit_amount: creditTotal });
-    data.push({ debit_category: "Balance", debit_amount: balance >= 0 ? "CREDIT" : "DEBIT", credit_category: "", credit_amount: Math.abs(balance) });
+    data.push({ debit_category: "Total Expenses", debit_amount: debitTotal, credit_category: "Total Revenue", credit_amount: creditTotal });
+    data.push({ debit_category: "Balance", debit_amount: balance >= 0 ? "PROFIT" : "LOSS", credit_category: "", credit_amount: Math.abs(balance) });
     const period = `${year === "ALL" ? "all-years" : year}${month === "ALL" ? "" : `-${MONTHS[Number(month) - 1]}`}`;
     exportExcel(
       data,
       [
-        { key: "debit_category", header: "Debit (Expense Category)" },
-        { key: "debit_amount", header: "Debit Amount" },
-        { key: "credit_category", header: "Credit (Revenue Category)" },
-        { key: "credit_amount", header: "Credit Amount" },
+        { key: "debit_category", header: "Expense Category" },
+        { key: "debit_amount", header: "Expenses Amount" },
+        { key: "credit_category", header: "Revenue Category" },
+        { key: "credit_amount", header: "Revenue Amount" },
       ],
       `balance-sheet-${farmName.replace(/\s+/g, "-").toLowerCase()}-${period}.xlsx`,
       "Balance Sheet",
@@ -843,7 +720,7 @@ function BalanceSheetPanel({ farms, finRows }) {
   return (
     <Panel
       title="Balance Sheet (Farm wise)"
-      subtitle="Category-wise Debit (expenses) vs Credit (revenue)"
+      subtitle="Category-wise Expenses vs Revenue"
       to="/finance/ledger"
       viewLabel="View Ledger"
       action={
@@ -886,8 +763,8 @@ function BalanceSheetPanel({ farms, finRows }) {
           <table className="w-full text-xs">
             <thead>
               <tr className="text-[10px] uppercase tracking-wide">
-                <th className="rounded-tl-lg bg-rose-50 py-1.5 pl-2 text-left text-rose-600" colSpan={2}>Debit (Kharch)</th>
-                <th className="rounded-tr-lg bg-emerald-50 py-1.5 pl-2 text-left text-emerald-600" colSpan={2}>Credit (Aavak)</th>
+                <th className="rounded-tl-lg bg-rose-50 py-1.5 pl-2 text-left text-rose-600" colSpan={2}>Expenses (Kharch)</th>
+                <th className="rounded-tr-lg bg-emerald-50 py-1.5 pl-2 text-left text-emerald-600" colSpan={2}>Revenue (Aavak)</th>
               </tr>
               <tr className="text-[10px] uppercase tracking-wide text-gray-400">
                 <th className="py-1 pl-2 text-left">Category</th>
@@ -906,14 +783,14 @@ function BalanceSheetPanel({ farms, finRows }) {
                 </tr>
               ))}
               <tr className="border-t-2 border-gray-200 font-bold">
-                <td className="py-2 pl-2 text-gray-800">Total Debit</td>
+                <td className="py-2 pl-2 text-gray-800">Total Expenses</td>
                 <td className="py-2 pr-2 text-right text-rose-600">{inr(debitTotal)}</td>
-                <td className="border-l border-gray-100 py-2 pl-2 text-gray-800">Total Credit</td>
+                <td className="border-l border-gray-100 py-2 pl-2 text-gray-800">Total Revenue</td>
                 <td className="py-2 pr-2 text-right text-emerald-600">{inr(creditTotal)}</td>
               </tr>
               <tr className={`font-bold ${balance >= 0 ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>
                 <td className="rounded-bl-lg py-2 pl-2" colSpan={2}>
-                  Balance ({balance >= 0 ? "Credit" : "Debit"}) — {farmName}
+                  Balance ({balance >= 0 ? "Profit" : "Loss"}) — {farmName}
                 </td>
                 <td className="rounded-br-lg py-2 pr-2 text-right text-sm" colSpan={2}>{inr(Math.abs(balance))}</td>
               </tr>
@@ -1009,384 +886,56 @@ function RecentTransactionsPanel({ kpi }) {
   );
 }
 
-function UpcomingTasksPanel({ kpi }) {
-  const tasks = kpi.upcoming_tasks || [];
-  const prColor = { URGENT: "bg-red-100 text-red-700", HIGH: "bg-red-50 text-red-600", MEDIUM: "bg-amber-50 text-amber-600", LOW: "bg-gray-100 text-gray-500" };
-  return (
-    <Panel title="Upcoming Tasks" to="/tasks" viewLabel="View All Tasks">
-      {tasks.length === 0 ? (
-        <p className="py-6 text-center text-xs text-gray-400">No upcoming tasks</p>
-      ) : (
-        <div className="space-y-1.5">
-          {tasks.map((tk) => (
-            <div key={tk.id} className="flex items-center justify-between gap-2 rounded-lg bg-gray-50 px-3 py-2">
-              <div className="min-w-0">
-                <p className="truncate text-xs font-medium text-gray-700">{tk.title}</p>
-                <p className="truncate text-[10px] text-gray-400">{tk.farm_name || "—"} · {tk.due_date}</p>
-              </div>
-              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${prColor[tk.priority] || prColor.LOW}`}>{tk.priority}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </Panel>
-  );
-}
-
-function TasksCard({ mod, kpi, navigate, t }) {
+// Same data as the old Quick Access "Tasks & Scheduling" card: active tasks
+// plus tasks completed in the last 12 hours, with assignee names.
+function TasksSchedulingPanel({ kpi }) {
   const tk = kpi.task_kpis ?? {};
   const active = tk.active_tasks || [];
   const completed = tk.today_completed_tasks || [];
-
   return (
-    <div
-      onClick={() => navigate(mod.path)}
-      className="group cursor-pointer overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-card transition-all hover:-translate-y-0.5 hover:shadow-soft col-span-1 sm:col-span-2"
+    <Panel
+      title="Tasks & Scheduling"
+      to="/tasks"
+      viewLabel="View All Tasks"
+      action={
+        <div className="flex gap-2 text-xs">
+          <span className="rounded-full bg-rose-50 px-2 py-0.5 font-medium text-rose-600">{tk.open_tasks ?? active.length} active</span>
+          <span className="rounded-full bg-green-50 px-2 py-0.5 font-medium text-green-600">{tk.completed_tasks ?? completed.length} completed</span>
+        </div>
+      }
     >
-      <div className={`h-1.5 w-full bg-gradient-to-r ${mod.color}`} />
-      <div className="p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${mod.bg}`}>
-              <ClipboardList size={20} className="text-gray-700" />
-            </div>
-            <p className="text-sm font-bold text-gray-800">{t(mod.label)}</p>
-          </div>
-          <div className="flex gap-3 text-xs text-gray-500">
-            <span className="rounded-full bg-rose-50 px-2 py-0.5 font-medium text-rose-600">{tk.open_tasks} active</span>
-            <span className="rounded-full bg-green-50 px-2 py-0.5 font-medium text-green-600">{tk.completed_tasks} completed</span>
-          </div>
-        </div>
-        <div className="scrollable-content grid max-h-[200px] grid-cols-1 gap-3 overflow-y-auto sm:grid-cols-2">
-          {/* Active tasks */}
-          <div>
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Active Tasks</p>
-            {active.length === 0 ? (
-              <p className="text-xs text-gray-400">No active tasks</p>
-            ) : (
-              <div className="space-y-1">
-                {active.map((task) => (
-                  <div key={task.id} className="flex items-center justify-between rounded-lg bg-rose-50 px-3 py-1.5">
-                    <span className="truncate text-xs text-gray-700">{task.title}</span>
-                    <span className="ml-2 shrink-0 text-xs font-medium text-rose-600">{task.assigned_user}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          {/* Completed in last 12h */}
-          <div>
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Completed (last 12h)</p>
-            {completed.length === 0 ? (
-              <p className="text-xs text-gray-400">None completed yet today</p>
-            ) : (
-              <div className="space-y-1">
-                {completed.map((task) => (
-                  <div key={task.id} className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-1.5">
-                    <span className="truncate text-xs text-gray-700">{task.title}</span>
-                    <span className="ml-2 shrink-0 text-xs font-medium text-green-600">{task.assigned_user}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="mt-3 flex items-center justify-end gap-1 text-xs font-medium text-brand-600 opacity-0 transition-opacity group-hover:opacity-100">
-          {t("common.view")} <ArrowRight size={12} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function HrCard({ mod, kpi, navigate, t }) {
-  const wk = kpi.workforce_kpis ?? {};
-  const breakdown = wk.farm_breakdown || [];
-
-  return (
-    <div
-      onClick={() => navigate(mod.path)}
-      className="group col-span-1 cursor-pointer overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-card transition-all hover:-translate-y-0.5 hover:shadow-soft sm:col-span-2"
-    >
-      <div className={`h-1.5 w-full bg-gradient-to-r ${mod.color}`} />
-      <div className="p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${mod.bg}`}>
-              <Users size={20} className="text-gray-700" />
-            </div>
-            <p className="text-sm font-bold text-gray-800">{t(mod.label)}</p>
-          </div>
-
-        </div>
-        {breakdown.length > 0 ? (
-          <div className="mb-3">
-            {/* Common header row — stays fixed */}
-            <div className="mb-1.5 flex items-center justify-between rounded-lg bg-gray-100 px-2.5 py-1.5 sm:px-3">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Farm</span>
-              <div className="flex items-center gap-3 sm:gap-4 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-                <span title="Total users assigned to this farm">Total Users</span>
-                <span title="Users who completed check-in today">Check In</span>
-              </div>
-            </div>
-            {/* Farm rows — scrollable */}
-            <div className="scrollable-content max-h-[160px] space-y-1 overflow-y-auto">
-              {breakdown.map((farm) => (
-                <div
-                  key={farm.farm_id}
-                  className="flex items-center justify-between rounded-lg bg-gray-50 px-2.5 py-1.5 sm:px-3"
-                >
-                  <span className="min-w-0 flex-1 truncate pr-2 text-xs font-bold text-green-700">🌾 {farm.farm_name}</span>
-                  <div className="flex shrink-0 items-center gap-3 sm:gap-4 text-xs">
-                    <span className="w-5 text-right font-semibold text-gray-800 sm:w-6">{farm.total_count}</span>
-                    {/* Today's completed check-ins for this farm */}
-                    <span className="flex w-5 items-center justify-end gap-1 font-semibold text-green-600 sm:w-6">
-                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-500" />
-                      {farm.checkin_today_count ?? 0}
-                    </span>
-                  </div>
+      <div className="scrollable-content max-h-[240px] space-y-3 overflow-y-auto">
+        <div>
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Active Tasks</p>
+          {active.length === 0 ? (
+            <p className="text-xs text-gray-400">No active tasks</p>
+          ) : (
+            <div className="space-y-1">
+              {active.map((task) => (
+                <div key={task.id} className="flex items-center justify-between rounded-lg bg-rose-50 px-3 py-1.5">
+                  <span className="truncate text-xs text-gray-700">{task.title}</span>
+                  <span className="ml-2 shrink-0 text-xs font-medium text-rose-600">{task.assigned_user}</span>
                 </div>
               ))}
             </div>
-          </div>
-        ) : (
-          <div className="mb-3 flex items-center justify-center rounded-lg bg-gray-50 py-4">
-            <p className="text-xs text-gray-400">{t("common.noRecords")}</p>
-          </div>
-        )}
-        <div className="flex items-center justify-end gap-1 text-xs font-medium text-brand-600 opacity-0 transition-opacity group-hover:opacity-100">
-          {t("common.view")} <ArrowRight size={12} />
+          )}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function FinanceCard({ mod, kpi, navigate, t }) {
-  const fin = kpi.financial_kpis ?? {};
-  const breakdown = fin.farm_breakdown || [];
-  const Icon = mod.icon;
-  const fmt = (v) => `₹${Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
-
-  return (
-    <div
-      onClick={() => navigate(mod.path)}
-      className="group col-span-1 cursor-pointer overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-card transition-all hover:-translate-y-0.5 hover:shadow-soft sm:col-span-2"
-    >
-      <div className={`h-1.5 w-full bg-gradient-to-r ${mod.color}`} />
-      <div className="p-4">
-        <div className="mb-3 flex items-center gap-3">
-          <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${mod.bg}`}>
-            <Icon size={20} className="text-gray-700" />
-          </div>
-          <p className="text-sm font-bold text-gray-800">{t(mod.label)}</p>
-        </div>
-        {breakdown.length > 0 ? (
-          <div className="mb-3">
-            {/* Header row */}
-            <div className="mb-1.5 flex items-center justify-between rounded-lg bg-gray-100 px-2.5 py-1.5 sm:px-3">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Farm</span>
-              <div className="flex items-center gap-2 sm:gap-3 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-                <span className="w-14 text-right sm:w-16">{t("header.expenses", "Expenses")}</span>
-                <span className="w-14 text-right sm:w-16">{t("header.revenue")}</span>
-                <span className="w-14 text-right sm:w-16">{t("header.net")}</span>
-              </div>
-            </div>
-            {/* Per-farm rows */}
-            <div className="scrollable-content max-h-[160px] space-y-1 overflow-y-auto">
-              {breakdown.map((f) => (
-                <div
-                  key={f.farm_id}
-                  className="flex items-center justify-between rounded-lg bg-gray-50 px-2.5 py-1.5 sm:px-3"
-                >
-                  <span className="min-w-0 flex-1 truncate pr-2 text-xs font-bold text-green-700">🌾 {f.farm_name}</span>
-                  <div className="flex shrink-0 items-center gap-2 sm:gap-3 text-xs">
-                    <span className="w-14 text-right font-semibold text-rose-600 sm:w-16">{fmt(f.expenses)}</span>
-                    <span className="w-14 text-right font-semibold text-emerald-600 sm:w-16">{fmt(f.revenue)}</span>
-                    <span className={`w-14 text-right font-bold sm:w-16 ${Number(f.net) >= 0 ? "text-gray-800" : "text-red-600"}`}>{fmt(f.net)}</span>
-                  </div>
+        <div>
+          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Completed (last 12h)</p>
+          {completed.length === 0 ? (
+            <p className="text-xs text-gray-400">None completed yet today</p>
+          ) : (
+            <div className="space-y-1">
+              {completed.map((task) => (
+                <div key={task.id} className="flex items-center justify-between rounded-lg bg-green-50 px-3 py-1.5">
+                  <span className="truncate text-xs text-gray-700">{task.title}</span>
+                  <span className="ml-2 shrink-0 text-xs font-medium text-green-600">{task.assigned_user}</span>
                 </div>
               ))}
             </div>
-          </div>
-        ) : (
-          <div className="mb-3 flex items-center justify-center rounded-lg bg-gray-50 py-4">
-            <p className="text-xs text-gray-400">{t("common.noRecords")}</p>
-          </div>
-        )}
-        {/* Totals */}
-        <div className="mb-2 flex items-center justify-between rounded-lg bg-brand-50 px-2.5 py-1.5 sm:px-3 text-xs">
-          <span className="font-semibold text-gray-600">{t("common.total")}</span>
-          <div className="flex items-center gap-2 sm:gap-3">
-            <span className="w-14 text-right font-semibold text-rose-600 sm:w-16">{fmt(fin.total_expenses)}</span>
-            <span className="w-14 text-right font-semibold text-emerald-600 sm:w-16">{fmt(fin.total_revenue)}</span>
-            <span className="w-14 text-right font-bold text-gray-800 sm:w-16">{fmt(fin.net)}</span>
-          </div>
-        </div>
-        <div className="flex items-center justify-end gap-1 text-xs font-medium text-brand-600 opacity-0 transition-opacity group-hover:opacity-100">
-          {t("common.view")} <ArrowRight size={12} />
+          )}
         </div>
       </div>
-    </div>
+    </Panel>
   );
-}
-
-function GpsCard({ mod, kpi, navigate, t }) {
-  const gps = kpi.today_gps || [];
-  const activeUsers = gps.filter((p) => p.latitude != null);
-
-  return (
-    <div
-      onClick={() => navigate(mod.path)}
-      className="group cursor-pointer overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-card transition-all hover:-translate-y-0.5 hover:shadow-soft"
-    >
-      <div className={`h-1.5 w-full bg-gradient-to-r ${mod.color}`} />
-      <div className="p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${mod.bg}`}>
-              <MapPin size={20} className="text-gray-700" />
-            </div>
-            <p className="text-sm font-bold text-gray-800">{t(mod.label)}</p>
-          </div>
-          <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-xs font-medium text-cyan-600">
-            {activeUsers.length} active
-          </span>
-        </div>
-        {activeUsers.length > 0 ? (
-          <div className="scrollable-content mb-3 max-h-[200px] space-y-1.5 overflow-y-auto">
-            {activeUsers.slice(0, 5).map((ping) => (
-              <div
-                key={ping.user_id}
-                className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-1.5"
-              >
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-cyan-100 text-[10px] font-bold text-cyan-700">
-                  {(ping.user_name || "?")[0].toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-gray-700">
-                    {ping.user_name}
-                    {ping.farm_name && (
-                      <span className="ml-1 text-gray-400">· {ping.farm_name}</span>
-                    )}
-                  </p>
-                  <p className="flex items-center gap-1 text-[10px] text-gray-400">
-                    {Number(ping.latitude).toFixed(4)}, {Number(ping.longitude).toFixed(4)}
-                    <span>· {new Date(ping.recorded_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                  </p>
-                </div>
-                {ping.activity === "CHECKIN" && (
-                  <span className="relative flex h-2 w-2 shrink-0">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
-                  </span>
-                )}
-              </div>
-            ))}
-            {activeUsers.length > 5 && (
-              <p className="text-center text-[10px] text-gray-400">+{activeUsers.length - 5} more</p>
-            )}
-          </div>
-        ) : (
-          <div className="mb-3 flex items-center justify-center rounded-lg bg-gray-50 py-4">
-            <p className="text-xs text-gray-400">{t("common.view")}</p>
-          </div>
-        )}
-        <div className="flex items-center justify-end gap-1 text-xs font-medium text-brand-600 opacity-0 transition-opacity group-hover:opacity-100">
-          {t("common.view")} <ArrowRight size={12} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-function KPICard({ label, value, icon: Icon, color }) {
-  const colorMap = {
-    emerald: "bg-emerald-50 text-emerald-700",
-    blue: "bg-blue-50 text-blue-700",
-    violet: "bg-violet-50 text-violet-700",
-    green: "bg-green-50 text-green-700",
-    rose: "bg-rose-50 text-rose-700",
-    red: "bg-red-50 text-red-700",
-    amber: "bg-amber-50 text-amber-700",
-    orange: "bg-orange-50 text-orange-700",
-  };
-  return (
-    <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-card">
-      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${colorMap[color] || colorMap.emerald}`}>
-        <Icon size={20} />
-      </div>
-      <div className="min-w-0">
-        <p className="truncate text-xs font-medium text-gray-500">{label}</p>
-        <p className="text-base font-bold text-gray-800">{value}</p>
-      </div>
-    </div>
-  );
-}
-
-function getModuleMetrics(mod, kpi) {
-  const fk = kpi.farm_kpis ?? {};
-  const wk = kpi.workforce_kpis ?? {};
-  const ck = kpi.crop_kpis ?? {};
-  const tk = kpi.task_kpis ?? {};
-  const fin = kpi.financial_kpis ?? {};
-  const inv = kpi.inventory_kpis || {};
-  const fmt = (v) => `₹${Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
-
-  switch (mod.key) {
-    case "farmAdmin":
-      return [
-        { label: "dashboard.totalFarms", value: fk.total_farms },
-        { label: "header.fields", value: fk.total_fields },
-      ];
-    case "finance":
-      return [
-        { label: "header.revenue", value: fmt(fin.total_revenue) },
-        { label: "header.net", value: fmt(fin.net) },
-        { label: "Expenses", value: fmt(fin.total_expenses) },
-      ];
-    case "hr":
-      return [
-        { label: "dashboard.employees", value: wk.total_employees },
-        { label: "dashboard.presentToday", value: wk.present_today },
-        { label: "Absent Today", value: wk.absent_today ?? 0 },
-        { label: "Managers", value: wk.manager_count ?? 0 },
-        { label: "Pending Approvals", value: wk.pending_approvals ?? 0 },
-      ];
-    case "payroll":
-      return [
-        { label: "Advances", value: fmt(fin.total_advances) },
-        { label: "Outstanding", value: fmt(fin.outstanding_advances) },
-        { label: "Deductions", value: fmt(fin.total_deductions) },
-      ];
-    case "tasks":
-      return [];
-    case "agronomy":
-      return [
-        { label: "dashboard.activeCrops", value: ck.active_crops },
-        { label: "dashboard.harvestQty", value: Number(ck.total_harvest_qty ?? 0).toFixed(1) },
-      ];
-    case "inventory":
-      return [
-        { label: "Total Items", value: inv.total_items ?? 0 },
-        { label: "Low Stock", value: inv.low_stock_count ?? 0 },
-        { label: "Stock Value", value: fmt(inv.stock_value) },
-      ];
-    case "documents":
-      return [
-        { label: "Total Documents", value: kpi.document_kpis?.total_documents ?? 0 },
-      ];
-    case "breakdowns":
-      return [
-        { label: "Open", value: kpi.breakdown_kpis?.open_breakdowns ?? 0 },
-        { label: "Total", value: kpi.breakdown_kpis?.total_breakdowns ?? 0 },
-      ];
-    case "administration":
-      return [
-        { label: "Total Users", value: kpi.admin_kpis?.total_users ?? 0 },
-      ];
-    default:
-      return [];
-  }
 }
