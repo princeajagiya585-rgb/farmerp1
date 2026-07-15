@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  Tractor, Users, Banknote, MapPin, AlertTriangle,
+  Tractor, Users, Banknote, MapPin, AlertTriangle, Check,
   TrendingUp, TrendingDown, CalendarCheck, LayoutGrid, Coins, UserMinus, Plane, Download,
 } from "lucide-react";
 import { Badge } from "../components/ui";
@@ -379,7 +379,8 @@ function ReorderAlertsPanel() {
     };
   }, []);
 
-  // "True" = ordered stock has arrived at the farm; flips the row to Done.
+  // Tick (approve) = stock purchased; the item flips to Done and drops off
+  // the dashboard alerts (it stays visible with a Done chip on the page).
   const markDone = (row) => {
     setItems((prev) => (prev || []).map((i) => (i.id === row.id ? { ...i, restocked: true } : i)));
     resource("inventory/items")
@@ -389,7 +390,15 @@ function ReorderAlertsPanel() {
       );
   };
 
-  const list = items || [];
+  const [year, setYear] = useState("ALL");
+  const [month, setMonth] = useState("ALL");
+  const years = yearsFromRows(items || []);
+  // Undated (old) entries always pass the filter so they never silently vanish.
+  const inScope = (r) =>
+    !r.date ||
+    ((year === "ALL" || String(r.date).startsWith(`${year}-`)) &&
+      (month === "ALL" || String(r.date).slice(5, 7) === month));
+  const list = (items || []).filter((r) => !r.restocked).filter(inScope);
   return (
     <Panel
       title="Reorder Alerts"
@@ -401,6 +410,15 @@ function ReorderAlertsPanel() {
           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${list.length ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
             {list.length} low stock
           </span>
+          <select
+            value={year}
+            onChange={(e) => setYear(e.target.value)}
+            className="rounded-lg border border-gray-300 px-2 py-1 text-xs text-gray-600 outline-none focus:border-brand-500"
+          >
+            <option value="ALL">All Years</option>
+            {years.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <MonthSelect value={month} onChange={setMonth} />
           <button
             onClick={() => navigate("/inventory/alerts?new=1")}
             className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-brand-700"
@@ -413,7 +431,9 @@ function ReorderAlertsPanel() {
       {items === null ? (
         <p className="py-8 text-center text-xs text-gray-400">Loading…</p>
       ) : list.length === 0 ? (
-        <p className="py-8 text-center text-xs text-gray-400">All items are above their reorder level 🎉</p>
+        <p className="py-8 text-center text-xs text-gray-400">
+          No pending alerts{month === "ALL" && year === "ALL" ? "" : ` (${month === "ALL" ? "" : `${MONTHS[Number(month) - 1]} `}${year === "ALL" ? "" : year})`} 🎉
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -451,17 +471,13 @@ function ReorderAlertsPanel() {
                     <td className="py-1.5 pl-2 text-gray-600">{r.date || "—"}</td>
                     <td className="py-1.5 pl-2 text-gray-600">{r.supplier || "—"}</td>
                     <td className="py-1.5 pl-2">
-                      {r.restocked ? (
-                        <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-semibold text-green-600">✓ Done</span>
-                      ) : (
-                        <button
-                          onClick={() => markDone(r)}
-                          title="Stock farm par aa gaya — Done mark karo"
-                          className="rounded-lg bg-brand-600 px-2 py-0.5 text-[10px] font-semibold text-white hover:bg-brand-700"
-                        >
-                          True
-                        </button>
-                      )}
+                      <button
+                        onClick={() => markDone(r)}
+                        title="Approve — stock kharid liya, alert Done ho jayega"
+                        className="rounded-full bg-green-600 p-1 text-white hover:bg-green-700"
+                      >
+                        <Check size={12} />
+                      </button>
                     </td>
                   </tr>
                 );

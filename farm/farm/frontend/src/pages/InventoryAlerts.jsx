@@ -84,10 +84,10 @@ export default function InventoryAlerts() {
         ) : (
           <button
             onClick={() => markDone(r, reload, updateRow)}
-            title="Stock farm par aa gaya — Done mark karo"
-            className="rounded-lg bg-brand-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-700"
+            title="Approve — stock kharid liya, Done mark karo"
+            className="rounded-full bg-green-600 p-1.5 text-white hover:bg-green-700"
           >
-            True
+            <Check size={14} />
           </button>
         )
       }
