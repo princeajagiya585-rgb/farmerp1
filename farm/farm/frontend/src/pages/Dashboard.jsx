@@ -379,6 +379,16 @@ function ReorderAlertsPanel() {
     };
   }, []);
 
+  // "True" = ordered stock has arrived at the farm; flips the row to Done.
+  const markDone = (row) => {
+    setItems((prev) => (prev || []).map((i) => (i.id === row.id ? { ...i, restocked: true } : i)));
+    resource("inventory/items")
+      .update(row.id, { restocked: true })
+      .catch(() =>
+        setItems((prev) => (prev || []).map((i) => (i.id === row.id ? { ...i, restocked: false } : i))),
+      );
+  };
+
   const list = items || [];
   return (
     <Panel
@@ -416,14 +426,16 @@ function ReorderAlertsPanel() {
                 <th className="py-1.5 pr-2 text-right">Live Stock</th>
                 <th className="py-1.5 pr-2 text-right">Reorder Alert</th>
                 <th className="py-1.5 pr-2 text-right">Required (Kitni Chahiye)</th>
+                <th className="py-1.5 pl-2 text-left">Date</th>
                 <th className="py-1.5 pl-2 text-left">Employee</th>
+                <th className="py-1.5 pl-2 text-left">Action</th>
               </tr>
             </thead>
             <tbody>
               {list.map((r) => {
                 const need = Math.max(Number(r.reorder_level || 0) - Number(r.current_stock || 0), 0);
                 return (
-                  <tr key={r.id} className="border-t border-gray-100 bg-red-50">
+                  <tr key={r.id} className="border-t border-gray-100">
                     <td className="py-1.5 pl-2 font-medium text-gray-700">
                       <span className="flex items-center gap-2">
                         <AlertTriangle size={14} className="shrink-0 text-red-500" />
@@ -433,10 +445,24 @@ function ReorderAlertsPanel() {
                     <td className="py-1.5 pl-2 text-gray-600">{r.sku || "—"}</td>
                     <td className="py-1.5 pl-2"><Badge color={ALERT_CAT_COLOR[r.category] || "gray"}>{r.category}</Badge></td>
                     <td className="py-1.5 pl-2 text-gray-600">{r.farm_name || "—"}</td>
-                    <td className="py-1.5 pr-2 text-right font-semibold text-red-600">{`${Number(r.current_stock || 0)} ${r.unit || ""}`.trim()}</td>
+                    <td className="py-1.5 pr-2 text-right font-semibold text-red-600">{Number(r.current_stock || 0)}</td>
                     <td className="py-1.5 pr-2 text-right text-gray-700">{Number(r.reorder_level || 0)}</td>
-                    <td className="py-1.5 pr-2 text-right font-semibold text-amber-600">{`${need} ${r.unit || ""}`.trim()}</td>
+                    <td className="py-1.5 pr-2 text-right font-semibold text-amber-600">{need}</td>
+                    <td className="py-1.5 pl-2 text-gray-600">{r.date || "—"}</td>
                     <td className="py-1.5 pl-2 text-gray-600">{r.supplier || "—"}</td>
+                    <td className="py-1.5 pl-2">
+                      {r.restocked ? (
+                        <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-semibold text-green-600">✓ Done</span>
+                      ) : (
+                        <button
+                          onClick={() => markDone(r)}
+                          title="Stock farm par aa gaya — Done mark karo"
+                          className="rounded-lg bg-brand-600 px-2 py-0.5 text-[10px] font-semibold text-white hover:bg-brand-700"
+                        >
+                          True
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 );
               })}

@@ -25,6 +25,10 @@ class Item(OwnedModel):
     unit_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     supplier = models.CharField(max_length=150, blank=True)
     description = models.TextField(blank=True)
+    date = models.DateField(null=True, blank=True)
+    # Reorder-alert workflow: set to True once the ordered stock has
+    # physically arrived at the farm ("Done" on the alerts screens).
+    restocked = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["name"]
