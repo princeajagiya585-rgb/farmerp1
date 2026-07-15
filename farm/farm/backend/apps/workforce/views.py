@@ -53,6 +53,10 @@ class EmployeeViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMode
         # The EmployeeSelfScopedMixin now handles conditional self-scoping based on the
         # presence of an 'employee' filter. This method no longer needs to
         # explicitly filter for EMPLOYEE roles.
+        # Super-admin-linked employee records are only visible to super admins,
+        # so managers never see admins in "Assign to Worker" dropdowns.
+        if getattr(self.request.user, "role", None) != Role.SUPER_ADMIN:
+            qs = qs.exclude(user__role=Role.SUPER_ADMIN)
         return qs
     farm_lookup = "farm_id"
     employee_self_lookup = "user"  # Employee links directly to the user

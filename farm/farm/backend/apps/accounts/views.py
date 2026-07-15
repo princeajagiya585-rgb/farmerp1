@@ -465,8 +465,13 @@ class UserViewSet(viewsets.ModelViewSet):
         role = getattr(user, "role", None)
         if self.action == "list" and role != Role.SUPER_ADMIN:
             if role == Role.FARM_MANAGER:
-                # Managers only see users assigned to their own farms.
-                qs = qs.filter(farms__in=user.farms.all()).distinct()
+                # Managers only see their own farms' users, never super admins
+                # (keeps admins out of "Assign to User" dropdowns).
+                qs = (
+                    qs.filter(farms__in=user.farms.all())
+                    .exclude(role=Role.SUPER_ADMIN)
+                    .distinct()
+                )
             else:
                 qs = qs.filter(pk=user.pk)
         return qs
