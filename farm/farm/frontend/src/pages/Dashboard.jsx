@@ -379,8 +379,8 @@ function ReorderAlertsPanel() {
     };
   }, []);
 
-  // Tick (approve) = stock purchased; the item flips to Done and drops off
-  // the dashboard alerts (it stays visible with a Done chip on the page).
+  // Tick (approve) = stock purchased; the row flips to a green Done chip
+  // and stops counting as low stock (but stays listed for the month).
   const markDone = (row) => {
     setItems((prev) => (prev || []).map((i) => (i.id === row.id ? { ...i, restocked: true } : i)));
     resource("inventory/items")
@@ -398,7 +398,12 @@ function ReorderAlertsPanel() {
     !r.date ||
     ((year === "ALL" || String(r.date).startsWith(`${year}-`)) &&
       (month === "ALL" || String(r.date).slice(5, 7) === month));
-  const list = (items || []).filter((r) => !r.restocked).filter(inScope);
+  // Pending alerts first, approved (Done) ones after them.
+  const list = (items || [])
+    .filter(inScope)
+    .sort((a, b) => (a.restocked ? 1 : 0) - (b.restocked ? 1 : 0));
+  const pending = list.filter((r) => !r.restocked).length;
+  const approved = list.length - pending;
   return (
     <Panel
       title="Reorder Alerts"
@@ -407,8 +412,11 @@ function ReorderAlertsPanel() {
       viewLabel="View All Alerts"
       action={
         <div className="flex items-center gap-2">
-          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${list.length ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
-            {list.length} low stock
+          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${pending ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"}`}>
+            {pending} low stock
+          </span>
+          <span className="rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-600">
+            {approved} approved
           </span>
           <select
             value={year}
@@ -455,10 +463,12 @@ function ReorderAlertsPanel() {
               {list.map((r) => {
                 const need = Math.max(Number(r.reorder_level || 0) - Number(r.current_stock || 0), 0);
                 return (
-                  <tr key={r.id} className="border-t border-gray-100">
+                  <tr key={r.id} className={`border-t border-gray-100 ${r.restocked ? "opacity-60" : ""}`}>
                     <td className="py-1.5 pl-2 font-medium text-gray-700">
                       <span className="flex items-center gap-2">
-                        <AlertTriangle size={14} className="shrink-0 text-red-500" />
+                        {r.restocked
+                          ? <Check size={14} className="shrink-0 text-green-500" />
+                          : <AlertTriangle size={14} className="shrink-0 text-red-500" />}
                         {r.name}
                       </span>
                     </td>
@@ -471,13 +481,19 @@ function ReorderAlertsPanel() {
                     <td className="py-1.5 pl-2 text-gray-600">{r.date || "—"}</td>
                     <td className="py-1.5 pl-2 text-gray-600">{r.supplier || "—"}</td>
                     <td className="py-1.5 pl-2">
-                      <button
-                        onClick={() => markDone(r)}
-                        title="Approve — stock kharid liya, alert Done ho jayega"
-                        className="rounded-full bg-green-600 p-1 text-white hover:bg-green-700"
-                      >
-                        <Check size={12} />
-                      </button>
+                      {r.restocked ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-semibold text-green-600">
+                          <Check size={10} /> Done
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => markDone(r)}
+                          title="Approve — stock kharid liya, alert Done ho jayega"
+                          className="rounded-full bg-green-600 p-1 text-white hover:bg-green-700"
+                        >
+                          <Check size={12} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
