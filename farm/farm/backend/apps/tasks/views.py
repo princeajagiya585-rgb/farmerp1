@@ -177,7 +177,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     @action(detail=True, methods=["post"])
     def submit(self, request, pk=None):
         task = self.get_object()
-        task.status = Task.Status.SUBMITTED
+        task.status = Task.Status.WAITING_APPROVAL
         # Don't force progress=100 — this is now used as the worker's
         # "ready to work" acknowledgment after Before Work confirmation.
         task.save(update_fields=["status", "updated_at"])
@@ -278,7 +278,7 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
                 "active": qs.filter(
                     status__in=[
                         Task.Status.IN_PROGRESS,
-                        Task.Status.SUBMITTED,
+                        Task.Status.WAITING_APPROVAL,
                         Task.Status.APPROVED,
                     ]
                 ).count(),

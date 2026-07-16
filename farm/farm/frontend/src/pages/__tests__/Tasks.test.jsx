@@ -21,26 +21,35 @@ jest.mock('../../context/AuthContext', () => ({
   }),
 }));
 
-// Mock resource and toFormData from api.js
-const mockResource = jest.fn((path) => {
-  const mockMethods = {
-    create: jest.fn((data) => Promise.resolve({ success: true, data: data })),
-    list: jest.fn(() => Promise.resolve({ results: [], count: 0 })), // Add list method
-    // Add other methods as needed
+// Mock resource and toFormData from api.js.
+// Everything lives inside the factory because jest.mock is hoisted above
+// imports — outside variables would hit the TDZ. Each path returns the SAME
+// cached mock object so test assertions see the calls made by the component.
+jest.mock('../../lib/api', () => {
+  const apis = {};
+  const resource = jest.fn((path) => {
+    if (!apis[path]) {
+      apis[path] = {
+        create: jest.fn((data) => Promise.resolve({ success: true, data })),
+        list: jest.fn(() => Promise.resolve({ results: [], count: 0 })),
+        action: jest.fn(() => Promise.resolve({ success: true })),
+      };
+    }
+    return apis[path];
+  });
+  return {
+    resource,
+    toFormData: jest.fn((data) => {
+      const formData = new FormData();
+      for (const key in data) {
+        formData.append(key, data[key]);
+      }
+      return formData;
+    }),
   };
-  return mockMethods;
 });
 
-jest.mock('../../lib/api', () => ({
-  resource: mockResource,
-  toFormData: jest.fn((data) => {
-    const formData = new FormData();
-    for (const key in data) {
-      formData.append(key, data[key]);
-    }
-    return formData;
-  }),
-}));
+const { resource: mockResource } = jest.requireMock('../../lib/api');
 
 // Mock navigator.geolocation
 const mockGeolocation = {
@@ -139,35 +148,44 @@ describe('Tasks Component', () => {
 
   it('opens the Before Work modal when "Before Work" button is clicked', async () => {
     render(<Tasks />);
-    const beforeWorkButton = screen.getByRole('button', { name: 'gps.beforeWork' });
+    const beforeWorkButton = screen.getByRole('button', { name: /gps\.beforeWork/ });
     fireEvent.click(beforeWorkButton);
 
+    // Location resolves via the mocked geolocation; the photo section is
+    // always rendered for BEFORE / DURING_WORK / COMPLETED phases.
     await waitFor(() => {
       expect(screen.getByText('gps.currentLocation')).toBeInTheDocument();
-      expect(screen.getByText('gps.clickPhoto')).toBeInTheDocument();
+      expect(screen.getByText('common.workPhoto')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /common\.takePhoto/ })).toBeInTheDocument();
     });
   });
 
   it('submits Before Work with photo and location', async () => {
     render(<Tasks />);
-    fireEvent.click(screen.getByRole('button', { name: 'gps.beforeWork' }));
+    fireEvent.click(screen.getByRole('button', { name: /gps\.beforeWork/ }));
 
     await waitFor(() => {
       expect(screen.getByText('gps.currentLocation')).toBeInTheDocument();
     });
 
-    // Simulate photo input
+    // Attach a photo via the file picker (the input lives inside the
+    // "or choose file" label).
     const file = new File(['(⌐□_□)'], 'test.png', { type: 'image/png' });
-    const photoInput = screen.getByLabelText('common.workPhoto');
+    const photoInput = screen.getByLabelText(/common\.orChooseFile/);
     fireEvent.change(photoInput, { target: { files: [file] } });
 
-    // Assuming the submit button within the modal is also labeled 'gps.beforeWork'
-    const submitButtonInModal = screen.getByRole('button', { name: 'gps.beforeWork' });
+    // With both location and photo present the Submit button appears.
+    const submitButtonInModal = await screen.findByRole('button', { name: /Submit/ });
     fireEvent.click(submitButtonInModal);
 
+    // Before Work posts to the tasks action endpoint with FormData
+    // (photo uploads go through toFormData).
     await waitFor(() => {
-      expect(mockResource('gps/pings').create).toHaveBeenCalledWith(expect.any(FormData));
-      // You'd also check if mockReload was called, but that's within the CrudResource mock
+      expect(mockResource('tasks').action).toHaveBeenCalledWith(
+        'mock-task-id',
+        'before-work',
+        expect.any(FormData),
+      );
     });
   });
 
