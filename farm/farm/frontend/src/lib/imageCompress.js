@@ -1,14 +1,14 @@
 // Client-side photo compression. Every photo picked from disk or captured by
 // the camera anywhere in the app goes through compressImage() before upload,
-// so uploads land in roughly the 100–1000 KB range while staying visually
+// so uploads land in roughly the 100–250 KB range while staying visually
 // sharp. Non-image files (PDFs, …) and already-small images pass through
 // untouched, and ANY failure falls back to uploading the original file.
 
-const HARD_MAX_BYTES = 1000 * 1024; // never upload an image above ~1 MB
-const TARGET_BYTES = 500 * 1024; // aim for ~500 KB
-const SKIP_BELOW_BYTES = 150 * 1024; // already small enough — leave as-is
-const MAX_DIMENSION = 1920; // longest side; keeps bills/text readable
-const MIN_QUALITY = 0.5; // floor so the picture stays clear
+const HARD_MAX_BYTES = 250 * 1024; // never upload an image above ~250 KB
+const TARGET_BYTES = 200 * 1024; // aim for ~200 KB
+const SKIP_BELOW_BYTES = 100 * 1024; // already small enough — leave as-is
+const MAX_DIMENSION = 1600; // longest side; keeps bills/text readable
+const MIN_QUALITY = 0.45; // floor so the picture stays clear
 
 // Decode a Blob into something drawable on a canvas, honouring EXIF rotation
 // where the browser supports it (phone photos are often stored rotated).
@@ -72,7 +72,7 @@ export async function compressImage(file, { targetBytes = TARGET_BYTES, maxDimen
     let blob = null;
     // If the quality loop alone can't get under the hard ceiling (huge
     // originals), shrink the dimensions and try again a couple of times.
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 5; attempt++) {
       blob = await encodeAtScale(drawable, scale, targetBytes);
       if (blob && blob.size <= HARD_MAX_BYTES) break;
       scale *= 0.75;
