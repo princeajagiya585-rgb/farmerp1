@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Camera, CheckCircle, Loader2, MapPin, Pause, Play,
@@ -155,6 +155,18 @@ export default function Tasks() {
   const isEmployee = hasRole("EMPLOYEE");
   const [myTasksOnly, setMyTasksOnly] = useState(false);
   const [toasts, addToast, removeToast] = useToast();
+
+  // ── "Task time over" popup queue ─────────────────────────────────
+  // When a running task passes its time limit, or its due date is behind
+  // us, pop an alert telling the user to press "Completed Work" + photo.
+  // A task alerts at most once per page visit (de-duped via the ref).
+  const [overAlerts, setOverAlerts] = useState([]);
+  const overAlertedRef = useRef(new Set());
+  const notifyTaskOver = (row, kind) => {
+    if (overAlertedRef.current.has(row.id)) return;
+    overAlertedRef.current.add(row.id);
+    setOverAlerts((prev) => [...prev, { row, kind }]);
+  };
 
   const assignFields = isEmployee
     ? []
@@ -342,7 +354,7 @@ export default function Tasks() {
 
   // ── TaskTimer component ──────────────────────────────────────────
   // Shows the timer based on task.status and my_execution.timer_data
-  const TaskTimer = ({ row, limitMinutes = null }) => {
+  const TaskTimer = ({ row, limitMinutes = null, onOver = null }) => {
     const status = row.status;
     const execution = row.my_execution;
     // Prefer the task-level work_timer (computed from activities → works for
@@ -367,6 +379,32 @@ export default function Tasks() {
       const id = setInterval(() => setNow(Date.now()), 1000);
       return () => clearInterval(id);
     }, [isTicking]);
+
+    // "Task time over" alert: fires when the live timer passes its allotted
+    // limit, or when the due date is already behind us. The parent de-dupes,
+    // so re-running every tick is harmless.
+    useEffect(() => {
+      if (!onOver) return;
+      if (CLOSED_STATUSES.includes(status) || row.work_phase === "COMPLETED") return;
+      if (
+        limitMinutes != null &&
+        timerData && timerData.start_time && !timerData.is_completed &&
+        !timerData.is_on_break && status !== "ON_BREAK"
+      ) {
+        const net =
+          (now - new Date(timerData.start_time).getTime()) / 1000 -
+          (timerData.accumulated_break_seconds || 0);
+        if (net > limitMinutes * 60) {
+          onOver(row, "time");
+          return;
+        }
+      }
+      if (row.due_date) {
+        const due = new Date(`${row.due_date}T23:59:59`);
+        const duePassed = !Number.isNaN(due.getTime()) && Date.now() > due.getTime();
+        if (row.is_overdue || duePassed) onOver(row, "date");
+      }
+    }, [now]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const fmt = (secs) => {
       const v = Math.max(0, Math.floor(secs || 0));
@@ -648,7 +686,7 @@ export default function Tasks() {
                         {formatLimit(limitH)}
                       </span>
                     )}
-                    <TaskTimer row={r} limitMinutes={limitH != null ? limitH * 60 : null} />
+                    <TaskTimer row={r} limitMinutes={limitH != null ? limitH * 60 : null} onOver={notifyTaskOver} />
                   </div>
                 );
               },
@@ -835,6 +873,47 @@ export default function Tasks() {
                      !workPos ? "Waiting for location..." : "Add a photo to submit"}
                   </span>
                 )
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* "Task time over" popup — click Completed Work with a photo */}
+      {overAlerts.length > 0 && (
+        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black bg-opacity-50 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl">
+            <div className="flex items-start gap-3 p-5">
+              <div className="mt-0.5 shrink-0 rounded-full bg-red-100 p-2">
+                <AlertCircle size={22} className="text-red-600" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-gray-900">
+                  {'⏰'} {t("tasks.timeOverTitle")}
+                </h3>
+                <p className="mt-1 truncate text-sm font-medium text-gray-700">
+                  {overAlerts[0].row.title}
+                </p>
+                <p className="mt-2 text-sm text-gray-600">
+                  {t(overAlerts[0].kind === "time" ? "tasks.timeOverMsg" : "tasks.dateOverMsg")}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t p-4">
+              <Button variant="secondary" onClick={() => setOverAlerts((prev) => prev.slice(1))}>
+                {t("tasks.timeOverOk")}
+              </Button>
+              {overAlerts[0].row.work_phase === "IN_PROGRESS" && (
+                <button
+                  onClick={() => {
+                    const row = overAlerts[0].row;
+                    setOverAlerts((prev) => prev.slice(1));
+                    openWorkModal(row, "COMPLETED", null, null);
+                  }}
+                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-green-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-800"
+                >
+                  <Camera size={15} /> {t("gps.completedWork")}
+                </button>
               )}
             </div>
           </div>
