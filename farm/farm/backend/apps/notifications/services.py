@@ -57,6 +57,51 @@ def notify(recipient, title, body="", notification_type="INFO", data=None, link=
     return instance
 
 
+def _resolve_farm(instance):
+    """Best-effort farm lookup: direct field first, then via common relations."""
+    farm = getattr(instance, "farm", None)
+    if farm is not None:
+        return farm
+    for rel in ("employee", "asset", "item", "crop", "task"):
+        related = getattr(instance, rel, None)
+        farm = getattr(related, "farm", None)
+        if farm is not None:
+            return farm
+    return None
+
+
+def notify_activity(instance, label, page, notification_type="INFO", subject="", detail=""):
+    """Fan a new entry out to every SUPER_ADMIN plus the farm's managers.
+
+    The actor (created_by) is always excluded — nobody gets notified of
+    their own action. Actor names carry the (M)/(A) role markers from
+    User.get_full_name(), and the body always names the farm and the page
+    the work belongs to, e.g.:
+
+        title: "Attendance: Ramesh Patil"
+        body:  "By Hitesh Bhai (M) • Farm: Green Valley • 2026-07-16 • PRESENT"
+        link:  "/attendance"
+    """
+    actor = getattr(instance, "created_by", None)
+    farm = _resolve_farm(instance)
+    actor_name = (actor.get_full_name() or actor.username) if actor else "System"
+    farm_name = getattr(farm, "name", "") or "—"
+    title = f"{label}: {subject}" if subject else label
+    parts = [f"By {actor_name}", f"Farm: {farm_name}"]
+    if detail:
+        parts.append(str(detail))
+    return notify_roles(
+        farm,
+        ["FARM_MANAGER"],
+        title=title,
+        body=" • ".join(parts),
+        notification_type=notification_type,
+        data={"farm": farm_name, "actor": actor_name, "page": page},
+        link=page,
+        exclude=actor,
+    )
+
+
 def notify_roles(farm, roles, title, body="", notification_type="INFO", data=None, link="", exclude=None):
     """Notify every active user who has one of `roles` and is assigned to `farm`
     (plus all SUPER_ADMINs). Returns the number of notifications created."""
