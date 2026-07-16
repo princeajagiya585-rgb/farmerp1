@@ -93,6 +93,34 @@ def task_activity(sender, instance, created, **kwargs):
     )
 
 
+@receiver(post_save, sender="tasks.TaskActivity")
+def task_work_activity(sender, instance, created, **kwargs):
+    """Work-phase actions — Before Work / Break Start / Break End /
+    During Work / Completed — fan out to admins + the farm's managers
+    (actor excluded), e.g.:
+
+        title: "Before Work: Water the north field"
+        body:  "By Ramesh Patil • Farm: Green Valley • started work"
+    """
+    if kwargs.get("raw") or not created:
+        return
+    # Name the employee the entry is for when someone else (a manager)
+    # recorded it on their behalf; otherwise "By <actor>" already says it.
+    emp = instance.employee
+    for_emp = ""
+    if emp and getattr(emp, "user_id", None) != getattr(instance, "created_by_id", None):
+        for_emp = f"For {emp.name}"
+    detail = " • ".join(p for p in [for_emp, instance.notes or ""] if p)
+    notify_activity(
+        instance,
+        instance.get_action_type_display(),
+        "/tasks",
+        notification_type="TASK",
+        subject=getattr(instance.task, "title", ""),
+        detail=detail,
+    )
+
+
 @receiver(post_save, sender="finance.Expense")
 def expense_activity(sender, instance, created, **kwargs):
     if kwargs.get("raw") or not created:
