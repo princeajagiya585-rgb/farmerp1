@@ -861,6 +861,7 @@
   "attendance.leave": "રજા પર",
   "attendance.quickCheckIn": "ઝડપી ચેક-ઇન",
   "attendance.gpsCheckIn": "GPS ચેક-ઇન",
+  "attendance.gpsCheckOut": "GPS ચેક-આઉટ",
   "attendance.selectEmployee": "— કર્મચારી પસંદ કરો —",
   "attendance.browserInfo": "તમારું બ્રાઉઝર સ્થાન પરવાનગી માંગશે, પછી તમે ચેક-ઇન ફોટો લઈ શકો છો.",
   "attendance.employee": "કર્મચારી",

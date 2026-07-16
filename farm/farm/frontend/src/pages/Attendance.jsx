@@ -150,11 +150,13 @@ export default function Attendance() {
   const isEmployee = currentUser?.role === "EMPLOYEE";
   const canApprove = hasRole("SUPER_ADMIN", "FARM_MANAGER");
   const canDelete = hasRole("SUPER_ADMIN"); // only super admin may delete
+  const isAdmin = hasRole("SUPER_ADMIN"); // admins never mark their own attendance
   const [rows, setRows] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [myProfile, setMyProfile] = useState(null);
   const [todayAttendance, setTodayAttendance] = useState(null);
   const [empId, setEmpId] = useState("");
+  const [empToday, setEmpToday] = useState(null); // selected employee's attendance today
   const [msg, setMsg] = useState("");
   const [toasts, addToast, removeToast] = useToast();
   const [actionLoading, setActionLoading] = useState(false);
@@ -259,6 +261,20 @@ export default function Attendance() {
       setTodayAttendance(d.data?.has_attendance ? d.data : null);
     }).catch(() => {});
   }, [myProfile, rows]);
+
+  // Today's status of the employee picked in the Quick Check-In dropdown —
+  // decides whether the action button offers GPS Check-In or GPS Check-Out.
+  useEffect(() => {
+    if (!empId) {
+      setEmpToday(null);
+      return;
+    }
+    let alive = true;
+    api.get(`/workforce/attendance/today_status/?employee=${empId}`).then((d) => {
+      if (alive) setEmpToday(d.data?.has_attendance ? d.data : null);
+    }).catch(() => alive && setEmpToday(null));
+    return () => { alive = false; };
+  }, [empId, rows]);
 
   // Timer effect - update elapsed seconds every second when checked in but not checked out
   useEffect(() => {
@@ -537,7 +553,9 @@ export default function Attendance() {
         }
       />
 
-      {currentUser && (
+      {/* Self-attendance card — hidden for super admins (they never mark
+          their own attendance, only manage employees' below). */}
+      {currentUser && !isAdmin && (
         <Card className="mb-5 overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-4">
@@ -686,16 +704,32 @@ export default function Attendance() {
                 ))}
               </Select>
             </div>
-            <Button
-              onClick={() => {
-                const emp = employees.find((e) => String(e.id) === String(empId));
-                if (!emp) return setMsg(t("common.selectEmployeeFirst"));
-                openCheckInModal(emp);
-              }}
-              disabled={actionLoading}
-            >
-              <Camera size={16} /> {t("attendance.gpsCheckIn")}
-            </Button>
+            {/* Button follows the selected employee's day: no check-in yet →
+                GPS Check-In; checked in → GPS Check-Out; both done → Done. */}
+            {empToday?.check_in_time && !empToday?.check_out_time ? (
+              <Button
+                onClick={() => openCheckOutModal(empToday)}
+                disabled={actionLoading}
+                className="bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white shadow-sm"
+              >
+                <LogOut size={16} /> {t("attendance.gpsCheckOut", "GPS Check-Out")}
+              </Button>
+            ) : empToday?.check_in_time && empToday?.check_out_time ? (
+              <Button disabled className="bg-purple-100 text-purple-700 cursor-not-allowed shadow-sm">
+                <Check size={16} /> {t("attendance.doneAttendance", "Done Attendance")}
+              </Button>
+            ) : (
+              <Button
+                onClick={() => {
+                  const emp = employees.find((e) => String(e.id) === String(empId));
+                  if (!emp) return setMsg(t("common.selectEmployeeFirst"));
+                  openCheckInModal(emp);
+                }}
+                disabled={actionLoading}
+              >
+                <Camera size={16} /> {t("attendance.gpsCheckIn")}
+              </Button>
+            )}
             {msg && <span className="text-sm text-gray-500">{msg}</span>}
           </div>
           <p className="mt-2 text-xs text-gray-400">

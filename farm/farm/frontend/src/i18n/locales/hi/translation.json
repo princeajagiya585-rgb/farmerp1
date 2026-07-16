@@ -1270,6 +1270,7 @@
   "attendance.subtitlePg": "GPS चेक-इन, सत्यापन और अनुमोदन",
   "attendance.quickCheckIn": "त्वरित चेक-इन",
   "attendance.gpsCheckIn": "GPS चेक-इन",
+  "attendance.gpsCheckOut": "GPS चेक-आउट",
   "attendance.selectEmployee": "— कर्मचारी चुनें —",
   "attendance.browserInfo": "आपका ब्राउज़र लोकेशन अनुमति मांगेगा, फिर आप चेक-इन फ़ोटो ले सकते हैं।",
   "attendance.employee": "कर्मचारी",

@@ -771,6 +771,7 @@
   "attendance.pending": "Pending",
   "attendance.quickCheckIn": "Quick Check-In",
   "attendance.gpsCheckIn": "GPS Check-In",
+  "attendance.gpsCheckOut": "GPS Check-Out",
   "attendance.selectEmployee": "— select employee —",
   "attendance.browserInfo": "Your browser will request location permission, then you can capture a check-in photo.",
   "attendance.employee": "Employee",
