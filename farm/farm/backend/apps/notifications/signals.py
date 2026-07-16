@@ -184,8 +184,8 @@ _SIMPLE_ACTIVITIES = [
      lambda i: f"₹{i.amount}", lambda i: i.name or i.description or i.category or ""),
     ("inventory.Item", "Inventory item added", "/inventory", "INVENTORY",
      lambda i: i.name, lambda i: i.category or ""),
-    ("documents.Document", "Document uploaded", "/documents", "INFO",
-     lambda i: i.title, lambda i: i.category or ""),
+    # documents.Document intentionally NOT listed: uploads are private to the
+    # uploader, so they must not fan out to other users' notification feeds.
     ("payroll.Advance", "Advance", "/payroll/advances", "PAYROLL",
      lambda i: getattr(i.employee, "name", ""), lambda i: f"₹{i.amount}"),
     ("payroll.Payment", "Salary payment", "/payroll/payments", "PAYROLL",

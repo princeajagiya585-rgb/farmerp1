@@ -74,6 +74,28 @@ function appendPing(list, ping) {
   return [ping, ...list];
 }
 
+/** Local YYYY-MM for "now" — the default month filter of Task Work Entries. */
+function currentMonthLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Local YYYY-MM of a timestamp, so month grouping follows the viewer's timezone. */
+function monthOfLocal(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Server-side fetch range for a YYYY-MM month, widened by one day on each
+ *  side: the backend compares dates in server time while the table filters by
+ *  the viewer's local month, so boundary pings must not be cut off. */
+function monthFetchRange(ym) {
+  const [y, m] = ym.split("-").map(Number);
+  const fmt = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return { from: fmt(new Date(y, m - 1, 0)), to: fmt(new Date(y, m, 1)) };
+}
+
 // Activity filter options — limit to work-related activities only
 const workFilterOptions = [
   { value: "CHECKIN", labelKey: "gps.activityCheckin" },
@@ -119,6 +141,14 @@ export default function GPS() {
   const [filterUser, setFilterUser] = useState("");
   const [filterActivity, setFilterActivity] = useState("");
   const [usersList, setUsersList] = useState([]);
+
+  // Month filter for the Task Work Entries table — defaults to the current
+  // month in the viewer's local timezone. Empty string = all months.
+  const [taskMonth, setTaskMonth] = useState(currentMonthLocal);
+  const taskMonthRef = useRef(taskMonth);
+  useEffect(() => {
+    taskMonthRef.current = taskMonth;
+  }, [taskMonth]);
 
   // Map of user_id → ongoing/to-do task titles for the Work column
   const [userTaskMap, setUserTaskMap] = useState({});
@@ -198,17 +228,36 @@ export default function GPS() {
     }
   }, []);
 
+  // History pings feed the Task Work Entries table — fetched per month
+  // (or unbounded when the month filter is cleared).
+  const loadTaskHistory = useCallback(async (ym) => {
+    const params = { page_size: 200, ordering: "-recorded_at" };
+    if (ym) {
+      const { from, to } = monthFetchRange(ym);
+      params.date_from = from;
+      params.date_to = to;
+    }
+    try {
+      const d = await pingRepo.list(params);
+      setHistoryPings(Array.isArray(d) ? d : d.results || []);
+    } catch {
+      setHistoryPings([]);
+    }
+  }, []);
+
+  // Refetch task work entries whenever the selected month changes
+  useEffect(() => {
+    loadTaskHistory(taskMonth);
+  }, [taskMonth, loadTaskHistory]);
+
   const load = useCallback(() => {
     // Load live (latest per user — used for map markers)
     pingRepo
       .collectionAction("live")
       .then((d) => setLive(Array.isArray(d) ? d : d.results || []))
       .catch(() => {});
-    // Load full history (unfiltered) — feeds the task-wise work entries
-    pingRepo
-      .list({ page_size: 200, ordering: "-recorded_at" })
-      .then((d) => setHistoryPings(Array.isArray(d) ? d : d.results || []))
-      .catch(() => {});
+    // Load history for the selected month — feeds the task-wise work entries
+    loadTaskHistory(taskMonthRef.current);
     if (!isEmployee) {
       actRepo
         .list({ page_size: 20 })
@@ -217,7 +266,7 @@ export default function GPS() {
     }
     // Refresh the Work column (pending + active tasks) alongside pings
     loadWorkTasks();
-  }, [isEmployee, loadWorkTasks]);
+  }, [isEmployee, loadWorkTasks, loadTaskHistory]);
 
   // Reload filtered pings whenever date range changes
   useEffect(() => {
@@ -352,10 +401,13 @@ export default function GPS() {
 
   // Task-wise work entries: every Before/During/Completed Work ping that is
   // linked to a task, grouped per task (newest ping first within each group).
+  // Only pings whose recorded_at falls in the selected month (viewer's local
+  // time) are shown; live WebSocket pings from other months are excluded too.
   const taskWorkGroups = (() => {
     const groups = {};
     for (const p of visibleHistoryPings) {
       if (!p.task) continue;
+      if (taskMonth && (!p.recorded_at || monthOfLocal(p.recorded_at) !== taskMonth)) continue;
       const key = String(p.task);
       if (!groups[key]) groups[key] = { id: key, title: p.task_title || `#${key}`, entries: [] };
       groups[key].entries.push(p);
@@ -811,9 +863,47 @@ export default function GPS() {
 
 
       {/* Task-wise work entries: Before / During / Completed Work per task */}
-      <Card title={t("gps.taskWorkTitle")} className="mb-5">
+      <Card
+        title={t("gps.taskWorkTitle")}
+        className="mb-5"
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs font-medium text-gray-500">
+              {t("attendanceReports.selectMonth")}:
+            </label>
+            <input
+              type="month"
+              value={taskMonth}
+              onChange={(e) => setTaskMonth(e.target.value)}
+              className="rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/20"
+            />
+            {taskMonth !== currentMonthLocal() && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setTaskMonth(currentMonthLocal())}
+                className="!text-xs !px-2.5 !py-1"
+              >
+                {t("crud.thisMonth")}
+              </Button>
+            )}
+            {taskMonth && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setTaskMonth("")}
+                className="!text-xs !px-2.5 !py-1"
+              >
+                {t("attendanceReports.allMonths")}
+              </Button>
+            )}
+          </div>
+        }
+      >
         {taskWorkGroups.length === 0 ? (
-          <p className="text-sm text-gray-400">{t("gps.noTaskWork")}</p>
+          <p className="text-sm text-gray-400">
+            {taskMonth ? t("gps.noDataFound") : t("gps.noTaskWork")}
+          </p>
         ) : (
           <div className="space-y-4">
             {taskWorkGroups.map((g) => (
