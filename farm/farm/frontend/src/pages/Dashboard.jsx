@@ -258,9 +258,10 @@ function KpiCard({ icon: Icon, iconBg, iconFg, title, value, sub, to }) {
 // and revenue entries, filtered client-side by farm/year/month inside each
 // panel. Kept near real-time: re-fetches every 60s and when the tab regains
 // focus, so records added/deleted elsewhere show up without a manual reload.
-function useFinanceRows() {
+function useFinanceRows(enabled = true) {
   const [rows, setRows] = useState({ expenses: [], revenues: [], loading: true });
   useEffect(() => {
+    if (!enabled) return undefined; // employees never see finance panels
     let alive = true;
     const load = () => {
       const params = { page_size: 10000 };
@@ -287,7 +288,7 @@ function useFinanceRows() {
       clearInterval(timer);
       window.removeEventListener("focus", onFocus);
     };
-  }, []);
+  }, [enabled]);
   return rows;
 }
 
@@ -301,15 +302,42 @@ function yearsFromRows(...lists) {
   return [...set].sort((a, b) => Number(b) - Number(a));
 }
 
+// Compact self-only dashboard for the EMPLOYEE role: just their own tasks,
+// attendance and tracked time. No links to admin/manager pages (finance,
+// HR, inventory, payroll) — those would only land on Access Denied.
+function EmployeeOverview({ kpi }) {
+  const tk = kpi.task_kpis ?? {};
+  const wk = kpi.workforce_kpis ?? {};
+  const myTime = (kpi.top_tracked_users || [])[0];
+  const kpis = [
+    { icon: CalendarCheck, iconBg: "bg-emerald-50", iconFg: "text-emerald-600", title: "My Open Tasks", value: tk.open_tasks ?? 0, sub: `Completed ${tk.completed_tasks ?? 0}`, to: "/tasks" },
+    { icon: Check, iconBg: "bg-green-50", iconFg: "text-green-600", title: "Checked In Now", value: wk.checked_in_now ? "Yes" : "No", sub: wk.present_today ? "Present today" : "Not marked yet", to: "/attendance" },
+    { icon: TrendingUp, iconBg: "bg-blue-50", iconFg: "text-blue-600", title: "Tracked Hours", value: myTime?.total_hours ?? 0, sub: "total logged", to: "/tasks/daily-report" },
+    { icon: AlertTriangle, iconBg: "bg-amber-50", iconFg: "text-amber-600", title: "Pending Approvals", value: wk.pending_approvals ?? 0, sub: "my attendance", to: "/attendance" },
+  ];
+  return (
+    <div className="mb-6 space-y-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {kpis.map((k, i) => <KpiCard key={i} {...k} />)}
+      </div>
+      <TasksSchedulingPanel kpi={kpi} />
+    </div>
+  );
+}
+
 function DashboardOverview({ kpi }) {
+  const { user } = useAuth();
+  const isEmployee = user?.role === "EMPLOYEE";
   const fk = kpi.farm_kpis ?? {};
   const wk = kpi.workforce_kpis ?? {};
   const fin = kpi.financial_kpis ?? {};
   const monthly = fin.monthly ?? {};
-  const finRows = useFinanceRows();
+  const finRows = useFinanceRows(!isEmployee);
   const years = Object.keys(monthly).sort((a, b) => Number(b) - Number(a));
   const defaultYear = years[0] || String(new Date().getFullYear());
   const [lineYear, setLineYear] = useState(defaultYear);
+
+  if (isEmployee) return <EmployeeOverview kpi={kpi} />;
 
   const kpis = [
     { icon: Tractor, iconBg: "bg-emerald-50", iconFg: "text-emerald-600", title: "Total Farms", value: fk.total_farms ?? 0, sub: `Active ${fk.total_farms ?? 0}`, to: "/farms" },
