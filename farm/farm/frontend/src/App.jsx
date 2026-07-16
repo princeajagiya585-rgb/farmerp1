@@ -157,8 +157,8 @@ export default function App() {
         <Route path="/inventory/movements" element={R(["FARM_MANAGER"], <InventoryMovements />)} />
         <Route path="/inventory/alerts" element={R(["FARM_MANAGER"], <InventoryAlerts />)} />
         <Route path="/inventory/reports" element={R(["FARM_MANAGER"], <InventoryReports />)} />
-        <Route path="/documents" element={R(["FARM_MANAGER"], <Documents />)} />
-        <Route path="/documents/versions" element={R(["FARM_MANAGER"], <DocumentVersions />)} />
+        <Route path="/documents" element={R([], <Documents />)} />
+        <Route path="/documents/versions" element={R([], <DocumentVersions />)} />
         <Route path="/finance" element={R(["FARM_MANAGER"], <Finance />)} />
         <Route path="/finance/sales" element={R(["FARM_MANAGER", "EMPLOYEE"], <FinanceSales />)} />
         <Route path="/finance/purchases" element={R(["FARM_MANAGER", "EMPLOYEE"], <FinancePurchases />)} />

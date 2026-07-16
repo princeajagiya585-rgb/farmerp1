@@ -774,6 +774,8 @@
   "attendance.gpsCheckOut": "GPS Check-Out",
   "attendance.gateChecking": "Checking today's attendance…",
   "attendance.gateBanner": "New day — please mark your attendance (GPS Check-In) first. Other pages unlock right after.",
+  "attendance.checkoutReminder": "It's past 8:00 PM — please confirm your check-out for today.",
+  "attendance.checkoutReminderAction": "Check out now",
   "attendance.selectEmployee": "— select employee —",
   "attendance.browserInfo": "Your browser will request location permission, then you can capture a check-in photo.",
   "attendance.employee": "Employee",

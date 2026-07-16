@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, FileText, Download, GitBranch, Camera } from "lucide-react";
+import { Plus, FileText, Download, GitBranch, Camera, Pencil, Trash2 } from "lucide-react";
 import { api, resource } from "../lib/api";
 import { compressImage } from "../lib/imageCompress";
 import CameraCapture from "../components/CameraCapture";
@@ -20,6 +20,8 @@ export default function Documents() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(blankForm);
   const [ver, setVer] = useState(null); // {doc, file, notes} for the add-version modal
+  const [edit, setEdit] = useState(null); // {id, title, category, farm, description, tags, expiry_date}
+  const [del, setDel] = useState(null); // document pending delete confirmation
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [docCameraOpen, setDocCameraOpen] = useState(false);
@@ -73,6 +75,42 @@ export default function Documents() {
     }
   };
 
+  const saveEdit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setErr("");
+    try {
+      await repo.update(edit.id, {
+        title: edit.title,
+        category: edit.category,
+        farm: edit.farm || null,
+        description: edit.description,
+        tags: edit.tags,
+        expiry_date: edit.expiry_date || null,
+      });
+      setEdit(null);
+      load();
+    } catch (e) {
+      setErr(JSON.stringify(e.response?.data) || "Update failed.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const confirmDelete = async () => {
+    setSaving(true);
+    setErr("");
+    try {
+      await repo.remove(del.id);
+      setDel(null);
+      load();
+    } catch (e) {
+      setErr(JSON.stringify(e.response?.data) || "Delete failed.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div>
       <PageHeader
@@ -85,6 +123,16 @@ export default function Documents() {
           columns={[
             { key: "title", header: t("header.title"), render: (r) => (<span className="flex items-center gap-2"><FileText size={15} className="text-gray-400" /> {r.title}</span>) },
             { key: "category", header: t("header.category"), render: (r) => <Badge color="blue">{r.category}</Badge> },
+            { key: "farm_name", header: t("header.farm"), render: (r) => r.farm_name || "—" },
+            {
+              key: "description",
+              header: t("header.description"),
+              render: (r) => (
+                <span className="block max-w-[220px] truncate" title={r.description || ""}>
+                  {r.description || "—"}
+                </span>
+              ),
+            },
             { key: "tags", header: t("header.tags"), render: (r) => r.tags || "—" },
             { key: "version", header: t("header.ver"), render: (r) => `v${r.version} (${r.version_count || 0} archived)` },
             { key: "expiry_date", header: t("header.expiry"), render: (r) => r.expiry_date || "—" },
@@ -102,6 +150,35 @@ export default function Documents() {
                   {canWrite && (
                     <button onClick={() => { setVer({ doc: r, file: null, notes: "" }); setErr(""); }} className="inline-flex items-center gap-1 text-gray-500 hover:text-brand-600" title="Upload new version">
                       <GitBranch size={14} />
+                    </button>
+                  )}
+                  {canWrite && (
+                    <button
+                      onClick={() => {
+                        setEdit({
+                          id: r.id,
+                          title: r.title || "",
+                          category: r.category || "OTHER",
+                          farm: r.farm || "",
+                          description: r.description || "",
+                          tags: r.tags || "",
+                          expiry_date: r.expiry_date || "",
+                        });
+                        setErr("");
+                      }}
+                      className="inline-flex items-center gap-1 text-gray-500 hover:text-brand-600"
+                      title="Edit"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  )}
+                  {canWrite && (
+                    <button
+                      onClick={() => { setDel(r); setErr(""); }}
+                      className="inline-flex items-center gap-1 text-gray-500 hover:text-red-600"
+                      title="Delete"
+                    >
+                      <Trash2 size={14} />
                     </button>
                   )}
                 </div>
@@ -171,6 +248,45 @@ export default function Documents() {
               <Button type="submit" disabled={saving || !ver.file}>{saving ? "Uploading…" : "Upload Version"}</Button>
             </div>
           </form>
+        )}
+      </Modal>
+
+      <Modal open={!!edit} onClose={() => setEdit(null)} title={edit ? `Edit "${edit.title}"` : ""}>
+        {edit && (
+          <form onSubmit={saveEdit} className="space-y-3">
+            {err && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{err}</p>}
+            <Input label="Title" value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} required />
+            <Select label="Category" value={edit.category} onChange={(e) => setEdit({ ...edit, category: e.target.value })} options={CATS} />
+            <Select label="Farm" value={edit.farm} onChange={(e) => setEdit({ ...edit, farm: e.target.value })}>
+              <option value="">— none (org-wide) —</option>
+              {farms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </Select>
+            <Input label="Tags (comma separated)" value={edit.tags} onChange={(e) => setEdit({ ...edit, tags: e.target.value })} />
+            <Textarea label="Description" rows={2} value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} />
+            <Input label="Expiry Date" type="date" value={edit.expiry_date} onChange={(e) => setEdit({ ...edit, expiry_date: e.target.value })} />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="secondary" onClick={() => setEdit(null)}>Cancel</Button>
+              <Button type="submit" disabled={saving}>{saving ? "Saving…" : "Save Changes"}</Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      <Modal open={!!del} onClose={() => setDel(null)} title="Delete Document">
+        {del && (
+          <div className="space-y-4">
+            {err && <p className="rounded bg-red-50 p-2 text-sm text-red-600">{err}</p>}
+            <p className="text-sm text-gray-600">
+              Are you sure you want to delete <span className="font-semibold">"{del.title}"</span>?
+              This also removes its archived versions and cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setDel(null)}>Cancel</Button>
+              <Button type="button" variant="danger" onClick={confirmDelete} disabled={saving}>
+                {saving ? "Deleting…" : "Delete"}
+              </Button>
+            </div>
+          </div>
         )}
       </Modal>
 

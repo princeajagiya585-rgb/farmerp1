@@ -124,8 +124,8 @@ export const navGroups = [
     label: "Documents",
     icon: FileText,
     children: [
-      { to: "/documents", label: "All Documents", roles: [FM] },
-      { to: "/documents/versions", label: "Version Archive", roles: [FM] },
+      { to: "/documents", label: "All Documents", roles: [] },
+      { to: "/documents/versions", label: "Version Archive", roles: [] },
     ],
   },
   { to: "/breakdowns", label: "Breakdowns", icon: AlertTriangle, roles: [FM, EM] },

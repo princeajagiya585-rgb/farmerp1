@@ -8,6 +8,7 @@ import Logo from "./Logo";
 import NotificationBell from "./NotificationBell";
 import ThemeToggle from "./ThemeToggle";
 import AadhaarBanner from "./AadhaarBanner";
+import CheckoutReminder from "./CheckoutReminder";
 import PageTransitionLoader from "./PageTransitionLoader";
 import InstallAppButton from "./InstallAppButton";
 import { api } from "../lib/api";
@@ -267,6 +268,7 @@ export default function Layout() {
           <div className="p-4 md:p-6">
             <div className="mx-auto max-w-7xl animate-fade-in">
               <AadhaarBanner />
+              <CheckoutReminder />
               <PageTransitionLoader>
                 <Outlet />
               </PageTransitionLoader>
