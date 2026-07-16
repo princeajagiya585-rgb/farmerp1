@@ -163,6 +163,8 @@ export default function Tasks() {
   const [overAlerts, setOverAlerts] = useState([]);
   const overAlertedRef = useRef(new Set());
   const notifyTaskOver = (row, kind) => {
+    // Admin users should not see task time-over alerts
+    if (hasRole("SUPER_ADMIN")) return;
     if (overAlertedRef.current.has(row.id)) return;
     overAlertedRef.current.add(row.id);
     setOverAlerts((prev) => [...prev, { row, kind }]);
