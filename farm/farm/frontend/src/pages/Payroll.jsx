@@ -591,7 +591,7 @@ export default function Payroll() {
           }
         }}>
           <Download size={14} /> {t("common.excel")}
-          <Download size={14} /> {t("common.pdf")}
+          
         </Button>
       </div>
 
