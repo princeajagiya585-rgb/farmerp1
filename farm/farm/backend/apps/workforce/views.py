@@ -188,7 +188,18 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             qs = qs.filter(date__lte=date_before)
         return qs
 
-
+    def perform_update(self, serializer):
+        # When the check-in / check-out times are edited, re-derive Status,
+        # Approval and Work Hours from the new times (same rules as check_out)
+        # so the table columns update automatically. Edits that don't touch
+        # the times keep the manually chosen status/approval untouched.
+        old_in = serializer.instance.check_in_time
+        old_out = serializer.instance.check_out_time
+        attendance = serializer.save()
+        if attendance.check_in_time == old_in and attendance.check_out_time == old_out:
+            return
+        attendance.refresh_time_derived_fields()
+        attendance.save()
 
     @action(detail=False, methods=["post"])
     def check_in(self, request):
@@ -480,7 +491,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             # Hours actually worked this session (check-in → now), used for the
             # half-day rule below.
             worked_seconds_now = attendance.calculate_working_hours()
-            FULL_DAY_MIN_SECONDS = 5 * 3600  # 5 hours
+            FULL_DAY_MIN_SECONDS = Attendance.FULL_DAY_MIN_SECONDS
             # Auto-approve on check-out ONLY when the check-in was inside the
             # farm geofence. If the worker checked in from outside, keep them
             # Absent and unapproved (Approval column shows "-").

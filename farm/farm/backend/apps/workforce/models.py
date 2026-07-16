@@ -245,6 +245,42 @@ class Attendance(OwnedModel):
             return working - regular_seconds
         return 0
 
+    # Monthly-wage employees working under 5 hours count as a half day.
+    FULL_DAY_MIN_SECONDS = 5 * 3600
+
+    def refresh_time_derived_fields(self, regular_hours=8):
+        """Recompute work hours, overtime, status and approval from the
+        check-in / check-out times, mirroring the check_out action's rules.
+        Called when an admin edits the times so the derived columns stay
+        consistent with the new times. Does not save."""
+        self.working_seconds = self.calculate_working_hours()
+        self.overtime_seconds = self.calculate_overtime(regular_hours)
+        self.overtime_hours = round(self.overtime_seconds / 3600, 2)
+        if not self.check_in_time:
+            return
+        if self.check_out_time:
+            if self.geofence_status is False:
+                self.status = Attendance.Status.ABSENT
+            else:
+                is_monthly = getattr(
+                    self.employee, "wage_type", Employee.WageType.MONTHLY
+                ) == Employee.WageType.MONTHLY
+                self.status = (
+                    Attendance.Status.HALF_DAY
+                    if is_monthly and self.working_seconds < self.FULL_DAY_MIN_SECONDS
+                    else Attendance.Status.PRESENT_DONE
+                )
+                self.approval_status = Attendance.ApprovalStatus.APPROVED
+        else:
+            # Check-in only (check-out cleared or not yet done) → back to an
+            # in-progress present day awaiting approval.
+            self.status = (
+                Attendance.Status.ABSENT
+                if self.geofence_status is False
+                else Attendance.Status.PRESENT
+            )
+            self.approval_status = Attendance.ApprovalStatus.PENDING
+
 
 class AttendanceMonthlySummary(OwnedModel):
     """Manually overridden monthly attendance totals for one employee.

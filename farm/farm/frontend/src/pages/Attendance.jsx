@@ -7,6 +7,7 @@ import { api, resource, toFormData, normalizePhotoUrl, apiErrorMessage } from ".
 import { Badge, Button, Card, PageHeader, PhotoThumb, Table, Select, ToastContainer, useToast } from "../components/ui";
 import CameraCapture from "../components/CameraCapture";
 import { exportExcel } from "../lib/export";
+import { compressImage } from "../lib/imageCompress";
 import { useAuth } from "../context/AuthContext";
 
 const repo = resource("workforce/attendance");
@@ -359,8 +360,9 @@ export default function Attendance() {
     }
   };
 
-  const applyCheckInPhoto = (file) => {
+  const applyCheckInPhoto = async (file) => {
     if (!file) return;
+    file = await compressImage(file);
     setCheckInPhoto(file);
     const reader = new FileReader();
     reader.onloadend = () => setCheckInPreview(reader.result);
@@ -438,8 +440,9 @@ export default function Attendance() {
     setPosLoading(false);
   };
 
-  const applyCheckOutPhoto = (file) => {
+  const applyCheckOutPhoto = async (file) => {
     if (!file) return;
+    file = await compressImage(file);
     setCheckOutPhoto(file);
     const reader = new FileReader();
     reader.onloadend = () => setCheckOutPreview(reader.result);
@@ -509,6 +512,47 @@ export default function Attendance() {
       }
     }
   };
+
+  // When the In/Out time is edited, auto-derive Status, Approval and OT the
+  // same way the backend does (check_out rules), so the admin sees exactly
+  // what will be saved. The backend recalculates and persists these too.
+  const applyEditTimes = (patch) => {
+    setEditForm((f) => {
+      const next = { ...f, ...patch };
+      const cin = next.check_in_time ? new Date(next.check_in_time) : null;
+      const cout = next.check_out_time ? new Date(next.check_out_time) : null;
+      if (!cin || isNaN(cin)) return next;
+      const outsideFence = editRow?.geofence_status === false || editRow?.geofence_status_display === "NO";
+      if (cout && !isNaN(cout) && cout > cin) {
+        const secs = Math.floor((cout - cin) / 1000);
+        const emp = employees.find((e) => String(e.id) === String(editRow?.employee));
+        const monthly = (emp?.wage_type || "MONTHLY") === "MONTHLY";
+        if (outsideFence) {
+          next.status = "ABSENT";
+        } else {
+          next.status = monthly && secs < 5 * 3600 ? "HALF_DAY" : "PRESENT_DONE";
+          next.approval_status = "APPROVED";
+        }
+        next.overtime_hours = secs > 8 * 3600 ? Math.round(((secs - 8 * 3600) / 3600) * 100) / 100 : 0;
+      } else {
+        next.status = outsideFence ? "ABSENT" : "PRESENT";
+        next.approval_status = "PENDING";
+        next.overtime_hours = 0;
+      }
+      return next;
+    });
+  };
+
+  // Live work-hours preview for the edit modal (e.g. "7h 30m").
+  const editWorkHours = (() => {
+    const cin = editForm.check_in_time ? new Date(editForm.check_in_time) : null;
+    const cout = editForm.check_out_time ? new Date(editForm.check_out_time) : null;
+    if (!cin || !cout || isNaN(cin) || isNaN(cout) || cout <= cin) return null;
+    const secs = Math.floor((cout - cin) / 1000);
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+  })();
 
   const saveEdit = async () => {
     if (!editRow) return;
@@ -1213,6 +1257,7 @@ export default function Attendance() {
                   <option value="ABSENT">{t("attendance.absentOption")}</option>
                   <option value="HALF_DAY">{t("attendance.halfDayOption")}</option>
                   <option value="LEAVE">{t("attendance.leaveOption")}</option>
+                  <option value="PRESENT_DONE">{t("attendance.presentDone")}</option>
                 </select>
               </div>
               <div>
@@ -1234,7 +1279,7 @@ export default function Attendance() {
                   value={
                     toLocalInput(editForm.check_in_time)
                   }
-                  onChange={(e) => setEditForm({ ...editForm, check_in_time: e.target.value })}
+                  onChange={(e) => applyEditTimes({ check_in_time: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
                 />
               </div>
@@ -1245,9 +1290,14 @@ export default function Attendance() {
                   value={
                     toLocalInput(editForm.check_out_time)
                   }
-                  onChange={(e) => setEditForm({ ...editForm, check_out_time: e.target.value })}
+                  onChange={(e) => applyEditTimes({ check_out_time: e.target.value })}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
                 />
+                {editWorkHours && (
+                  <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+                    <Clock size={12} /> {t("attendance.workingHours") || "Work Hours"}: {editWorkHours}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t("header.otHrs")}</label>
