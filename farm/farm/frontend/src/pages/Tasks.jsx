@@ -8,6 +8,7 @@ import CrudResource from "../components/CrudResource";
 import CameraCapture from "../components/CameraCapture";
 import { Badge, Button, ToastContainer, useToast } from "../components/ui";
 import { resource, toFormData } from "../lib/api";
+import { compressImage } from "../lib/imageCompress";
 import { useAuth } from "../context/AuthContext";
 
 const repo = resource("tasks");
@@ -272,8 +273,9 @@ export default function Tasks() {
   };
 
   // Shared by the file picker and the camera: store the file and build a preview.
-  const applyWorkPhoto = (file) => {
+  const applyWorkPhoto = async (file) => {
     if (!file) return;
+    file = await compressImage(file);
     setWorkPhoto(file);
     const reader = new FileReader();
     reader.onloadend = () => setWorkPhotoPreview(reader.result);

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, FileText, Download, GitBranch, Camera } from "lucide-react";
 import { api, resource } from "../lib/api";
+import { compressImage } from "../lib/imageCompress";
 import CameraCapture from "../components/CameraCapture";
 import { Badge, Button, Card, Input, Modal, PageHeader, Select, Table, Textarea } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
@@ -127,7 +128,7 @@ export default function Documents() {
           <div className="text-sm">
             <span className="mb-1 block font-medium text-gray-600">File</span>
             <div className="flex items-center gap-2">
-              <input type="file" accept="image/*,.pdf" capture="environment" onChange={(e) => setForm({ ...form, file: e.target.files[0] })} className="text-sm" />
+              <input type="file" accept="image/*,.pdf" capture="environment" onChange={async (e) => { const f = e.target.files[0]; const small = f ? await compressImage(f) : f; setForm((prev) => ({ ...prev, file: small })); }} className="text-sm" />
               <button
                 type="button"
                 onClick={() => setDocCameraOpen(true)}
@@ -154,7 +155,7 @@ export default function Documents() {
             <div className="text-sm">
               <span className="mb-1 block font-medium text-gray-600">New file</span>
               <div className="flex items-center gap-2">
-                <input type="file" accept="image/*,.pdf" capture="environment" onChange={(e) => setVer({ ...ver, file: e.target.files[0] })} className="text-sm" />
+                <input type="file" accept="image/*,.pdf" capture="environment" onChange={async (e) => { const f = e.target.files[0]; const small = f ? await compressImage(f) : f; setVer((prev) => ({ ...prev, file: small })); }} className="text-sm" />
                 <button
                   type="button"
                   onClick={() => setVerCameraOpen(true)}

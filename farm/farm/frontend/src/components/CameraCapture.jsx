@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera, X, RefreshCw, Check, SwitchCamera } from "lucide-react";
 import { Button } from "./ui";
+import { compressImage } from "../lib/imageCompress";
 
 /**
  * Reusable camera capture modal.
@@ -104,12 +105,14 @@ export default function CameraCapture({ open, onClose, onCapture, title = "Take 
     setSnapshot(null);
   };
 
-  const handleUse = () => {
+  const handleUse = async () => {
     if (!snapshot) return;
     const file = new File([snapshot.blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" });
     URL.revokeObjectURL(snapshot.url);
     stopStream();
-    onCapture(file);
+    // Shrink the capture to a small, clear JPEG before handing it on so
+    // uploads stay in the ~100–1000 KB range.
+    onCapture(await compressImage(file));
     onClose();
   };
 

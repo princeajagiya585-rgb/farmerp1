@@ -5,6 +5,7 @@ import { Clock, Lock, Play, LogIn, Square, CheckCircle, Plus, Pencil, Trash2, Se
 import LoadingSpinner from "../components/LoadingSpinner";
 import CameraCapture from "../components/CameraCapture";
 import { api, resource, toFormData, normalizePhotoUrl } from "../lib/api";
+import { compressImage } from "../lib/imageCompress";
 import { Badge, Button, Card, Input, Modal, MultiSelect, PhotoThumb, Select, ToastContainer, useToast } from "../components/ui";
 import { useAuth } from "../context/AuthContext";
 import i18n from "../i18n";
@@ -1321,7 +1322,11 @@ export default function Users() {
                     type="file"
                     accept="image/*,.pdf"
                     capture="environment"
-                    onChange={(e) => setFormData({ ...formData, aadhaar_photo: e.target.files[0] || null })}
+                    onChange={async (e) => {
+                      const f = e.target.files[0];
+                      const small = f ? await compressImage(f) : null;
+                      setFormData((prev) => ({ ...prev, aadhaar_photo: small }));
+                    }}
                     className="w-full rounded-lg border border-gray-300 text-sm file:mr-3 file:rounded-l-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
                   />
                   <button

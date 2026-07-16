@@ -6,6 +6,7 @@ import {
 import LoadingSpinner from "./LoadingSpinner";
 import CameraCapture from "./CameraCapture";
 import { resource } from "../lib/api";
+import { compressImage } from "../lib/imageCompress";
 import { formatApiError } from "../lib/errors";
 import { exportExcel, printTable } from "../lib/export";
 import { useAuth } from "../context/AuthContext";
@@ -841,9 +842,11 @@ export default function CrudResource({
                       type="file"
                       accept={t("crud.fileAccept")}
                       capture="environment"
-                      onChange={(e) =>
-                        setForm({ ...form, [fl.name]: e.target.files[0] || "" })
-                      }
+                      onChange={async (e) => {
+                        const f = e.target.files[0];
+                        const small = f ? await compressImage(f) : "";
+                        setForm((prev) => ({ ...prev, [fl.name]: small }));
+                      }}
                       className="w-full rounded-lg border border-gray-300 text-sm file:mr-3 file:rounded-l-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
                     />
                     <button

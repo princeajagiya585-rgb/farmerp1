@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Cog, Download, Pencil, Trash2, Camera, ImagePlus } from "lucide-react";
 import { resource, toFormData, normalizePhotoUrl } from "../lib/api";
+import { compressImage } from "../lib/imageCompress";
 import { exportExcelMultiSheet } from "../lib/export";
 import { Badge, Button, Card, Input, Modal, PageHeader, PhotoThumb, Select, Table } from "../components/ui";
 import CameraCapture from "../components/CameraCapture";
@@ -798,7 +799,7 @@ export default function Payroll() {
               type="file"
               accept="image/*,.pdf"
               capture="environment"
-              onChange={(e) => { const f = e.target.files[0]; if (f) uploadSlipPhoto(f); }}
+              onChange={async (e) => { const f = e.target.files[0]; if (f) uploadSlipPhoto(await compressImage(f)); }}
               className="w-full rounded-lg border border-gray-300 text-sm file:mr-3 file:rounded-l-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
             />
             <button
