@@ -49,14 +49,15 @@ class User(AbstractUser):
         return f"{self.get_full_name() or self.username} ({self.role})"
 
     def get_full_name(self):
-        # Farm managers carry an " (M)" marker wherever their name is shown
+        # Managers/admins carry a role marker wherever their name is shown
         # (every *_name serializer field sources this method), so entries made
-        # by a manager are recognizable at a glance — e.g. "hitesh bhai (M)".
-        # Entries a manager records FOR an employee keep the employee's plain
-        # name, since the marker follows the person named, not the author.
+        # by them are recognizable at a glance — e.g. "hitesh bhai (M)".
+        # Entries recorded FOR an employee keep the employee's plain name,
+        # since the marker follows the person named, not the author.
         name = super().get_full_name().strip()
-        if self.role == Role.FARM_MANAGER:
-            return f"{name or self.username} (M)"
+        marker = {Role.FARM_MANAGER: "M", Role.SUPER_ADMIN: "A"}.get(self.role)
+        if marker:
+            return f"{name or self.username} ({marker})"
         return name
 
     @property

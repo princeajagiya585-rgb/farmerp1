@@ -85,12 +85,16 @@ class Employee(TimeStampedModel):
 
     @property
     def name(self):
-        # Same " (M)" manager marker as User.get_full_name — category stays in
-        # sync with the linked user's role via workforce/signals.py, so this
-        # needs no extra query on list endpoints.
+        # Same role markers as User.get_full_name ((M) manager, (A) admin) —
+        # category stays in sync with the linked user's role via
+        # workforce/signals.py, so this needs no extra query on list endpoints.
         base = f"{self.first_name} {self.last_name}"
-        if self.category == self.Category.MANAGER:
-            return f"{base} (M)"
+        marker = {
+            self.Category.MANAGER: "M",
+            self.Category.SUPER_ADMIN: "A",
+        }.get(self.category)
+        if marker:
+            return f"{base} ({marker})"
         return base
 
 
