@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
+import AttendanceGate from "./components/AttendanceGate";
 
 // Every page is lazy-loaded into its own chunk so the first paint only ships
 // the app shell + the page being visited, instead of all ~65 pages at once.
@@ -109,7 +110,9 @@ export default function App() {
       <Route
         element={
           <ProtectedRoute>
-            <Layout />
+            <AttendanceGate>
+              <Layout />
+            </AttendanceGate>
           </ProtectedRoute>
         }
       >

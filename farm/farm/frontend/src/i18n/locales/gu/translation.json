@@ -862,6 +862,8 @@
   "attendance.quickCheckIn": "ઝડપી ચેક-ઇન",
   "attendance.gpsCheckIn": "GPS ચેક-ઇન",
   "attendance.gpsCheckOut": "GPS ચેક-આઉટ",
+  "attendance.gateChecking": "આજની હાજરી તપાસાઈ રહી છે…",
+  "attendance.gateBanner": "નવો દિવસ — પહેલા તમારી હાજરી (GPS ચેક-ઇન) કરો. પછી જ બાકીના પેજ ખુલશે.",
   "attendance.selectEmployee": "— કર્મચારી પસંદ કરો —",
   "attendance.browserInfo": "તમારું બ્રાઉઝર સ્થાન પરવાનગી માંગશે, પછી તમે ચેક-ઇન ફોટો લઈ શકો છો.",
   "attendance.employee": "કર્મચારી",

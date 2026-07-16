@@ -1271,6 +1271,8 @@
   "attendance.quickCheckIn": "त्वरित चेक-इन",
   "attendance.gpsCheckIn": "GPS चेक-इन",
   "attendance.gpsCheckOut": "GPS चेक-आउट",
+  "attendance.gateChecking": "आज की हाज़िरी जाँची जा रही है…",
+  "attendance.gateBanner": "नया दिन — पहले अपनी हाज़िरी (GPS चेक-इन) करें। उसके बाद ही बाकी पेज खुलेंगे।",
   "attendance.selectEmployee": "— कर्मचारी चुनें —",
   "attendance.browserInfo": "आपका ब्राउज़र लोकेशन अनुमति मांगेगा, फिर आप चेक-इन फ़ोटो ले सकते हैं।",
   "attendance.employee": "कर्मचारी",

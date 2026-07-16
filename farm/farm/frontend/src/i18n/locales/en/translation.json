@@ -772,6 +772,8 @@
   "attendance.quickCheckIn": "Quick Check-In",
   "attendance.gpsCheckIn": "GPS Check-In",
   "attendance.gpsCheckOut": "GPS Check-Out",
+  "attendance.gateChecking": "Checking today's attendance…",
+  "attendance.gateBanner": "New day — please mark your attendance (GPS Check-In) first. Other pages unlock right after.",
   "attendance.selectEmployee": "— select employee —",
   "attendance.browserInfo": "Your browser will request location permission, then you can capture a check-in photo.",
   "attendance.employee": "Employee",
