@@ -18,6 +18,24 @@ from apps.workforce.models import Attendance, Employee
 
 GLOBAL_ROLES = {Role.SUPER_ADMIN}
 
+# Same role markers as User.get_full_name / Employee.name — the reporting
+# endpoints build names from .values() rows for performance, which bypasses
+# those model methods, so the marker is re-applied here.
+_ROLE_MARKERS = {
+    Role.FARM_MANAGER: "M",
+    Role.SUPER_ADMIN: "A",
+    Employee.Category.MANAGER: "M",
+    Employee.Category.SUPER_ADMIN: "A",
+}
+
+
+def mark_name(name, role_or_category):
+    """Append the (M)/(A) marker to a display name when the role calls for it."""
+    marker = _ROLE_MARKERS.get(role_or_category)
+    if name and marker:
+        return f"{name} ({marker})"
+    return name
+
 
 def get_accessible_farm_ids(user):
     """Return the list of farm ids the user can report on."""
@@ -186,7 +204,8 @@ class DashboardView(APIView):
         active_tasks = list(
             task_qs.filter(status=Task.Status.IN_PROGRESS)
             .values("id", "title", "priority", "due_date",
-                    "assigned_to__first_name", "assigned_to__last_name", "assigned_to__username")
+                    "assigned_to__first_name", "assigned_to__last_name",
+                    "assigned_to__username", "assigned_to__role")
             .order_by("-updated_at")[:5]
         )
         for t in active_tasks:
@@ -195,7 +214,8 @@ class DashboardView(APIView):
             fn = (t.pop("assigned_to__first_name") or "").strip()
             ln = (t.pop("assigned_to__last_name") or "").strip()
             un = t.pop("assigned_to__username") or ""
-            t["assigned_user"] = (f"{fn} {ln}".strip()) or un or "Unassigned"
+            name = (f"{fn} {ln}".strip()) or un
+            t["assigned_user"] = mark_name(name, t.pop("assigned_to__role")) or "Unassigned"
 
         today_completed_tasks = list(
             task_qs.filter(
@@ -203,7 +223,8 @@ class DashboardView(APIView):
                 updated_at__gte=cutoff_12h,
             )
             .values("id", "title", "updated_at",
-                    "assigned_to__first_name", "assigned_to__last_name", "assigned_to__username")
+                    "assigned_to__first_name", "assigned_to__last_name",
+                    "assigned_to__username", "assigned_to__role")
             .order_by("-updated_at")[:5]
         )
         for t in today_completed_tasks:
@@ -212,7 +233,8 @@ class DashboardView(APIView):
             fn = (t.pop("assigned_to__first_name") or "").strip()
             ln = (t.pop("assigned_to__last_name") or "").strip()
             un = t.pop("assigned_to__username") or ""
-            t["assigned_user"] = (f"{fn} {ln}".strip()) or un or "Unassigned"
+            name = (f"{fn} {ln}".strip()) or un
+            t["assigned_user"] = mark_name(name, t.pop("assigned_to__role")) or "Unassigned"
 
         low_stock_items = [i for i in items_qs if i.is_low_stock]
         overdue_tasks = task_qs.filter(
@@ -230,7 +252,7 @@ class DashboardView(APIView):
 
         user_times = (
             sessions_qs
-            .values("user", "user__username", "user__first_name", "user__last_name")
+            .values("user", "user__username", "user__first_name", "user__last_name", "user__role")
             .annotate(total_duration=Sum(
                 ExpressionWrapper(
                     F("end_time") - F("start_time"),
@@ -248,7 +270,10 @@ class DashboardView(APIView):
             top_tracked_users.append({
                 "user_id": str(ut["user"]),
                 "username": ut["user__username"],
-                "full_name": f"{ut['user__first_name'] or ''} {ut['user__last_name'] or ''}".strip(),
+                "full_name": mark_name(
+                    f"{ut['user__first_name'] or ''} {ut['user__last_name'] or ''}".strip(),
+                    ut["user__role"],
+                ),
                 "total_minutes": round(total_secs / 60, 1),
                 "total_hours": round(total_secs / 3600, 1),
             })
@@ -466,7 +491,10 @@ class DashboardView(APIView):
         # Salary paid per employee ("kisko kitni salary mile") — actual payouts.
         payroll_by_employee = [
             {
-                "employee": (f"{p['employee__first_name'] or ''} {p['employee__last_name'] or ''}".strip()
+                "employee": (mark_name(
+                                 f"{p['employee__first_name'] or ''} {p['employee__last_name'] or ''}".strip(),
+                                 p["employee__category"],
+                             )
                              or p["employee__employee_code"] or "—"),
                 "farm_name": p["employee__farm__name"],
                 "paid": float(p["paid"] or 0),
@@ -474,7 +502,7 @@ class DashboardView(APIView):
             for p in (
                 only_self_emp(Payment.objects.filter(employee__farm_id__in=farm_ids))
                 .values("employee_id", "employee__first_name", "employee__last_name",
-                        "employee__employee_code", "employee__farm__name")
+                        "employee__employee_code", "employee__farm__name", "employee__category")
                 .annotate(paid=Sum("amount")).order_by("-paid")[:20]
             )
         ]
@@ -671,7 +699,7 @@ class TimeTrackingReportView(APIView):
         # Aggregate per user
         user_groups = (
             qs.values(
-                "user", "user__username", "user__first_name", "user__last_name"
+                "user", "user__username", "user__first_name", "user__last_name", "user__role"
             )
             .annotate(total_duration=Sum(duration_expr))
             .order_by("-total_duration")
@@ -686,7 +714,10 @@ class TimeTrackingReportView(APIView):
             rows.append({
                 "user_id": str(ug["user"]),
                 "username": ug["user__username"],
-                "full_name": f"{ug['user__first_name'] or ''} {ug['user__last_name'] or ''}".strip(),
+                "full_name": mark_name(
+                    f"{ug['user__first_name'] or ''} {ug['user__last_name'] or ''}".strip(),
+                    ug["user__role"],
+                ),
                 "total_minutes": round(total_secs / 60, 1),
                 "total_hours": round(total_secs / 3600, 1),
                 "task_count": 0,
