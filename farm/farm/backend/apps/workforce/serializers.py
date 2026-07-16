@@ -1,3 +1,5 @@
+import re
+
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -113,7 +115,11 @@ class EmployeeSerializer(serializers.ModelSerializer):
         return [s.id for s in obj.skills.all()]
 
     def split_name(self, full_name):
-        parts = full_name.strip().split(" ", 1)
+        # Displayed names carry an " (M)" manager marker (Employee.name /
+        # User.get_full_name). If a client echoes that display value back on
+        # save, strip the marker so it never persists into first/last name.
+        full_name = re.sub(r"\s*\(M\)\s*$", "", full_name.strip())
+        parts = full_name.split(" ", 1)
         first_name = parts[0]
         last_name = parts[1] if len(parts) > 1 else ""
         return first_name, last_name

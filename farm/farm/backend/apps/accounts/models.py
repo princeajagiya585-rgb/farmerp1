@@ -48,6 +48,17 @@ class User(AbstractUser):
     def __str__(self):
         return f"{self.get_full_name() or self.username} ({self.role})"
 
+    def get_full_name(self):
+        # Farm managers carry an " (M)" marker wherever their name is shown
+        # (every *_name serializer field sources this method), so entries made
+        # by a manager are recognizable at a glance — e.g. "hitesh bhai (M)".
+        # Entries a manager records FOR an employee keep the employee's plain
+        # name, since the marker follows the person named, not the author.
+        name = super().get_full_name().strip()
+        if self.role == Role.FARM_MANAGER:
+            return f"{name or self.username} (M)"
+        return name
+
     @property
     def is_super_admin(self):
         return self.role == Role.SUPER_ADMIN
