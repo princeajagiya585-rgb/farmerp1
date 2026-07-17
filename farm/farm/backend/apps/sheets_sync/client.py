@@ -282,8 +282,19 @@ def upsert_rows(title, headers, rows):
         with_retry(ws.batch_update, updates,
                    value_input_option="USER_ENTERED")
     if appends:
-        with_retry(ws.append_rows, appends,
-                   value_input_option="USER_ENTERED", table_range="A1")
+        # Write to an explicitly computed range instead of values.append:
+        # the API's table detection is unreliable on worksheets that carry
+        # a basic filter (it can resolve to A1 and overwrite the header).
+        # ``ids`` was read above, so the last occupied row is known.
+        start_row = len(ids) + 1
+        last_row = start_row + len(appends) - 1
+        if last_row > ws.row_count:
+            with_retry(ws.resize, rows=last_row)
+        ncols = max(len(r) for r in appends)
+        end = rowcol_to_a1(last_row, ncols)
+        with_retry(ws.update, values=appends,
+                   range_name=f"A{start_row}:{end}",
+                   value_input_option="USER_ENTERED")
     return outcome
 
 

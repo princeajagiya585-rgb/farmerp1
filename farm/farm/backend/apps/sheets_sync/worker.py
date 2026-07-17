@@ -189,6 +189,9 @@ def _do_upserts(app_label, model_name, by_pk):
         outcome = client.upsert_rows(title, registry.headers(model), rows)
         if gone:
             client.delete_rows_batch(title, gone)
+        for pk in by_pk:
+            logger.info("[SheetsSync] %s %s[%s] -> SUCCESS",
+                        outcome.get(pk, SyncLog.OP_DELETE), title, pk)
         _log([
             (title, pk, outcome.get(pk, SyncLog.OP_DELETE),
              SyncLog.STATUS_SUCCESS, by_pk[pk]["attempts"] + 1, "")
@@ -204,6 +207,8 @@ def _do_deletes(table, by_pk):
 
     try:
         client.delete_rows_batch(table, list(by_pk))
+        for pk in by_pk:
+            logger.info("[SheetsSync] DELETE %s[%s] -> SUCCESS", table, pk)
         _log([
             (table, pk, SyncLog.OP_DELETE, SyncLog.STATUS_SUCCESS,
              job["attempts"] + 1, "")
@@ -226,6 +231,8 @@ def _do_refresh(job):
             for obj in model._base_manager.all().iterator(chunk_size=500)
         ]
         client.replace_all_rows(title, headers, rows)
+        logger.info("[SheetsSync] REFRESH %s (%s rows) -> SUCCESS",
+                    title, len(rows))
         _log([(title, "", SyncLog.OP_REFRESH, SyncLog.STATUS_SUCCESS,
                job["attempts"] + 1, "")])
     except Exception as exc:
@@ -233,10 +240,14 @@ def _do_refresh(job):
 
 
 def _handle_failure(jobs, table, exc):
-    """Log the error and re-queue each job with exponential backoff."""
+    """Log the error (with full traceback) and re-queue each job with
+    exponential backoff."""
+    import traceback
+
     from apps.sheets_sync.models import SyncLog
 
-    error = f"{type(exc).__name__}: {exc}"[:4000]
+    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    error = f"{type(exc).__name__}: {exc}\n{tb}"[:4000]
     entries = []
     for job in jobs:
         job["attempts"] += 1
@@ -245,7 +256,8 @@ def _handle_failure(jobs, table, exc):
         if job["attempts"] >= MAX_ATTEMPTS:
             status = SyncLog.STATUS_FAILED
             logger.error("[SheetsSync] %s %s[%s] failed permanently: %s",
-                         job["kind"], table, job.get("pk", ""), error)
+                         job["kind"], table, job.get("pk", ""), error,
+                         exc_info=exc)
         else:
             status = SyncLog.STATUS_RETRYING
             delay = min(RETRY_BASE_DELAY * 2 ** (job["attempts"] - 1),
@@ -253,7 +265,7 @@ def _handle_failure(jobs, table, exc):
             logger.warning("[SheetsSync] %s %s[%s] failed (attempt %s/%s), "
                            "retrying in %ss: %s", job["kind"], table,
                            job.get("pk", ""), job["attempts"], MAX_ATTEMPTS,
-                           delay, error)
+                           delay, error, exc_info=exc)
             _requeue_later(job, delay)
         entries.append((table, job.get("pk", ""), op, status,
                         job["attempts"], error))
