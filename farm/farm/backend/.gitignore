@@ -7,3 +7,9 @@ media/
 staticfiles/
 *.log
 .DS_Store
+
+# Google service account & other credentials
+credentials/
+credentials/google-service-account.json
+*.pem
+*.p12

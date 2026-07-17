@@ -72,6 +72,7 @@ LOCAL_APPS = [
     "apps.reporting",
     "apps.breakdowns",
     "apps.assets",
+    "apps.sheets_sync",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -404,6 +405,36 @@ elif SUPABASE_URL and SUPABASE_SERVICE_KEY:
     # Storage bucket instead of the local filesystem.
     STORAGES["default"] = {"BACKEND": "apps.core.storage.SupabaseFileStorage"}
     # MEDIA_URL and MEDIA_ROOT are kept as fallback for backward compatibility.
+
+# ---------------------------------------------------------------------------
+# Google Sheets mirror (Supabase stays the primary database)
+# ---------------------------------------------------------------------------
+# Every record is written to Supabase first; only after the transaction
+# commits is the same record synchronized to the Google Spreadsheet.
+# The target spreadsheet MUST already exist and is pinned by
+# GOOGLE_SPREADSHEET_ID — the sync never creates a new spreadsheet.
+# Run `manage.py sheets_check` to verify the connection and
+# `manage.py sheets_backfill` once to migrate existing data before
+# relying on live sync.
+GOOGLE_SHEETS_SYNC_ENABLED = env_bool("GOOGLE_SHEETS_SYNC_ENABLED", True)
+GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "")
+
+# Local/dev fallback: if neither env var is set, use the single service
+# account key that lives in backend/credentials/ (the folder is
+# git-ignored, so the key never reaches the repository).
+if not GOOGLE_SERVICE_ACCOUNT_JSON and not GOOGLE_SERVICE_ACCOUNT_FILE:
+    _cred_dir = BASE_DIR / "credentials"
+    _keys = sorted(_cred_dir.glob("*.json")) if _cred_dir.is_dir() else []
+    if _keys:
+        GOOGLE_SERVICE_ACCOUNT_FILE = str(_keys[0])
+
+# GOOGLE_SPREADSHEET_ID is the canonical variable; the legacy
+# GOOGLE_SHEETS_SPREADSHEET_ID name is honoured for backward compatibility.
+GOOGLE_SPREADSHEET_ID = (
+    os.getenv("GOOGLE_SPREADSHEET_ID", "")
+    or os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", "")
+)
 
 # ---------------------------------------------------------------------------
 # Email (Gmail SMTP)

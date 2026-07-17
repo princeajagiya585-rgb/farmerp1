@@ -1,0 +1,102 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label='sheets_sync' %}">Google Sheets Sync</a>
+  &rsaquo; Dashboard
+</div>
+{% endblock %}
+
+{% block content %}
+<style>
+  .ss-cards { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+  .ss-card { flex: 1 1 180px; padding: 14px 16px; border: 1px solid var(--hairline-color, #e0e0e0);
+             border-radius: 8px; background: var(--darkened-bg, #f8f8f8); }
+  .ss-card h3 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; color: var(--body-quiet-color, #666); }
+  .ss-card .ss-value { font-size: 22px; font-weight: 600; }
+  .ss-ok { color: #0a7d33; }
+  .ss-bad { color: #ba2121; }
+  .ss-actions { margin: 18px 0; display: flex; gap: 10px; }
+  .ss-actions form { display: inline; }
+</style>
+
+<h1>Google Sheets Sync Dashboard</h1>
+
+<div class="ss-cards">
+  <div class="ss-card">
+    <h3>Connection</h3>
+    <div class="ss-value {% if connection.ok %}ss-ok{% else %}ss-bad{% endif %}">
+      {% if connection.ok %}Connected{% else %}Down{% endif %}
+    </div>
+    <div>
+      {{ connection.detail }}
+      {% if connection.url %}<br><a href="{{ connection.url }}" target="_blank" rel="noopener">Open spreadsheet ↗</a>{% endif %}
+    </div>
+  </div>
+  <div class="ss-card">
+    <h3>Live sync</h3>
+    <div class="ss-value {% if sync_enabled and worker_alive %}ss-ok{% endif %}">
+      {% if not sync_enabled %}Disabled{% elif worker_alive %}Running{% else %}Idle{% endif %}
+    </div>
+    <div>Worker thread {% if worker_alive %}alive{% else %}starts on first write{% endif %}</div>
+  </div>
+  <div class="ss-card">
+    <h3>Last successful sync</h3>
+    <div class="ss-value">{% if last_success %}{{ last_success|date:"DATETIME_FORMAT" }}{% else %}—{% endif %}</div>
+  </div>
+  <div class="ss-card">
+    <h3>Pending queue</h3>
+    <div class="ss-value">{{ pending }}</div>
+    <div>jobs waiting</div>
+  </div>
+  <div class="ss-card">
+    <h3>Total synced</h3>
+    <div class="ss-value">{{ total_synced }}</div>
+    <div>successful operations</div>
+  </div>
+  <div class="ss-card">
+    <h3>Failed</h3>
+    <div class="ss-value {% if failed_24h %}ss-bad{% endif %}">{{ failed_24h }}</div>
+    <div>last 24 h ({{ failed_total }} all time)</div>
+  </div>
+</div>
+
+<div class="ss-actions">
+  <form method="post" action="{% url 'admin:sheets_sync_sync_now' %}">
+    {% csrf_token %}
+    <input type="submit" class="default" value="Sync Now (retry failed)">
+  </form>
+  <form method="post" action="{% url 'admin:sheets_sync_rebuild' %}"
+        onsubmit="return confirm('Rewrite EVERY worksheet from the database? This uses a lot of API quota and takes a few minutes.');">
+    {% csrf_token %}
+    <input type="submit" value="Rebuild all Google Sheets"
+           {% if rebuild_running %}disabled{% endif %}>
+  </form>
+  <a class="button" href="{% url 'admin:sheets_sync_synclog_changelist' %}">View all sync logs</a>
+</div>
+{% if rebuild_running %}<p><strong>A rebuild is currently running in the background.</strong></p>{% endif %}
+
+<h2>Recent sync operations</h2>
+<table>
+  <thead>
+    <tr><th>Time</th><th>Operation</th><th>Table</th><th>Record</th><th>Status</th><th>Attempts</th><th>Error</th></tr>
+  </thead>
+  <tbody>
+    {% for log in recent_logs %}
+    <tr>
+      <td>{{ log.timestamp|date:"Y-m-d H:i:s" }}</td>
+      <td>{{ log.operation }}</td>
+      <td>{{ log.table_name }}</td>
+      <td>{{ log.record_id }}</td>
+      <td class="{% if log.status == 'SUCCESS' %}ss-ok{% elif log.status == 'FAILED' %}ss-bad{% endif %}">{{ log.status }}</td>
+      <td>{{ log.attempts }}</td>
+      <td>{{ log.error|truncatechars:100 }}</td>
+    </tr>
+    {% empty %}
+    <tr><td colspan="7">No sync operations logged yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
