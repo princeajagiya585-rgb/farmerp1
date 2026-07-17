@@ -13,6 +13,9 @@ from rest_framework.decorators import (
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.settings import api_settings as jwt_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenBlacklistView, TokenObtainPairView, TokenRefreshView
 
@@ -57,9 +60,36 @@ class LoginView(TokenObtainPairView):
     throttle_classes = []
 
 
+class UserAwareTokenRefreshSerializer(TokenRefreshSerializer):
+    """Refresh serializer that also verifies the token's user still exists
+    and is active.
+
+    Plain SimpleJWT only validates the refresh token itself, so a deleted or
+    deactivated user keeps receiving fresh access tokens that every API call
+    then rejects — the client ends up in an endless refresh→401 loop instead
+    of being logged out.
+    """
+
+    def validate(self, attrs):
+        # Read the user claim BEFORE super() — rotation blacklists the
+        # incoming token, so it can't be re-parsed afterwards.
+        try:
+            user_id = self.token_class(attrs["refresh"]).payload.get(
+                jwt_settings.USER_ID_CLAIM
+            )
+        except TokenError as exc:
+            raise InvalidToken(exc.args[0])
+        if not User.objects.filter(
+            **{jwt_settings.USER_ID_FIELD: user_id}, is_active=True
+        ).exists():
+            raise InvalidToken("User is inactive or no longer exists")
+        return super().validate(attrs)
+
+
 class NoThrottleTokenRefreshView(TokenRefreshView):
     """Token refresh endpoint with throttling disabled for development."""
     throttle_classes = []
+    serializer_class = UserAwareTokenRefreshSerializer
 
 
 class NoThrottleTokenBlacklistView(TokenBlacklistView):

@@ -52,7 +52,11 @@ class NotificationConsumer(AsyncWebsocketConsumer):
         await self.accept()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.group_name, self.channel_name)
+        # group_name only exists after a successful, authenticated connect();
+        # rejected connections (close 4001) disconnect without ever joining.
+        group_name = getattr(self, "group_name", None)
+        if group_name:
+            await self.channel_layer.group_discard(group_name, self.channel_name)
 
     # ── Handler for messages sent by the channel layer ────────────────
     async def notify(self, event):
