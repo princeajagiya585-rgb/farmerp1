@@ -8,6 +8,7 @@ from .views import (
     UserViewSet,
     forgot_password,
     phone_login,
+    register_super_admin,
     reset_password,
     reset_super_admin,
     send_otp,
@@ -19,6 +20,7 @@ router.register("users", UserViewSet, basename="user")
 
 urlpatterns = [
     path("login/", LoginView.as_view(), name="login"),
+    path("register/", register_super_admin, name="register-super-admin"),
     path("login/phone/", phone_login, name="phone-login"),
     path("login/send-otp/", send_otp, name="send-otp"),
     path("login/verify-otp/", verify_otp, name="verify-otp"),

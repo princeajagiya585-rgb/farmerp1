@@ -494,11 +494,6 @@ export default function Users() {
   const otherUsers = sortByActive(filteredUsers.filter(u => u.role !== "SUPER_ADMIN"));
 
   const renderUserRow = (user) => {
-    const emp = userEmpMap[user.id];
-    const today = emp ? todayAttMap[emp.id] : null;
-    const isCheckedIn = !!today?.check_in_time;
-    const isCheckedOut = !!today?.check_out_time;
-
     const getRowStyle = () => {
       if (!user.is_active) {
         return "bg-gradient-to-r from-gray-100 to-gray-200 border-gray-300 opacity-50";
@@ -544,39 +539,6 @@ export default function Users() {
         </td>
         <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
           <div className="flex items-center justify-end gap-2">
-            {emp && (
-              isCheckedIn ? (
-                <>
-                  {isCheckedOut ? (                      <span className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-1.5 py-1 text-[10px] font-medium text-gray-500">
-                      <CheckCircle size={12} className="text-green-600" />
-                      {t("users.doneStatus")}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-md bg-green-50 px-1.5 py-1 text-[10px] font-medium text-green-700">
-                      <span className="relative flex h-1.5 w-1.5">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
-                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-green-500" />
-                      </span>
-                      {t("users.activeStatus")}
-                    </span>
-                  )}
-                </>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={checkinLoading === emp.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    doCheckIn(emp);
-                  }}
-                  className="!px-2 !py-1 text-[11px]"
-                >
-                  <LogIn size={12} />
-                  {checkinLoading === emp.id ? "…" : t("users.checkInStatus")}
-                </Button>
-              )
-            )}
             {canManage && (
               <>
                 {/* Edit */}

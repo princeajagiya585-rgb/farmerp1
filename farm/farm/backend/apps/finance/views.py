@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from apps.accounts.models import Role
 from apps.core.mixins import BaseModelViewSet
 from apps.core.permissions import RoleAllowed
+from apps.core.tenancy import GLOBAL_ROLES as TENANT_GLOBAL_ROLES
 from apps.farms.models import Farm
 from apps.farms.views import FarmScopedQuerysetMixin
 
@@ -283,7 +284,7 @@ class FinanceReportViewSet(viewsets.ViewSet):
     allowed_roles = [Role.FARM_MANAGER]
     serializer_class = serializers.Serializer
     readonly_roles = [Role.FARM_MANAGER]
-    GLOBAL_ROLES = {Role.SUPER_ADMIN}
+    GLOBAL_ROLES = TENANT_GLOBAL_ROLES
 
     def _scope(self, qs, farm_field="farm_id"):
         user = self.request.user

@@ -9,6 +9,40 @@ from apps.accounts.models import User, Role
 from .models import Employee, EmploymentHistory, Availability
 
 
+def link_matching_employee(user, farm, category):
+    """Claim an existing Employee on ``farm`` for ``user``, if one matches.
+
+    Matched on name or phone, so that giving an already-registered worker a
+    login reuses their record instead of creating a second one for the same
+    person. Restricted to a single farm and to records no other user holds:
+    farms are tenant boundaries, and an already-linked record belongs to
+    somebody else's login. Returns the Employee, or None when nothing matched.
+    """
+    from django.db.models import Q
+
+    if not (user.first_name or user.last_name or user.phone):
+        return None
+
+    name_q = Q()
+    if user.first_name:
+        name_q &= Q(first_name__iexact=user.first_name)
+    if user.last_name:
+        name_q &= Q(last_name__iexact=user.last_name)
+    if user.phone:
+        name_q |= Q(phone=user.phone)
+
+    employee = Employee.objects.filter(name_q, farm=farm, user__isnull=True).first()
+    if not employee:
+        return None
+
+    employee.user = user
+    employee.category = category
+    employee.save(update_fields=["user", "category"])
+    if not user.farms.filter(id=farm.id).exists():
+        user.farms.add(farm)
+    return employee
+
+
 @receiver(post_save, sender=Employee)
 def employee_created(sender, instance, created, **kwargs):
     if kwargs.get("raw"):
@@ -82,57 +116,57 @@ def user_created_for_employee(sender, instance, created, **kwargs):
                 Employee.Category.MANAGER,
                 Employee.Category.EMPLOYEE,
             }
+            changed = []
             if (
                 existing_employee.category in base_categories
                 and existing_employee.category != target_category
             ):
                 existing_employee.category = target_category
-                existing_employee.save(update_fields=["category"])
+                changed.append("category")
+
+            # Fill identity fields the Employee is still missing from the
+            # linked User (a user created before these fields were set keeps
+            # an empty profile otherwise). Only blank fields are written, so
+            # an Employee edited directly on the Workforce page is never
+            # overwritten by an unrelated User.save().
+            for emp_field, user_value in (
+                ("first_name", instance.first_name),
+                ("last_name", instance.last_name),
+                ("phone", instance.phone),
+            ):
+                if user_value and not getattr(existing_employee, emp_field):
+                    setattr(existing_employee, emp_field, user_value)
+                    changed.append(emp_field)
+
+            if changed:
+                existing_employee.save(update_fields=changed)
             return
 
         if not created:
             return  # Don't create new Employee records for existing users without one
 
-        from django.db.models import Q
-        from apps.farms.models import Farm
-
-        # Step 1: Try to find an existing Employee that matches this user
-        # Match by first_name + last_name, or by phone number
-        matching_employee = None
-        name_q = Q()
-        if instance.first_name:
-            name_q &= Q(first_name__iexact=instance.first_name)
-        if instance.last_name:
-            name_q &= Q(last_name__iexact=instance.last_name)
-        if instance.phone:
-            name_q |= Q(phone=instance.phone)
-
-        if name_q and (instance.first_name or instance.last_name or instance.phone):
-            matching_employee = Employee.objects.filter(name_q).first()
-
-        if matching_employee:
-            # Link the user to the existing Employee profile
-            matching_employee.user = instance
-            matching_employee.category = target_category
-            matching_employee.save(update_fields=["user", "category"])
-
-            # Ensure user has the same farm assignment
-            if not instance.farms.filter(id=matching_employee.farm_id).exists():
-                instance.farms.add(matching_employee.farm)
+        # Which farm this account belongs to. Sign-up passes the farm it just
+        # created as ``_bootstrap_farm``; otherwise the farms already assigned
+        # to the user decide.
+        #
+        # There is deliberately NO "just take the first farm in the table"
+        # fallback: farms now separate tenants, so an arbitrary farm would drop
+        # the account into someone else's data. A user saved without any farm
+        # (API create sets the M2M only *after* this signal runs) gets its
+        # Employee record from UserViewSet.perform_create instead, once the
+        # creator's farms are known.
+        farm = getattr(instance, "_bootstrap_farm", None)
+        if farm is None:
+            farm = instance.farms.first()
+        if not farm:
             return
 
-        # Step 2: No matching Employee found — create a new one
-        farm = None
-        if instance.farms.exists():
-            farm = instance.farms.first()
-        else:
-            if Farm.objects.exists():
-                farm = Farm.objects.first()
-                if farm:
-                    instance.farms.add(farm)
-
-        if not farm:
-            return  # No farms available
+        # Link an existing unclaimed Employee on that same farm — matched by
+        # name or phone — before creating a second record for the same person.
+        # The farm filter keeps the match inside the account's own tenant.
+        matching_employee = link_matching_employee(instance, farm, target_category)
+        if matching_employee:
+            return
 
         # Generate unique employee code
         base_code = f"EMP-{instance.username.upper()}"

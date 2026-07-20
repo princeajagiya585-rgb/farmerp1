@@ -7,6 +7,7 @@ from rest_framework.response import Response
 
 from apps.accounts.models import Role
 from apps.core.mixins import BaseModelViewSet
+from apps.core.tenancy import GLOBAL_ROLES as TENANT_GLOBAL_ROLES
 from apps.agronomy.models import Crop, HarvestRecord
 from apps.finance.models import Expense, RevenueEntry
 from apps.workforce.models import Attendance, Employee
@@ -27,7 +28,7 @@ from .serializers import (
 class FarmScopedQuerysetMixin:
     """Restrict list/detail to the requesting user's assigned farms."""
 
-    GLOBAL_ROLES = {Role.SUPER_ADMIN}
+    GLOBAL_ROLES = TENANT_GLOBAL_ROLES
     farm_lookup = "farm_id"  # path from model to the farm id
 
     def get_queryset(self):

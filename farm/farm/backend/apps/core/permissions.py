@@ -1,5 +1,7 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
+from apps.core.tenancy import GLOBAL_ROLES as TENANT_GLOBAL_ROLES
+
 # Role constants (mirror apps.accounts.models.Role)
 SUPER_ADMIN = "SUPER_ADMIN"
 FARM_MANAGER = "FARM_MANAGER"
@@ -46,11 +48,11 @@ class RoleAllowed(BasePermission):
 class IsFarmMember(BasePermission):
     """Object-level: restricts access to objects belonging to the user's farms.
 
-    The object (or its related chain) must expose a `farm_id`. Super admins
-    bypass farm scoping.
+    The object (or its related chain) must expose a `farm_id`. No role bypasses
+    the farm boundary — see apps.core.tenancy.
     """
 
-    GLOBAL_ROLES = {SUPER_ADMIN}
+    GLOBAL_ROLES = TENANT_GLOBAL_ROLES
 
     def has_object_permission(self, request, view, obj):
         user = request.user

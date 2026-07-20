@@ -31,6 +31,7 @@ from .serializers import (
     OtpVerifySerializer,
     PhoneLoginSerializer,
     ResetPasswordSerializer,
+    SuperAdminRegisterSerializer,
     UserCreateSerializer,
     UserSerializer,
 )
@@ -493,7 +494,16 @@ class UserViewSet(viewsets.ModelViewSet):
         qs = qs.filter(deleted_at__isnull=True)
         user = self.request.user
         role = getattr(user, "role", None)
-        if self.action == "list" and role != Role.SUPER_ADMIN:
+        if self.action == "list" and role == Role.SUPER_ADMIN:
+            # A super admin administers only their own farms' accounts. Their
+            # own row is included explicitly so the Administrators table still
+            # lists them before any farm has been assigned.
+            from django.db.models import Q
+
+            qs = qs.filter(
+                Q(farms__in=user.farms.all()) | Q(pk=user.pk)
+            ).distinct()
+        elif self.action == "list":
             if role == Role.FARM_MANAGER:
                 # Managers only see their own farms' users, never super admins
                 # (keeps admins out of "Assign to User" dropdowns).
@@ -509,11 +519,25 @@ class UserViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Create the user, then auto-create an Employee record linked to it."""
         user = serializer.save()
+        # Accounts a super admin creates belong to that admin's farms. Without
+        # this, a manager or employee created without an explicit farm ends up
+        # unassigned and sees nothing once farm scoping applies to every role.
+        creator = self.request.user
+        if not user.farms.exists() and creator.is_authenticated:
+            user.farms.set(creator.farms.all())
         from apps.workforce.models import Employee
+        from apps.workforce.signals import link_matching_employee
         if not Employee.objects.filter(user=user).exists():
             farms = list(user.farms.all())
             farm = farms[0] if farms else None
-            if farm:
+            # Reuse the worker's existing record on this farm when there is
+            # one — the farm is only known here, after the M2M is set, so the
+            # creation signal cannot do this match itself.
+            if farm and link_matching_employee(
+                user, farm, _role_to_employee_category(user.role)
+            ):
+                logger.info("[USER_CREATE] Linked existing Employee for user '%s'", user.username)
+            elif farm:
                 # Generate a unique employee code
                 base_code = f"EMP-{user.username}"
                 code = base_code
@@ -727,3 +751,79 @@ class UserViewSet(viewsets.ModelViewSet):
         request.user.fcm_token = request.data.get("fcm_token", "")
         request.user.save(update_fields=["fcm_token"])
         return Response({"detail": "FCM token updated."})
+
+
+@extend_schema(
+    request=SuperAdminRegisterSerializer,
+    responses={201: {"type": "object"}},
+)
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def register_super_admin(request):
+    """Sign up a new super admin together with the farm they will run.
+
+    The farm is created first and passed to the new user as its bootstrap farm,
+    so the workforce signal links the account to *this* farm instead of falling
+    back to whichever farm happens to be first in the table — that fallback
+    would drop a brand-new admin straight into another tenant's data.
+    """
+    from django.db import transaction
+    from django.utils.text import slugify
+
+    from apps.farms.models import Farm
+    from .models import Role
+
+    serializer = SuperAdminRegisterSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    data = serializer.validated_data
+
+    farm_name = data["farm_name"].strip()
+    base_code = (slugify(farm_name).upper().replace("-", "") or "FARM")[:24]
+    code = base_code
+    counter = 1
+    while Farm.objects.filter(code=code).exists():
+        suffix = str(counter)
+        code = f"{base_code[:24 - len(suffix)]}{suffix}"
+        counter += 1
+
+    try:
+        with transaction.atomic():
+            farm = Farm.objects.create(name=farm_name, code=code)
+
+            user = User(
+                username=data["username"],
+                email=data["email"],
+                phone=data.get("phone", ""),
+                first_name=data.get("first_name", ""),
+                last_name=data.get("last_name", ""),
+                role=Role.SUPER_ADMIN,
+                # App-level admin only: the Django admin site stays reserved
+                # for the platform operator, not for tenants who sign up.
+                is_staff=False,
+                is_superuser=False,
+            )
+            user.set_password(data["password"])
+            user._bootstrap_farm = farm
+            user.save()
+            user.farms.add(farm)
+            farm.manager = user
+            farm.save(update_fields=["manager"])
+    except Exception:
+        logger.error("[REGISTER] Super admin sign-up failed\n%s", traceback.format_exc())
+        return Response(
+            {"detail": "Could not create the account. Please try again."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    refresh = RefreshToken.for_user(user)
+    logger.info("[REGISTER] Super admin '%s' created with farm '%s'", user.username, farm.code)
+    return Response(
+        {
+            "detail": "Account created.",
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": UserSerializer(user, context={"request": request}).data,
+            "farm": {"id": str(farm.id), "name": farm.name, "code": farm.code},
+        },
+        status=status.HTTP_201_CREATED,
+    )

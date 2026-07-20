@@ -272,3 +272,41 @@ class ResetPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
     otp = serializers.CharField(required=True, min_length=6, max_length=6)
     new_password = serializers.CharField(required=True, min_length=6)
+
+
+class SuperAdminRegisterSerializer(serializers.Serializer):
+    """Self-service sign-up: one super admin together with their first farm.
+
+    Registration is the only way a super admin account comes into existence
+    from outside the app — every other account (managers, employees) is created
+    by a super admin from the Users page, inside that admin's own farm.
+    """
+
+    farm_name = serializers.CharField(max_length=150)
+    username = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
+    phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    first_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    last_name = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    password = serializers.CharField(write_only=True, min_length=6)
+    password2 = serializers.CharField(write_only=True, required=False)
+
+    def validate_username(self, value):
+        value = value.strip()
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError("This username is already taken.")
+        return value
+
+    def validate_email(self, value):
+        value = value.strip()
+        # Email doubles as the password-reset identity, so it must be unique
+        # even though the model itself does not enforce it.
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return value
+
+    def validate(self, attrs):
+        password2 = attrs.get("password2")
+        if password2 is not None and password2 != attrs["password"]:
+            raise serializers.ValidationError({"password2": "Passwords do not match."})
+        return attrs

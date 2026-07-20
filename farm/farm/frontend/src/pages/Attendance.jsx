@@ -597,8 +597,8 @@ export default function Attendance() {
         }
       />
 
-      {/* Self-attendance card — hidden for super admins (they never mark
-          their own attendance, only manage employees' below). */}
+      {/* Self-attendance card — hidden for super admins, whose own attendance
+          is never recorded, even when the account has an Employee profile. */}
       {currentUser && !isAdmin && (
         <Card className="mb-5 overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

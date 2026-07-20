@@ -16,7 +16,7 @@ from apps.payroll.models import Advance, Deduction, Incentive, Payment
 from apps.tasks.models import Task, TaskWorkSession
 from apps.workforce.models import Attendance, Employee
 
-GLOBAL_ROLES = {Role.SUPER_ADMIN}
+from apps.core.tenancy import GLOBAL_ROLES
 
 # Same role markers as User.get_full_name / Employee.name — the reporting
 # endpoints build names from .values() rows for performance, which bypasses
