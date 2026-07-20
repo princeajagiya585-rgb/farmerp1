@@ -356,7 +356,13 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     def before_work(self, request, pk=None):
         """Employee starts work on a task - Before Work action."""
         try:
-            task = Task.objects.get(pk=pk)
+            # Scoped, not Task.objects: these actions are open to any
+            # authenticated user (see get_permissions), and take_break /
+            # resume_work / during_work / complete_work check no assignment at
+            # all — so an unscoped lookup let anyone who knew a task UUID drive
+            # another tenant's task to COMPLETED and write TaskActivity and
+            # LocationPing rows onto that tenant's farm.
+            task = self.get_queryset().get(pk=pk)
         except Task.DoesNotExist:
             return Response({"detail": "Not found."}, status=404)
         user = request.user
@@ -465,7 +471,13 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         BREAK_START activity are always written even when the caller has no
         Employee profile / TaskExecution (so the buttons + timer stay correct)."""
         try:
-            task = Task.objects.get(pk=pk)
+            # Scoped, not Task.objects: these actions are open to any
+            # authenticated user (see get_permissions), and take_break /
+            # resume_work / during_work / complete_work check no assignment at
+            # all — so an unscoped lookup let anyone who knew a task UUID drive
+            # another tenant's task to COMPLETED and write TaskActivity and
+            # LocationPing rows onto that tenant's farm.
+            task = self.get_queryset().get(pk=pk)
         except Task.DoesNotExist:
             return Response({"detail": "Not found."}, status=404)
         user = request.user
@@ -528,7 +540,13 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
         """Resume work after a break. Works for ANY user — the task status and
         the BREAK_END activity are always written even without an execution."""
         try:
-            task = Task.objects.get(pk=pk)
+            # Scoped, not Task.objects: these actions are open to any
+            # authenticated user (see get_permissions), and take_break /
+            # resume_work / during_work / complete_work check no assignment at
+            # all — so an unscoped lookup let anyone who knew a task UUID drive
+            # another tenant's task to COMPLETED and write TaskActivity and
+            # LocationPing rows onto that tenant's farm.
+            task = self.get_queryset().get(pk=pk)
         except Task.DoesNotExist:
             return Response({"detail": "Not found."}, status=404)
         user = request.user
@@ -590,7 +608,13 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     def during_work(self, request, pk=None):
         """Employee provides progress update - During Work action."""
         try:
-            task = Task.objects.get(pk=pk)
+            # Scoped, not Task.objects: these actions are open to any
+            # authenticated user (see get_permissions), and take_break /
+            # resume_work / during_work / complete_work check no assignment at
+            # all — so an unscoped lookup let anyone who knew a task UUID drive
+            # another tenant's task to COMPLETED and write TaskActivity and
+            # LocationPing rows onto that tenant's farm.
+            task = self.get_queryset().get(pk=pk)
         except Task.DoesNotExist:
             return Response({"detail": "Not found."}, status=404)
         user = request.user
@@ -649,7 +673,13 @@ class TaskViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     def complete_work(self, request, pk=None):
         """Employee completes the task - Complete Work action."""
         try:
-            task = Task.objects.get(pk=pk)
+            # Scoped, not Task.objects: these actions are open to any
+            # authenticated user (see get_permissions), and take_break /
+            # resume_work / during_work / complete_work check no assignment at
+            # all — so an unscoped lookup let anyone who knew a task UUID drive
+            # another tenant's task to COMPLETED and write TaskActivity and
+            # LocationPing rows onto that tenant's farm.
+            task = self.get_queryset().get(pk=pk)
         except Task.DoesNotExist:
             return Response({"detail": "Not found."}, status=404)
         user = request.user
@@ -857,7 +887,7 @@ class TaskUpdateViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     search_fields = ["note", "task__title"]
 
 
-class TaskExecutionViewSet(BaseModelViewSet):
+class TaskExecutionViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
     """ViewSet for managing task execution workflow."""
 
     queryset = TaskExecution.objects.select_related(
@@ -866,6 +896,11 @@ class TaskExecutionViewSet(BaseModelViewSet):
         "break_logs", "progress_logs"
     ).all()
     serializer_class = TaskExecutionSerializer
+    # TaskExecution has no farm of its own; it belongs to the task's farm.
+    # Without this the viewset had no tenant boundary at all: every super admin
+    # and farm manager saw every tenant's executions — GPS coordinates,
+    # before/after photos, completion notes — and could approve or return them.
+    farm_lookup = "task__farm_id"
     allowed_roles = [Role.FARM_MANAGER, Role.EMPLOYEE]
     readonly_roles = []
     filterset_fields = ["task", "employee", "status"]

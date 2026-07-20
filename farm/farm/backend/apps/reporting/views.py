@@ -321,8 +321,13 @@ class DashboardView(APIView):
 
         # "Total Users" must match what the Users page lists (all users that
         # aren't soft-deleted), not just currently-active ones — otherwise the
-        # dashboard shows e.g. 4 while the Users page shows 32.
-        total_users = User.objects.filter(deleted_at__isnull=True).count()
+        # dashboard shows e.g. 4 while the Users page shows 32. Farm-scoped like
+        # every other KPI here: unscoped it counted every tenant's accounts.
+        total_users = (
+            User.objects.filter(deleted_at__isnull=True, farms__id__in=farm_ids)
+            .distinct()
+            .count()
+        )
 
         # ── Farm breakdown for the HR box on the dashboard ─────────────────
         # Counts Employee records per farm (every Employee always has a farm

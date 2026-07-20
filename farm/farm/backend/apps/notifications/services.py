@@ -103,20 +103,29 @@ def notify_activity(instance, label, page, notification_type="INFO", subject="",
 
 
 def notify_roles(farm, roles, title, body="", notification_type="INFO", data=None, link="", exclude=None):
-    """Notify every active user who has one of `roles` and is assigned to `farm`
-    (plus all SUPER_ADMINs). Returns the number of notifications created."""
+    """Notify every active user who has one of `roles` and is assigned to `farm`,
+    plus that farm's super admins. Returns the number of notifications created.
+
+    The SUPER_ADMIN clause used to be unconditional and unscoped, so every super
+    admin on the platform got a bell + WebSocket alert for every attendance mark,
+    task, expense and breakdown of every other tenant — farm name, actor name and
+    employee name included. Super admins are now matched on the farm like anyone
+    else.
+    """
     User = get_user_model()
     role_list = list(roles)
-    query = Q(role="SUPER_ADMIN")
     if farm is not None:
-        query |= Q(role__in=role_list, farms=farm)
+        query = Q(role="SUPER_ADMIN", farms=farm) | Q(role__in=role_list, farms=farm)
         # Always include the farm's designated manager, even if they were never
         # added to the farm's members (User.farms) M2M — Farm.manager is the
         # source of truth for who runs the farm, so they must get farm alerts.
         if getattr(farm, "manager_id", None):
             query |= Q(pk=farm.manager_id)
     else:
-        query |= Q(role__in=role_list)
+        # No farm to scope by: this is a platform-wide notice, so it can only go
+        # to the roles asked for. A blanket super-admin fan-out here would be the
+        # same cross-tenant leak by another route.
+        query = Q(role__in=role_list)
     recipients = User.objects.filter(query, is_active=True).distinct()
     if exclude is not None:
         recipients = recipients.exclude(pk=getattr(exclude, "pk", exclude))

@@ -205,6 +205,23 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         attendance.refresh_time_derived_fields()
         attendance.save()
 
+    def _addressable_employees(self):
+        """Employees this caller may record attendance for.
+
+        Employees on the caller's farms, plus whichever Employee row is already
+        linked to them — the second half matters because an employee whose
+        ``user.farms`` has drifted from their Employee's farm must still be able
+        to check themselves in.
+
+        These lookups used to run against ``Employee.objects`` unscoped, which
+        let a manager or admin post a raw employee id and create (and back-date)
+        attendance for another tenant's worker, feeding that tenant's payroll.
+        """
+        user = self.request.user
+        return Employee.objects.filter(
+            Q(farm_id__in=user.farms.values_list("id", flat=True)) | Q(user=user)
+        )
+
     @action(detail=False, methods=["post"])
     def check_in(self, request):
         """Create or update today's attendance with check-in details."""
@@ -212,7 +229,7 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         if not employee_id:
             return Response({"detail": "employee is required."}, status=400)
 
-        employee = Employee.objects.filter(pk=employee_id).first()
+        employee = self._addressable_employees().filter(pk=employee_id).first()
         if not employee:
             return Response({"detail": "Employee not found."}, status=404)
 
@@ -243,7 +260,11 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         if not code:
             return Response({"detail": "employee_code is required."}, status=400)
 
-        employee = Employee.objects.filter(employee_code=code).first()
+        # Scoped: an unscoped code lookup let an employee of one tenant guess a
+        # code belonging to another tenant's *unlinked* employee and get
+        # permanently linked to it a few lines below, inheriting that worker's
+        # record, attendance and payslips.
+        employee = self._addressable_employees().filter(employee_code=code).first()
         if not employee:
             return Response({"detail": "No employee found with that code."}, status=404)
 
@@ -886,13 +907,12 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         if not target_date:
             return Response({"detail": "Invalid date."}, status=400)
 
-        # Get all employees
-        user = request.user
-        if user.role == Role.SUPER_ADMIN:
-            employees = Employee.objects.select_related("farm").all()
-        else:
-            farm_ids = list(user.farms.values_list("id", flat=True))
-            employees = Employee.objects.select_related("farm").filter(farm_id__in=farm_ids) if farm_ids else Employee.objects.none()
+        # The employees this caller may mark — the same set the Employees page
+        # and the attendance report show. This used to take every Employee in
+        # the database for a SUPER_ADMIN, so one tenant pressing "Mark Absent"
+        # wrote APPROVED absent rows across every other tenant's workforce, and
+        # those rows then fed their payslips through _attendance_worked_days.
+        employees = self._reportable_employees()
 
         marked_count = 0
         for employee in employees:
@@ -928,7 +948,10 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             return Response({"detail": "employee parameter required."}, status=400)
 
         today = timezone.localdate()
-        attendance = Attendance.objects.filter(
+        # Scoped: ?employee= comes straight from the client, and an unscoped
+        # lookup returned the full serialized attendance — GPS coordinates,
+        # addresses, check-in/out photos, farm — for any employee in any tenant.
+        attendance = self.get_queryset().filter(
             employee_id=employee_id,
             date=today
         ).select_related("employee", "farm").first()
@@ -942,17 +965,39 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         return Response(data)
 
 
-class DepartmentViewSet(BaseModelViewSet):
+class TenantOwnedRefMixin(FarmScopedQuerysetMixin):
+    """Farm scoping for the reference tables that gained a farm in 0016.
+
+    Departments and Skills had no owner column at all, so the tables were global
+    and every tenant listed and could edit every other tenant's rows. They are
+    now scoped like everything else, and new rows are stamped with the creator's
+    farm so they are owned from birth.
+
+    Rows that migration 0017 could not attribute — nobody is in the department /
+    tagged with the skill — keep a NULL farm and are therefore visible to
+    nobody. That is deliberate: they hold no data beyond a name, and leaving
+    them readable by everyone would be the same cross-tenant listing this is
+    meant to close.
+    """
+
+    def perform_create(self, serializer):
+        farm = serializer.validated_data.get("farm") or self.request.user.farms.first()
+        serializer.save(farm=farm)
+
+
+class DepartmentViewSet(TenantOwnedRefMixin, BaseModelViewSet):
     queryset = Department.objects.prefetch_related("employees").all()
     serializer_class = DepartmentSerializer
+    farm_lookup = "farm_id"
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = [Role.EMPLOYEE]
     search_fields = ["name", "code", "description"]
 
 
-class SkillViewSet(BaseModelViewSet):
+class SkillViewSet(TenantOwnedRefMixin, BaseModelViewSet):
     queryset = Skill.objects.prefetch_related("employees").all()
     serializer_class = SkillSerializer
+    farm_lookup = "farm_id"
     allowed_roles = [Role.FARM_MANAGER]
     readonly_roles = [Role.EMPLOYEE]
     filterset_fields = ["category"]

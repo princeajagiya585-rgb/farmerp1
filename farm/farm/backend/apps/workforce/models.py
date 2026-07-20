@@ -318,6 +318,14 @@ class AttendanceMonthlySummary(OwnedModel):
 class Department(TimeStampedModel):
     """An organizational department workers can be allocated to."""
 
+    # Departments had no owner of any kind — no farm, no created_by — so the
+    # table was global and every tenant saw and could edit every other tenant's
+    # departments. Nullable because rows that predate this cannot always be
+    # attributed; migration 0026 backfills from the employees in each one.
+    farm = models.ForeignKey(
+        "farms.Farm", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="departments",
+    )
     name = models.CharField(max_length=120)
     code = models.CharField(max_length=30, blank=True)
     description = models.TextField(blank=True)
@@ -332,6 +340,12 @@ class Department(TimeStampedModel):
 class Skill(TimeStampedModel):
     """A skill, grouped by a category, that workers can be tagged with."""
 
+    # Same story as Department above: no owner column at all, so the table was
+    # shared across tenants. Backfilled from the employees tagged with it.
+    farm = models.ForeignKey(
+        "farms.Farm", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="skills",
+    )
     name = models.CharField(max_length=120)
     category = models.CharField(
         max_length=120, blank=True, help_text="e.g. Machinery, Irrigation, Harvesting"

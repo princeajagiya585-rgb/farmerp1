@@ -746,11 +746,14 @@ class PayslipViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
 
         # Outstanding advance balance per employee, from the Advance records
         # (same source as the Advances page). Honours the farm/employee filters
-        # and the requesting user's farm scope (super admin sees all farms).
-        adv_qs = Advance.objects.filter(status=Advance.Status.OUTSTANDING)
-        if request.user.role not in (Role.SUPER_ADMIN,):
-            allowed_farm_ids = list(request.user.farms.values_list("id", flat=True))
-            adv_qs = adv_qs.filter(farm_id__in=allowed_farm_ids)
+        # and the requesting user's farm scope — super admins included: they run
+        # their own farm like every other role, so exempting them here handed one
+        # tenant another tenant's outstanding advances, and the block below then
+        # rendered those foreign employees as visible report rows.
+        allowed_farm_ids = list(request.user.farms.values_list("id", flat=True))
+        adv_qs = Advance.objects.filter(
+            status=Advance.Status.OUTSTANDING, farm_id__in=allowed_farm_ids
+        )
         if farm:
             adv_qs = adv_qs.filter(farm_id=farm)
         if employee:
@@ -795,9 +798,14 @@ class PayslipViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
 
         # Employees with an outstanding advance but no payslip this period.
         missing_ids = [e for e in advance_by_emp if e not in seen_employees]
+        # Farm-scoped like adv_qs above — an unscoped lookup here would put
+        # another tenant's employee and farm names on the report even after the
+        # advances themselves were scoped.
         emp_map = {
             e.id: e
-            for e in Employee.objects.filter(pk__in=missing_ids).select_related("farm")
+            for e in Employee.objects.filter(
+                pk__in=missing_ids, farm_id__in=allowed_farm_ids
+            ).select_related("farm")
         }
         for emp_id in missing_ids:
             emp_obj = emp_map.get(emp_id)
