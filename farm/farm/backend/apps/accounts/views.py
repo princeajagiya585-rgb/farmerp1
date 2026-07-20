@@ -619,6 +619,26 @@ class UserViewSet(viewsets.ModelViewSet):
                 "Only the main super administrator can manage super admin accounts."
             )
 
+    def _staff_of(self, admin):
+        """The managers and employees that belong to a super admin.
+
+        There is no owner FK on User — an account's tenancy is its farms (see
+        ``perform_create``, which copies the creator's farms onto every account
+        it makes). So an admin's staff is everyone sharing one of their farms,
+        minus other super admins, whose accounts belong to the owner alone.
+        """
+        from .models import Role
+
+        if not admin.farms.exists():
+            return User.objects.none()
+        return (
+            User.objects.filter(farms__in=admin.farms.all())
+            .exclude(pk=admin.pk)
+            .exclude(role=Role.SUPER_ADMIN)
+            .exclude(is_superuser=True)
+            .distinct()
+        )
+
     def perform_destroy(self, instance):
         """Soft-delete the user account instead of removing it from the DB.
 
@@ -643,10 +663,34 @@ class UserViewSet(viewsets.ModelViewSet):
         if instance.pk == self.request.user.pk:
             raise PermissionDenied("You cannot delete your own account.")
 
-        instance.deleted_at = timezone.now()
-        instance.deleted_by = self.request.user if self.request.user.is_authenticated else None
+        from .models import Role
+
+        actor = self.request.user if self.request.user.is_authenticated else None
+        now = timezone.now()
+        instance.deleted_at = now
+        instance.deleted_by = actor
         instance.is_active = False
         instance.save(update_fields=["deleted_at", "deleted_by", "is_active"])
+
+        # Archiving a super admin takes their managers and employees with them —
+        # left behind they could still sign in to a farm nobody administers.
+        # ``deleted_with`` records the group so restore and permanent delete can
+        # move it as one. Accounts already in the trash keep their own delete
+        # stamp so restoring the admin does not resurrect them.
+        if instance.role == Role.SUPER_ADMIN:
+            staff = self._staff_of(instance).filter(deleted_at__isnull=True)
+            ids = list(staff.values_list("pk", flat=True))
+            if ids:
+                User.objects.filter(pk__in=ids).update(
+                    deleted_at=now,
+                    deleted_by=actor,
+                    deleted_with=instance,
+                    is_active=False,
+                )
+            logger.info(
+                "[USER_DELETE] Super admin '%s' archived with %s staff account(s)",
+                instance.username, len(ids),
+            )
 
     @action(detail=False, methods=["get"], url_path="super-admins",
             url_name="super-admins")
@@ -709,15 +753,80 @@ class UserViewSet(viewsets.ModelViewSet):
             {"detail": f"Permanently deleted {count} user(s).", "deleted": count}
         )
 
+    @action(detail=True, methods=["post"], url_path="purge", url_name="purge")
+    def purge(self, request, pk=None):
+        """Permanently (hard) delete ONE soft-deleted user. SUPER_ADMIN only.
+
+        The per-row counterpart to ``purge_deleted``. Deleting a super admin
+        also erases the staff archived alongside them (``deleted_with``), which
+        mirrors the cascade the soft delete performed — otherwise their managers
+        and employees would be stranded in the trash with no admin to restore
+        them under.
+
+        Uses POST rather than DELETE because DELETE on the detail route is
+        already the *soft* delete, and the two must stay distinguishable.
+        """
+        from .models import Role
+
+        try:
+            user = User.objects.get(pk=pk, deleted_at__isnull=False)
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "Deleted user not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Same guard as the soft delete: admin accounts are the owner's alone.
+        self._assert_may_manage(user)
+        if user.is_superuser:
+            raise PermissionDenied(
+                "The main super administrator account cannot be deleted."
+            )
+
+        username = user.username
+        cascade = 0
+        if user.role == Role.SUPER_ADMIN:
+            group = User.objects.filter(deleted_with=user)
+            cascade = group.count()
+            group.delete()
+        user.delete()
+        logger.info(
+            "[PURGE] %s permanently deleted '%s' (+%s linked account(s))",
+            request.user, username, cascade,
+        )
+        return Response(
+            {
+                "detail": f"Permanently deleted {username}.",
+                "deleted": 1 + cascade,
+                "cascaded": cascade,
+            }
+        )
+
     @action(detail=True, methods=["post"], url_path="restore", url_name="restore")
     def restore(self, request, pk=None):
         """Restore a soft-deleted user — clears deleted_at and reactivates."""
         try:
             user = User.objects.get(pk=pk, deleted_at__isnull=False)
+            # Admin accounts are the owner's to manage — restoring one is as
+            # consequential as deleting it, so it takes the same guard.
+            self._assert_may_manage(user)
             user.deleted_at = None
             user.deleted_by = None
+            user.deleted_with = None
             user.is_active = True
-            user.save(update_fields=["deleted_at", "deleted_by", "is_active"])
+            user.save(
+                update_fields=["deleted_at", "deleted_by", "deleted_with", "is_active"]
+            )
+            # Bring back the staff that went down with this admin, so a restore
+            # undoes the whole cascade rather than leaving a farm half-staffed.
+            restored = User.objects.filter(deleted_with=user).update(
+                deleted_at=None, deleted_by=None, deleted_with=None, is_active=True
+            )
+            if restored:
+                logger.info(
+                    "[RESTORE] '%s' restored with %s staff account(s)",
+                    user.username, restored,
+                )
             return Response(UserSerializer(user, context={"request": request}).data)
         except User.DoesNotExist:
             return Response(

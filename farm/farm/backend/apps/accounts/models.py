@@ -34,6 +34,19 @@ class User(AbstractUser):
         editable=False,
         related_name="deleted_users_set",
     )
+    # Set on the staff accounts that were taken down *with* a super admin.
+    # Farm membership alone cannot say who a manager or employee belonged to
+    # once two admins share a farm, so the cascade records the link at delete
+    # time. Restore and permanent-delete follow this field to move the whole
+    # group together.
+    deleted_with = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        editable=False,
+        related_name="cascade_deleted_set",
+    )
 
     # Multi-farm scoping
     farms = models.ManyToManyField(

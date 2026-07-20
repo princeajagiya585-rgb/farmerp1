@@ -405,8 +405,10 @@ export default function SuperAdminAccounts() {
           longer be able to sign in.
         </p>
         <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
-          The account is archived rather than erased — its farms, work history and
-          records stay intact, and you can restore it from Deleted Users.
+          Their farm managers and employees are archived with them and lose access
+          too — a farm with no administrator should not stay open. Nothing is
+          erased: farms, work history and records stay intact, and restoring the
+          admin from Deleted Users brings the whole team back.
         </p>
         <div className="mt-5 flex justify-end gap-3">
           <Button type="button" variant="secondary" onClick={() => setDeleting(null)} disabled={busy}>

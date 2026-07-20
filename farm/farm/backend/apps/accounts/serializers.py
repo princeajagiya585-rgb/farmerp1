@@ -16,6 +16,7 @@ class UserSerializer(serializers.ModelSerializer):
     aadhaar_photo_url = serializers.SerializerMethodField()
     aadhaar_submitted = serializers.SerializerMethodField()
     deleted_by_name = serializers.SerializerMethodField()
+    deleted_with_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -25,6 +26,9 @@ class UserSerializer(serializers.ModelSerializer):
             "farms", "farm_names", "farm_ids", "fcm_token", "date_joined",
             "aadhaar_number", "aadhaar_photo", "aadhaar_photo_url", "aadhaar_submitted",
             "deleted_at", "deleted_by", "deleted_by_name",
+            # The super admin this account was archived alongside, so the
+            # Deleted Users page can show (and purge) the whole group.
+            "deleted_with", "deleted_with_name",
             # Marks the owner account (the "main" super admin). Read-only and
             # never assignable through the API — it gates super-admin creation.
             "is_superuser",
@@ -33,7 +37,8 @@ class UserSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id", "date_joined", "role", "deleted_at", "deleted_by",
-            "deleted_by_name", "is_superuser", "last_login",
+            "deleted_by_name", "deleted_with", "deleted_with_name",
+            "is_superuser", "last_login",
         ]
         extra_kwargs = {
             "aadhaar_photo": {"required": False},
@@ -66,6 +71,12 @@ class UserSerializer(serializers.ModelSerializer):
     def get_deleted_by_name(self, instance):
         if instance.deleted_by:
             return instance.deleted_by.get_full_name() or instance.deleted_by.username
+        return None
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_deleted_with_name(self, instance):
+        if instance.deleted_with:
+            return instance.deleted_with.get_full_name() or instance.deleted_with.username
         return None
 
     def to_representation(self, instance):

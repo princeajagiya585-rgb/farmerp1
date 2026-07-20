@@ -19,6 +19,8 @@ export default function DeletedUsers() {
   const [restoreConfirm, setRestoreConfirm] = useState(null); // user to restore
   const [purgeConfirm, setPurgeConfirm] = useState(false); // confirm permanent delete-all
   const [purging, setPurging] = useState(false);
+  const [purgeOne, setPurgeOne] = useState(null); // single user pending permanent delete
+  const [purgingOne, setPurgingOne] = useState(null); // user id being purged
   const [toasts, addToast, removeToast] = useToast();
 
   const loadDeletedUsers = useCallback(async () => {
@@ -72,6 +74,35 @@ export default function DeletedUsers() {
       addToast(detail, "error");
     } finally {
       setPurging(false);
+    }
+  };
+
+  // Staff archived alongside a super admin go with them when that admin is
+  // erased for good — the confirmation says how many, so the reach of the
+  // button is visible before it is pressed.
+  const linkedTo = (u) => users.filter((x) => x.deleted_with === u.id);
+
+  const handlePurgeOne = async () => {
+    if (!purgeOne) return;
+    const target = purgeOne;
+    setPurgingOne(target.id);
+    try {
+      const res = await api.post(`/auth/users/${target.id}/purge/`);
+      const n = res?.data?.deleted ?? 1;
+      setPurgeOne(null);
+      addToast(
+        n > 1
+          ? `Permanently deleted "${target.username}" and ${n - 1} linked account(s).`
+          : `Permanently deleted "${target.username}".`,
+        "success",
+      );
+      loadDeletedUsers();
+    } catch (e) {
+      setPurgeOne(null);
+      const detail = e?.response?.data?.detail || "Failed to permanently delete user.";
+      addToast(detail, "error");
+    } finally {
+      setPurgingOne(null);
     }
   };
 
@@ -168,6 +199,11 @@ export default function DeletedUsers() {
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
                           {user.full_name || "—"}
+                          {user.deleted_with_name && (
+                            <span className="mt-0.5 block text-[0.7rem] text-red-600">
+                              archived with {user.deleted_with_name}
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <Badge color="purple">{roleLabels[user.role] || user.role}</Badge>
@@ -187,14 +223,25 @@ export default function DeletedUsers() {
                           {user.deleted_by_name || "—"}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-                          <button
-                            onClick={() => setRestoreConfirm(user)}
-                            disabled={restoring === user.id}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-green-700 disabled:opacity-50 transition-colors"
-                          >
-                            <RotateCcw size={13} />
-                            {restoring === user.id ? "Restoring..." : "Restore"}
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => setRestoreConfirm(user)}
+                              disabled={restoring === user.id || purgingOne === user.id}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-green-700 disabled:opacity-50 transition-colors"
+                            >
+                              <RotateCcw size={13} />
+                              {restoring === user.id ? "Restoring..." : "Restore"}
+                            </button>
+                            <button
+                              onClick={() => setPurgeOne(user)}
+                              disabled={restoring === user.id || purgingOne === user.id}
+                              title={`Permanently delete ${user.username}`}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-red-700 disabled:opacity-50 transition-colors"
+                            >
+                              <Trash2 size={13} />
+                              {purgingOne === user.id ? "Deleting..." : "Delete"}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -269,6 +316,67 @@ export default function DeletedUsers() {
                 ) : (
                   <>
                     <RotateCcw size={15} /> Restore User
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Single Permanent Delete Confirmation Modal ────────────────── */}
+      <Modal
+        open={!!purgeOne}
+        onClose={() => !purgingOne && setPurgeOne(null)}
+        title="Delete Permanently"
+        width="max-w-sm"
+      >
+        {purgeOne && (
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 rounded-xl bg-red-50 p-4 text-sm text-red-800 ring-1 ring-red-200">
+              <AlertTriangle size={20} className="shrink-0 text-red-600" />
+              <p>
+                Permanently delete <strong>{purgeOne.username}</strong>? This{" "}
+                <strong>cannot be undone</strong> — the account can no longer be
+                restored.
+              </p>
+            </div>
+            {linkedTo(purgeOne).length > 0 && (
+              <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800 ring-1 ring-amber-200">
+                <p className="font-medium">
+                  {linkedTo(purgeOne).length} linked account(s) will be erased too:
+                </p>
+                <p className="mt-1">
+                  {linkedTo(purgeOne)
+                    .map((u) => u.full_name || u.username)
+                    .join(", ")}
+                </p>
+              </div>
+            )}
+            <p className="rounded-lg bg-gray-50 p-3 text-xs text-gray-600">
+              Attendance and payroll history is kept (the employee record stays,
+              just unlinked). Notifications and location pings are removed.
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setPurgeOne(null)}
+                disabled={purgingOne === purgeOne.id}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                onClick={handlePurgeOne}
+                disabled={purgingOne === purgeOne.id}
+              >
+                {purgingOne === purgeOne.id ? (
+                  "Deleting..."
+                ) : (
+                  <>
+                    <Trash2 size={15} /> Delete Permanently
                   </>
                 )}
               </Button>
