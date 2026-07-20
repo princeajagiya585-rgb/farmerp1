@@ -603,6 +603,38 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         serializer = self.get_serializer(attendance, context={'request': request})
         return Response(serializer.data, status=200)
 
+    def _reportable_employees(self):
+        """The employees this user may see on Attendance Reports.
+
+        Deliberately the same rule as ``EmployeeViewSet.get_queryset``: the
+        report must list exactly the people the Employees page lists, no more.
+        Each super admin runs their own farm (see
+        ``accounts.views.register_super_admin``) and no role is in
+        ``TENANT_GLOBAL_ROLES``, so farm membership is the tenant boundary for
+        every caller — the main super admin included.
+
+        Super admins themselves are excluded on both sides of the link (the
+        category can also be set by hand): their Employee record only exists to
+        carry the login, so they have no attendance and appeared as permanently
+        "absent" rows. Managers stay listed — they do mark attendance.
+
+        Shared by ``report`` and ``report_override`` so the list you can read
+        and the rows you can edit can never drift apart.
+        """
+        user = self.request.user
+        if user.role == Role.EMPLOYEE:
+            employees = Employee.objects.select_related("farm").filter(user=user)
+        else:
+            farm_ids = list(user.farms.values_list("id", flat=True))
+            employees = (
+                Employee.objects.select_related("farm").filter(farm_id__in=farm_ids)
+                if farm_ids
+                else Employee.objects.none()
+            )
+        return employees.exclude(user__role=Role.SUPER_ADMIN).exclude(
+            category=Employee.Category.SUPER_ADMIN
+        )
+
     @action(detail=False, methods=["get"])
     def report(self, request):
         """Attendance summary per employee for a month/year (optionally one farm).
@@ -628,33 +660,11 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         except (TypeError, ValueError):
             return Response({"detail": "year must be an integer."}, status=400)
 
-        # All employees on farms the user can access (optionally filtered by farm)
-        user = self.request.user
-        if user.role == Role.EMPLOYEE:
-            employees = Employee.objects.select_related("farm").filter(user=user)
-        else:
-            # Farm-scoped for every role, super admins included. Each super
-            # admin runs their own farm (see accounts.views.register_super_admin),
-            # so an unscoped list here showed one tenant another tenant's staff —
-            # and the underlying attendance is farm-scoped anyway, meaning those
-            # extra rows could never be opened or deleted.
-            farm_ids = list(user.farms.values_list("id", flat=True))
-            employees = Employee.objects.select_related("farm").filter(farm_id__in=farm_ids) if farm_ids else Employee.objects.none()
+        employees = self._reportable_employees()
         if farm:
             employees = employees.filter(farm_id=farm)
         if employee:
             employees = employees.filter(id=employee)
-
-        # Super admins are not workforce members — their Employee record exists
-        # only to link the login, so they have no attendance to report on and
-        # showed up as permanently "absent" rows. Hidden here using the same
-        # rule (and both sides of the link) as EmployeeViewSet.get_queryset, so
-        # this report matches the Employees page. Scoped to this action only:
-        # nothing else reads this queryset. Managers stay listed — they do mark
-        # attendance.
-        employees = employees.exclude(user__role=Role.SUPER_ADMIN).exclude(
-            category=Employee.Category.SUPER_ADMIN
-        )
 
         today = timezone.localdate()
         if not year:
@@ -806,8 +816,12 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         except (TypeError, ValueError):
             return Response({"detail": "month must be an integer 1-12."}, status=400)
 
+        # Look the employee up through the same scope the report uses, not
+        # Employee.objects — an unscoped get() here let any admin or manager
+        # overwrite another tenant's monthly totals (and rebuild their payslip)
+        # by posting a raw employee id, for a row they cannot even see.
         try:
-            emp = Employee.objects.get(id=employee_id)
+            emp = self._reportable_employees().get(id=employee_id)
         except (Employee.DoesNotExist, ValueError, TypeError):
             return Response({"detail": "employee not found."}, status=404)
 
