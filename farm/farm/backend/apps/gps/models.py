@@ -43,8 +43,14 @@ class LocationPing(OwnedModel):
     )
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    # Accuracy is a radius in METRES, not a coordinate — it must not copy the
+    # lat/lng precision above. max_digits=9 with decimal_places=6 leaves only
+    # three digits before the point, so anything from 1000 m up (an ordinary
+    # weak GPS fix) overflowed the field: SQLite stored it happily and then
+    # raised decimal.InvalidOperation on read, 500ing every endpoint that
+    # prefetches pings — which is why All Tasks fell over.
     accuracy = models.DecimalField(
-        max_digits=9, decimal_places=6, null=True, blank=True
+        max_digits=9, decimal_places=2, null=True, blank=True
     )
     activity = models.CharField(
         max_length=15, choices=Activity.choices, default=Activity.TRACK
