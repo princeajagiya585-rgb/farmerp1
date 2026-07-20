@@ -15,7 +15,7 @@ import time
 
 from django.core.management.base import BaseCommand, CommandError
 
-from apps.sheets_sync import client, conf, registry
+from apps.sheets_sync import client, conf, custom_sheets, registry
 
 
 class Command(BaseCommand):
@@ -83,6 +83,30 @@ class Command(BaseCommand):
             )
             # Each table costs a handful of API calls; pace to respect the
             # 60 requests/min/user quota on large schemas.
+            time.sleep(1.1)
+
+        # Curated sheets (e.g. "Super Admins") are not table mirrors, so they
+        # are built from their own builders rather than the model registry.
+        for name in custom_sheets.BUILDERS:
+            title = custom_sheets.title_for(name)
+            if only and title not in only:
+                continue
+            try:
+                title, headers, rows = custom_sheets.build(name)
+                client.replace_all_rows(title, headers, rows)
+            except Exception as exc:
+                failed_tables.append(title)
+                SyncLog.objects.create(
+                    table_name=title, operation=SyncLog.OP_BACKFILL,
+                    status=SyncLog.STATUS_FAILED,
+                    error=f"{type(exc).__name__}: {exc}"[:4000])
+                self.stderr.write(self.style.ERROR(f"  {title}: FAILED — {exc}"))
+                continue
+            SyncLog.objects.create(
+                table_name=title, operation=SyncLog.OP_BACKFILL,
+                status=SyncLog.STATUS_SUCCESS)
+            total_rows += len(rows)
+            self.stdout.write(f"  {title}: {len(rows)} rows")
             time.sleep(1.1)
 
         if failed_tables:

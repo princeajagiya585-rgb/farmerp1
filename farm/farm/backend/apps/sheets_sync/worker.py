@@ -34,6 +34,8 @@ _thread = None
 _thread_lock = threading.Lock()
 
 UPSERT, DELETE, REFRESH = "upsert", "delete", "refresh"
+# A curated worksheet (see custom_sheets.py) rewritten whole, e.g. "Super Admins".
+CUSTOM = "custom"
 
 BATCH_MAX = 40            # jobs drained per worker cycle
 BATCH_LINGER = 0.25       # seconds to wait for more jobs before flushing
@@ -61,6 +63,8 @@ def _job_key(job):
         return (UPSERT, job["app_label"], job["model_name"], job["pk"])
     if job["kind"] == DELETE:
         return (DELETE, job["table"], job["pk"])
+    if job["kind"] == CUSTOM:
+        return (CUSTOM, job["sheet"])
     return (REFRESH, job["app_label"], job["model_name"])
 
 
@@ -95,6 +99,11 @@ def enqueue_refresh(app_label, model_name):
     """Rewrite a whole worksheet — used for M2M through tables."""
     _enqueue({"kind": REFRESH, "app_label": app_label,
               "model_name": model_name, "attempts": 0})
+
+
+def enqueue_custom(sheet):
+    """Rebuild a curated worksheet (see custom_sheets.BUILDERS)."""
+    _enqueue({"kind": CUSTOM, "sheet": sheet, "attempts": 0})
 
 
 def pending_count():
@@ -147,7 +156,7 @@ def _process_batch(jobs):
 
     close_old_connections()
 
-    upserts, deletes, refreshes = {}, {}, []
+    upserts, deletes, refreshes, customs = {}, {}, [], {}
     for job in jobs:
         if job["kind"] == UPSERT:
             upserts.setdefault(
@@ -155,6 +164,10 @@ def _process_batch(jobs):
             )[job["pk"]] = job
         elif job["kind"] == DELETE:
             deletes.setdefault(job["table"], {})[job["pk"]] = job
+        elif job["kind"] == CUSTOM:
+            # One rebuild per sheet per cycle — the last job wins, since each
+            # rebuild reads current database state anyway.
+            customs[job["sheet"]] = job
         else:
             refreshes.append(job)
 
@@ -164,6 +177,8 @@ def _process_batch(jobs):
         _do_deletes(table, by_pk)
     for job in refreshes:
         _do_refresh(job)
+    for job in customs.values():
+        _do_custom(job)
 
     close_old_connections()
 
@@ -239,6 +254,22 @@ def _do_refresh(job):
         _handle_failure([job], title, exc)
 
 
+def _do_custom(job):
+    from apps.sheets_sync import client, custom_sheets
+    from apps.sheets_sync.models import SyncLog
+
+    title = custom_sheets.title_for(job["sheet"])
+    try:
+        title, headers, rows = custom_sheets.build(job["sheet"])
+        client.replace_all_rows(title, headers, rows)
+        logger.info("[SheetsSync] CUSTOM %s (%s rows) -> SUCCESS",
+                    title, len(rows))
+        _log([(title, "", SyncLog.OP_REFRESH, SyncLog.STATUS_SUCCESS,
+               job["attempts"] + 1, "")])
+    except Exception as exc:
+        _handle_failure([job], title, exc)
+
+
 def _handle_failure(jobs, table, exc):
     """Log the error (with full traceback) and re-queue each job with
     exponential backoff."""
@@ -252,7 +283,8 @@ def _handle_failure(jobs, table, exc):
     for job in jobs:
         job["attempts"] += 1
         op = {UPSERT: SyncLog.OP_UPDATE, DELETE: SyncLog.OP_DELETE,
-              REFRESH: SyncLog.OP_REFRESH}[job["kind"]]
+              REFRESH: SyncLog.OP_REFRESH,
+              CUSTOM: SyncLog.OP_REFRESH}[job["kind"]]
         if job["attempts"] >= MAX_ATTEMPTS:
             status = SyncLog.STATUS_FAILED
             logger.error("[SheetsSync] %s %s[%s] failed permanently: %s",

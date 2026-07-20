@@ -14,9 +14,9 @@ bulk imports.
 import logging
 
 from django.db import transaction
-from django.db.models.signals import m2m_changed, post_delete, post_save
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
 
-from apps.sheets_sync import registry, worker
+from apps.sheets_sync import custom_sheets, registry, worker
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,73 @@ def _on_m2m_changed(sender, action, **kwargs):
     )
 
 
+# ---------------------------------------------------------------------------
+# "Super Admins" curated sheet (accounts.User is not part of the auto mirror)
+# ---------------------------------------------------------------------------
+
+_PREV_ROLE = "_sheets_sync_prev_role"
+
+
+def _user_pre_save(sender, instance, raw=False, **kwargs):
+    """Stash the stored role so post_save can tell a demotion happened.
+
+    Without this a user demoted out of SUPER_ADMIN would keep their row in
+    the sheet: the new role alone gives no reason to rebuild.
+    """
+    if raw or not instance.pk:
+        setattr(instance, _PREV_ROLE, None)
+        return
+    prev = sender.objects.filter(pk=instance.pk).values_list("role", flat=True).first()
+    setattr(instance, _PREV_ROLE, prev)
+
+
+def _user_post_save(sender, instance, raw=False, **kwargs):
+    if raw:
+        return
+    from apps.accounts.models import Role
+
+    prev = getattr(instance, _PREV_ROLE, None)
+    if instance.role != Role.SUPER_ADMIN and prev != Role.SUPER_ADMIN:
+        return  # nothing about the super-admin roster changed
+    transaction.on_commit(
+        lambda: worker.enqueue_custom(custom_sheets.SUPER_ADMINS)
+    )
+
+
+def _user_post_delete(sender, instance, **kwargs):
+    from apps.accounts.models import Role
+
+    if instance.role != Role.SUPER_ADMIN:
+        return
+    transaction.on_commit(
+        lambda: worker.enqueue_custom(custom_sheets.SUPER_ADMINS)
+    )
+
+
+def _user_farms_changed(sender, action, **kwargs):
+    """The sheet shows each admin's farms, so m2m edits must rebuild it."""
+    if not action.startswith("post_"):
+        return
+    transaction.on_commit(
+        lambda: worker.enqueue_custom(custom_sheets.SUPER_ADMINS)
+    )
+
+
+def connect_super_admins():
+    from apps.accounts.models import User
+
+    pre_save.connect(_user_pre_save, sender=User,
+                     dispatch_uid=DISPATCH_UID % ("presave", "accounts.user"))
+    post_save.connect(_user_post_save, sender=User,
+                      dispatch_uid=DISPATCH_UID % ("sa-save", "accounts.user"))
+    post_delete.connect(_user_post_delete, sender=User,
+                        dispatch_uid=DISPATCH_UID % ("sa-delete", "accounts.user"))
+    m2m_changed.connect(
+        _user_farms_changed, sender=User.farms.through,
+        dispatch_uid=DISPATCH_UID % ("sa-farms", "accounts.user"),
+    )
+
+
 def connect_all():
     """Attach handlers for every synced model (idempotent via dispatch_uid)."""
     global _connected
@@ -74,6 +141,7 @@ def connect_all():
                     _on_m2m_changed, sender=through,
                     dispatch_uid=DISPATCH_UID % ("m2m", through._meta.label_lower),
                 )
+    connect_super_admins()
     _connected = count
     return count
 
