@@ -496,14 +496,16 @@ class UserViewSet(viewsets.ModelViewSet):
         user = self.request.user
         role = getattr(user, "role", None)
         if self.action == "list" and role == Role.SUPER_ADMIN:
-            # A super admin administers only their own farms' accounts. Their
-            # own row is included explicitly so the Administrators table still
-            # lists them before any farm has been assigned.
-            from django.db.models import Q
-
-            qs = qs.filter(
-                Q(farms__in=user.farms.all()) | Q(pk=user.pk)
-            ).distinct()
+            # A super admin administers only their own farms' accounts, and
+            # super admin accounts themselves are deliberately absent from this
+            # list — including the caller's own row. They are managed solely on
+            # the Super Admin Accounts page (the ``super-admins`` route, owner
+            # only), so an admin's details never surface anywhere else.
+            qs = (
+                qs.filter(farms__in=user.farms.all())
+                .exclude(role=Role.SUPER_ADMIN)
+                .distinct()
+            )
         elif self.action == "list":
             if role == Role.FARM_MANAGER:
                 # Managers only see their own farms' users, never super admins

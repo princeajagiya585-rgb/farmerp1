@@ -632,9 +632,12 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         user = self.request.user
         if user.role == Role.EMPLOYEE:
             employees = Employee.objects.select_related("farm").filter(user=user)
-        elif user.role == Role.SUPER_ADMIN:
-            employees = Employee.objects.select_related("farm").all()
         else:
+            # Farm-scoped for every role, super admins included. Each super
+            # admin runs their own farm (see accounts.views.register_super_admin),
+            # so an unscoped list here showed one tenant another tenant's staff —
+            # and the underlying attendance is farm-scoped anyway, meaning those
+            # extra rows could never be opened or deleted.
             farm_ids = list(user.farms.values_list("id", flat=True))
             employees = Employee.objects.select_related("farm").filter(farm_id__in=farm_ids) if farm_ids else Employee.objects.none()
         if farm:
