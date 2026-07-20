@@ -2,6 +2,7 @@ from calendar import monthrange
 from datetime import date
 from decimal import Decimal
 
+from django.db.models import Q
 from django.utils import timezone
 
 from rest_framework.decorators import action
@@ -369,7 +370,13 @@ class PayrollPeriodViewSet(FarmScopedQuerysetMixin, BaseModelViewSet):
             created = 0
             total_net = Decimal("0")
 
-            employees = Employee.objects.filter(farm=period.farm, is_active=True)
+            # Super admins own the farm — they don't draw a salary and don't
+            # mark attendance, so a payslip for them is always a zero-day row
+            # cluttering Periods & Payslips. Skip them entirely. Employees with
+            # no linked user account are ordinary workers and must stay in.
+            employees = Employee.objects.filter(farm=period.farm, is_active=True).filter(
+                Q(user__isnull=True) | ~Q(user__role=Role.SUPER_ADMIN)
+            )
             for employee in employees:
                 # Count attendance as soon as it is marked — a present/half-day
                 # record reflects in pay immediately without waiting for a

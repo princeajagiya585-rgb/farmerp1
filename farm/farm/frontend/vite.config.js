@@ -4,6 +4,28 @@ import { VitePWA } from "vite-plugin-pwa";
 
 const SW_VERSION = "v4.0"; // Increment to force service worker cache refresh
 
+// When the Django dev server isn't running, the proxy fails with ECONNREFUSED and
+// Vite answers every API call with a bare 500. That reads like a backend bug and
+// makes *every page* look broken, so spell out the real cause instead.
+const BACKEND_TARGET = "http://127.0.0.1:8000";
+
+function explainProxyFailure(proxy) {
+  proxy.on("error", (err, _req, res) => {
+    const offline = err.code === "ECONNREFUSED" || err.code === "ECONNRESET";
+    const detail = offline
+      ? `Backend not reachable at ${BACKEND_TARGET}. Start it with: cd backend && venv/Scripts/python manage.py runserver 8000`
+      : `Proxy error talking to ${BACKEND_TARGET}: ${err.message}`;
+
+    console.error(`\n[vite-proxy] ${detail}\n`);
+
+    // res is a plain ServerResponse for HTTP, but a raw Socket for websocket
+    // upgrades — only the former can carry a status line.
+    if (!res || typeof res.writeHead !== "function" || res.headersSent) return;
+    res.writeHead(offline ? 503 : 502, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ detail, code: err.code }));
+  });
+}
+
 const pwaManifest = {
   name: "FarmERP Pro — Smart Farm Management",
   short_name: "FarmERP",
@@ -159,10 +181,12 @@ export default defineConfig({
       "/api": {
         target: "http://127.0.0.1:8000",
         changeOrigin: true,
+        configure: explainProxyFailure,
       },
       "/media": {
         target: "http://127.0.0.1:8000",
         changeOrigin: true,
+        configure: explainProxyFailure,
       },
     },
   },
