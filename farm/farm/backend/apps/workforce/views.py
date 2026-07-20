@@ -642,6 +642,17 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
         if employee:
             employees = employees.filter(id=employee)
 
+        # Super admins are not workforce members — their Employee record exists
+        # only to link the login, so they have no attendance to report on and
+        # showed up as permanently "absent" rows. Hidden here using the same
+        # rule (and both sides of the link) as EmployeeViewSet.get_queryset, so
+        # this report matches the Employees page. Scoped to this action only:
+        # nothing else reads this queryset. Managers stay listed — they do mark
+        # attendance.
+        employees = employees.exclude(user__role=Role.SUPER_ADMIN).exclude(
+            category=Employee.Category.SUPER_ADMIN
+        )
+
         today = timezone.localdate()
         if not year:
             year = today.year
