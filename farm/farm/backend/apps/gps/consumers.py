@@ -9,8 +9,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.accounts.models import Role
-from .utils import LOCATION_GROUP, farm_group
+from .utils import farm_group
 
 User = get_user_model()
 
@@ -44,13 +43,15 @@ class LocationConsumer(AsyncWebsocketConsumer):
         self.user = user
 
         # ── Join only the groups this user is allowed to see ──────────
-        # Super admins get the firehose; everyone else gets only their own
-        # farm groups, so no one receives another farm's live tracking.
-        if user.role == Role.SUPER_ADMIN:
-            self.groups_joined = [LOCATION_GROUP]
-        else:
-            farm_ids = await self._user_farm_ids(user)
-            self.groups_joined = [farm_group(fid) for fid in farm_ids]
+        # Every account, super admins included, subscribes to its own farm
+        # groups only. Super admins used to join LOCATION_GROUP — the firehose
+        # every ping is also sent to — which streamed one tenant's live pings
+        # and field activities straight into another tenant's Location Map and
+        # Route Tracking, even though the REST list behind those pages is
+        # farm-scoped. No role is in TENANT_GLOBAL_ROLES; nobody gets the
+        # firehose.
+        farm_ids = await self._user_farm_ids(user)
+        self.groups_joined = [farm_group(fid) for fid in farm_ids]
 
         for group in self.groups_joined:
             await self.channel_layer.group_add(group, self.channel_name)

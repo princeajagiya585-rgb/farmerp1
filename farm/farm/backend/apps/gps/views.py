@@ -22,7 +22,7 @@ from .utils import broadcast_ping, haversine_m
 
 class ClearAllPingsView(APIView):
     """
-    Standalone endpoint to delete every location ping.
+    Standalone endpoint to clear location pings for the caller's own farms.
     Only SUPER_ADMIN and FARM_MANAGER roles may call this.
     """
     permission_classes = [RoleAllowed]
@@ -32,12 +32,16 @@ class ClearAllPingsView(APIView):
 
     @extend_schema(responses={200: {"type": "object", "properties": {"detail": {"type": "string"}, "deleted": {"type": "integer"}}}})
     def post(self, request):
-        # Super admin clears everything; a farm manager may only clear pings
-        # for the farms they're assigned to (never other farms' history).
-        if request.user.role == Role.SUPER_ADMIN:
-            qs = LocationPing.objects.all()
-        else:
-            qs = LocationPing.objects.filter(farm__in=request.user.farms.all())
+        # Farm-scoped for every caller, super admins included. This used to run
+        # LocationPing.objects.all().delete() for a SUPER_ADMIN, so one tenant's
+        # admin pressing "Clear All" destroyed every other tenant's GPS history
+        # — rows they cannot even see on the map. No role is in
+        # TENANT_GLOBAL_ROLES, so nobody gets the global delete.
+        #
+        # Pings with farm=NULL (the FK is nullable) are left alone: they are
+        # already invisible to the farm-scoped list, so "Clear All" clears
+        # exactly what the caller can see, and never someone else's history.
+        qs = LocationPing.objects.filter(farm__in=request.user.farms.all())
         count, _ = qs.delete()
         return Response(
             {"detail": f"Deleted {count} location ping(s).", "deleted": count}
@@ -311,11 +315,19 @@ class FieldActivityViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, Bas
             "user", "farm", "task", "verified_by"
         ).prefetch_related("photos").all()
         user = self.request.user
-        if user.role == Role.SUPER_ADMIN:
-            return qs
         if user.role == Role.EMPLOYEE:
             return qs.filter(user=user)
-        # FARM_MANAGER: show activities for farms they manage or are assigned to
+        # Farm-scoped for every other role, super admins included: no role is in
+        # TENANT_GLOBAL_ROLES, and each super admin runs their own farm (see
+        # accounts.views.register_super_admin). This branch used to return the
+        # unfiltered queryset for SUPER_ADMIN, which showed every tenant's field
+        # activities here and — since `feed` and `field_progress` read the same
+        # queryset — on the Activity Monitor too.
+        #
+        # Managed farms stay in the union alongside assigned ones so a manager
+        # who owns a farm without being a member of it keeps seeing it; for a
+        # super admin the two sets are their own farm either way, because
+        # register_super_admin both adds the farm and makes them its manager.
         from apps.farms.models import Farm
         assigned_farm_ids = list(user.farms.values_list("id", flat=True))
         managed_farm_ids = list(Farm.objects.filter(manager=user).values_list("id", flat=True))

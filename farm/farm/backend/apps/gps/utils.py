@@ -10,9 +10,11 @@ from django.conf import settings
 from rest_framework.renderers import JSONRenderer
 
 
-# Super admins subscribe to this firehose group; everyone else subscribes only
-# to their own farm group(s) so they never receive another farm's live tracking.
-LOCATION_GROUP = "locations_all"
+# Live GPS is broadcast per farm only. There used to be a "locations_all"
+# firehose group that every ping was also sent to and that super admins
+# subscribed to — that streamed one tenant's live tracking into another
+# tenant's map, so it is gone. No role is in TENANT_GLOBAL_ROLES; there is no
+# cross-farm channel for anyone to join.
 
 
 def farm_group(farm_id):
@@ -21,18 +23,23 @@ def farm_group(farm_id):
 
 
 def _broadcast(message_type, data, farm_id):
-    """Fan a payload out to the farm's group and the super-admin firehose."""
+    """Send a payload to that farm's group only.
+
+    A row with no farm (LocationPing.farm is nullable) is broadcast to nobody:
+    it cannot be attributed to a tenant, and the farm-scoped REST list hides it
+    too, so there is no group it could safely go to.
+    """
+    if farm_id is None:
+        return
     channel_layer = get_channel_layer()
     # Serializer .data holds raw UUID/Decimal/datetime objects (e.g. the
     # user/farm/task PrimaryKeyRelatedFields are UUIDs). Both the in-memory
     # consumer's json.dumps and channels_redis' msgpack encoder choke on those,
     # so round-trip through DRF's JSONRenderer to get pure JSON primitives.
     safe_data = json.loads(JSONRenderer().render(data))
-    targets = [LOCATION_GROUP]
-    if farm_id is not None:
-        targets.append(farm_group(farm_id))
-    for group in targets:
-        async_to_sync(channel_layer.group_send)(group, {"type": message_type, "data": safe_data})
+    async_to_sync(channel_layer.group_send)(
+        farm_group(farm_id), {"type": message_type, "data": safe_data}
+    )
 
 
 def broadcast_ping(instance, request=None):
