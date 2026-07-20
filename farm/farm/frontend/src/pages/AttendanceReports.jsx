@@ -15,6 +15,8 @@ export default function AttendanceReports() {
   const isEmployee = user?.role === "EMPLOYEE";
   const canDelete = hasRole("SUPER_ADMIN"); // only super admin may delete
   const [deletingEmp, setDeletingEmp] = useState(null); // employee name currently being deleted
+  const [selected, setSelected] = useState(new Set()); // ticked row ids (= employee ids)
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   // In-page editing of the monthly totals (opened from the "Edit" action) — no navigation.
   const [editOpen, setEditOpen] = useState(false);
   const [editRow, setEditRow] = useState(null); // the report row being edited
@@ -47,12 +49,20 @@ export default function AttendanceReports() {
     if (farm) params.farm = farm;
     if (employee && !isEmployee) params.employee = employee;
     if (month) params.month = month;
-    setReport(await att.collectionAction("report", params));
+    const data = await att.collectionAction("report", params);
+    // The Table keys selection off row.id, and report rows are per-employee
+    // summaries rather than records — so the employee id doubles as the row id.
+    data.rows = (data.rows || []).map((r) => ({ ...r, id: r.employee_id }));
+    setReport(data);
+    setSelected(new Set()); // a new period invalidates the old selection
   };
 
-  // Report rows are per-employee monthly summaries (no record id), so resolve the
-  // employee's id from the loaded employees list by name.
-  const findEmpId = (name) => employees.find((e) => e.name === name)?.id;
+  // Report rows carry their employee id. Older responses didn't, so fall back to
+  // matching on the display name — that lookup is unreliable (the employees list
+  // is farm-scoped while the report is not, and names are not unique), which is
+  // exactly why the id is now sent.
+  const findEmpId = (row) =>
+    row.employee_id || employees.find((e) => e.name === row.employee)?.id;
 
   // Edit → open a small form on THIS page to edit only the monthly totals
   // (Present / Half Day / Absent / Leave / OT Hrs). No navigation.
@@ -100,7 +110,7 @@ export default function AttendanceReports() {
   // Save the edited totals as a manual override for this employee + period.
   const saveEdit = async () => {
     if (!editRow) return;
-    const empId = findEmpId(editRow.employee);
+    const empId = findEmpId(editRow);
     if (!empId) {
       window.alert(t("attendanceReports.empNotFound", "Could not resolve this employee. Please reload and try again."));
       return;
@@ -131,28 +141,35 @@ export default function AttendanceReports() {
     return month && m ? `${m.label} ${year}` : `${year}`;
   };
 
+  // The attendance records belonging to one report row, narrowed to the period
+  // the report is showing. Shared by the single-row and bulk delete paths.
+  const recordsForRow = async (row) => {
+    const empId = findEmpId(row);
+    if (!empId) return null; // employee could not be resolved
+    const d = await att.list({ employee: empId, page_size: 1000 });
+    const recs = Array.isArray(d) ? d : d.results || [];
+    const y = Number(year);
+    const m = month ? Number(month) : null;
+    // Filter by the report's period using the raw date string (avoids timezone shifts).
+    return recs.filter((r) => {
+      if (!r.date) return false;
+      const [ry, rm] = String(r.date).split("-").map(Number);
+      if (ry !== y) return false;
+      if (m && rm !== m) return false;
+      return true;
+    });
+  };
+
   // Delete → remove ALL of this employee's attendance for the selected month/year.
   // Destructive: gated to super admin + explicit confirmation with the record count.
   const deleteMonth = async (row) => {
-    const empId = findEmpId(row.employee);
-    if (!empId) {
-      window.alert(t("attendanceReports.empNotFound", "Could not resolve this employee. Please reload and try again."));
-      return;
-    }
     try {
       setDeletingEmp(row.employee);
-      const d = await att.list({ employee: empId, page_size: 1000 });
-      const recs = Array.isArray(d) ? d : d.results || [];
-      const y = Number(year);
-      const m = month ? Number(month) : null;
-      // Filter by the report's period using the raw date string (avoids timezone shifts).
-      const scoped = recs.filter((r) => {
-        if (!r.date) return false;
-        const [ry, rm] = String(r.date).split("-").map(Number);
-        if (ry !== y) return false;
-        if (m && rm !== m) return false;
-        return true;
-      });
+      const scoped = await recordsForRow(row);
+      if (scoped === null) {
+        window.alert(t("attendanceReports.empNotFound", "Could not resolve this employee. Please reload and try again."));
+        return;
+      }
       if (scoped.length === 0) {
         window.alert(t("attendanceReports.noRecordsToDelete", "No attendance records to delete for this employee in the selected period."));
         return;
@@ -176,6 +193,74 @@ export default function AttendanceReports() {
       setDeletingEmp(null);
     }
   };
+
+  // Bulk delete — every attendance record, in the selected period, for all
+  // ticked employees. One confirmation covering the whole batch.
+  const deleteSelected = async () => {
+    const rows = (report?.rows || []).filter((r) => selected.has(r.id));
+    if (rows.length === 0) return;
+    setBulkDeleting(true);
+    try {
+      const perRow = [];
+      for (const row of rows) {
+        const recs = await recordsForRow(row);
+        if (recs && recs.length) perRow.push({ row, recs });
+      }
+      const total = perRow.reduce((n, x) => n + x.recs.length, 0);
+      if (total === 0) {
+        window.alert(t("attendanceReports.noRecordsToDelete", "No attendance records to delete for this employee in the selected period."));
+        return;
+      }
+      const ok = window.confirm(
+        t("attendanceReports.confirmDeleteSelected", {
+          count: total,
+          people: perRow.length,
+          period: periodLabel(),
+          defaultValue: `This will permanently delete ${total} attendance record(s) across ${perRow.length} employee(s) for ${periodLabel()}. This cannot be undone. Continue?`,
+        })
+      );
+      if (!ok) return;
+      let failed = 0;
+      for (const { recs } of perRow) {
+        for (const r of recs) {
+          // One bad record must not abandon the rest of the batch.
+          try {
+            await att.remove(r.id);
+          } catch {
+            failed += 1;
+          }
+        }
+      }
+      setSelected(new Set());
+      await run();
+      if (failed) {
+        window.alert(
+          t("attendanceReports.deletePartial", {
+            failed,
+            defaultValue: `${failed} record(s) could not be deleted. The rest were removed.`,
+          })
+        );
+      }
+    } catch (e) {
+      window.alert(t("attendanceReports.deleteFailed", "Failed to delete attendance records."));
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const reportRows = report?.rows || [];
+  const allSelected = reportRows.length > 0 && selected.size === reportRows.length;
+
+  const toggleRow = (id) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const toggleAll = () =>
+    setSelected((prev) => (prev.size === reportRows.length ? new Set() : new Set(reportRows.map((r) => r.id))));
 
   const handleExport = () => {
     if (!report?.rows || report.rows.length === 0) {
@@ -236,7 +321,35 @@ export default function AttendanceReports() {
           <div className="w-28"><Input label={t("attendanceReports.selectYear")} type="number" value={year} onChange={(e) => setYear(e.target.value)} /></div>
           <Button onClick={run}><FileBarChart size={15} /> {t("attendanceReports.runBtn")}</Button>
         </div>
+        {canDelete && selected.size > 0 && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5">
+            <span className="text-sm font-medium text-red-800">
+              {t("attendanceReports.selectedCount", {
+                count: selected.size,
+                defaultValue: `${selected.size} employee(s) selected`,
+              })}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" onClick={() => setSelected(new Set())} disabled={bulkDeleting}>
+                {t("common.cancel")}
+              </Button>
+              <button
+                onClick={deleteSelected}
+                disabled={bulkDeleting}
+                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {bulkDeleting ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                {t("attendanceReports.deleteSelected", "Delete selected")}
+              </button>
+            </div>
+          </div>
+        )}
         <Table
+          selectable={canDelete}
+          selectedIds={selected}
+          onToggleRow={toggleRow}
+          onToggleAll={toggleAll}
+          allSelected={allSelected}
           empty={t("attendanceReports.noAttendance")}
           columns={[
             { key: "employee", header: t("header.employee") },
@@ -281,7 +394,7 @@ export default function AttendanceReports() {
               ),
             },
           ]}
-          rows={report?.rows || []}
+          rows={reportRows}
         />
         {report?.count > 0 && (
           <p className="mt-3 text-sm text-gray-500">{t("attendanceReports.workersSummarized", { count: report.count })}</p>

@@ -744,6 +744,12 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             total = agg["present"] + agg["half_day"] + agg["leave"] + agg["absent"]
             effective = agg["present"] + 0.5 * agg["half_day"]
             rows.append({
+                # The id is what the UI acts on (edit / delete). Without it the
+                # client had to reverse-map the display name back to an employee
+                # through a separate, differently-scoped list endpoint — which
+                # silently failed for every row that list didn't happen to
+                # contain, and could hit the wrong person on duplicate names.
+                "employee_id": str(emp.id),
                 "employee": emp.name,
                 "farm_name": emp.farm.name if emp.farm else "",
                 "present": agg["present"],
