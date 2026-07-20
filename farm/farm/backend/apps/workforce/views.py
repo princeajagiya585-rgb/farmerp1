@@ -974,11 +974,21 @@ class TenantOwnedRefMixin(FarmScopedQuerysetMixin):
     farm so they are owned from birth.
 
     Rows that migration 0017 could not attribute — nobody is in the department /
-    tagged with the skill — keep a NULL farm and are therefore visible to
-    nobody. That is deliberate: they hold no data beyond a name, and leaving
-    them readable by everyone would be the same cross-tenant listing this is
-    meant to close.
+    tagged with the skill — keep a NULL farm and stay visible to everyone. That
+    is a deliberate compromise, not an oversight: on production 4 of 5
+    departments and the only skill have no employees and no recoverable creator
+    (the audit trail records the collection URL, not the object id), so scoping
+    them strictly would empty the Departments and Skills pages and the employee
+    form dropdowns. They expose nothing but a name.
+
+    Everything created from here on is stamped with its farm and is private, so
+    the shared remainder only shrinks.
     """
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        unattributed = self.queryset.model.objects.filter(farm__isnull=True)
+        return (qs | unattributed).distinct()
 
     def perform_create(self, serializer):
         farm = serializer.validated_data.get("farm") or self.request.user.farms.first()
