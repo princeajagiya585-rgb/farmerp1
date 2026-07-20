@@ -135,6 +135,19 @@ export const navGroups = [
     icon: UserCog,
     children: [
       { to: "/users", label: "Users", roles: ["SUPER_ADMIN"] },
+      // ownerOnly: visible to the MAIN super admin alone, not every SUPER_ADMIN.
+      {
+        to: "/users/super-admins",
+        label: "Super Admin Accounts",
+        roles: ["SUPER_ADMIN"],
+        ownerOnly: true,
+      },
+      {
+        to: "/users/create-super-admin",
+        label: "Create Super Admin",
+        roles: ["SUPER_ADMIN"],
+        ownerOnly: true,
+      },
       { to: "/users/deleted", label: "Deleted Users", roles: ["SUPER_ADMIN"] },
       { to: "/notification-settings", label: "Notification Settings", roles: ["SUPER_ADMIN", "FARM_MANAGER", "EMPLOYEE"] },
     ],

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Leaf, Users, BarChart3, MapPin, ShieldCheck, Lock, Mail, Building2 } from "lucide-react";
+import { Leaf, Users, BarChart3, MapPin, ShieldCheck, Lock, Mail } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { Button, Input } from "../components/ui";
 import { LogoMark } from "../components/Logo";
@@ -25,18 +25,6 @@ export default function Login() {
   const [showSuperAdmin, setShowSuperAdmin] = useState(false);
   const [superAdminUsername, setSuperAdminUsername] = useState("");
   const [superAdminPassword, setSuperAdminPassword] = useState("");
-  // Super admin sign-up (creates the admin together with their first farm)
-  const [showRegister, setShowRegister] = useState(false);
-  const [reg, setReg] = useState({
-    farm_name: "",
-    first_name: "",
-    last_name: "",
-    username: "",
-    email: "",
-    phone: "",
-    password: "",
-    password2: "",
-  });
   // Forgot password states
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotPasswordStep, setForgotPasswordStep] = useState(1); // 1: email, 2: otp, 3: new password
@@ -86,39 +74,6 @@ export default function Login() {
         setError(err.response?.data?.detail || "Invalid username or password.");
       } else {
         setError(err.response?.data?.detail || "Login failed. Please try again.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const setRegField = (field) => (e) =>
-    setReg((prev) => ({ ...prev, [field]: e.target.value }));
-
-  const handleRegisterSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-
-    if (reg.password !== reg.password2) {
-      setError("Passwords do not match.");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await api.post("/auth/register/", reg);
-      // Sign in straight away so the new admin lands inside their own farm.
-      await login(reg.username, reg.password, { superAdminOnly: true });
-      navigate("/");
-    } catch (err) {
-      if (!err.response) {
-        setError("Cannot connect to server. Please check your internet connection and try again.");
-      } else {
-        const data = err.response?.data || {};
-        // DRF returns per-field errors ({username: ["..."]}) — show the first
-        // one, otherwise the user only sees a generic failure.
-        const firstFieldError = Object.values(data).flat()[0];
-        setError(data.detail || firstFieldError || "Could not create the account. Please try again.");
       }
     } finally {
       setLoading(false);
@@ -352,7 +307,7 @@ export default function Login() {
           ) : (
             <>
               {/* Super Admin Section */}
-              {!showSuperAdmin && !showRegister && (
+              {!showSuperAdmin && (
                 <button
                   type="button"
                   onClick={() => setShowSuperAdmin(true)}
@@ -363,103 +318,7 @@ export default function Login() {
                 </button>
               )}
 
-              {showRegister ? (
-                <div className="rounded-2xl border-2 border-emerald-500 bg-white p-8 shadow-soft">
-                  <div className="mb-4 flex items-center gap-2">
-                    <Building2 size={20} className="text-emerald-600" />
-                    <h2 className="text-xl font-bold text-gray-800">Create Super Admin Account</h2>
-                  </div>
-                  <p className="mb-6 text-sm text-gray-500">
-                    Register your farm and its super administrator. You can then add managers and
-                    employees for this farm from the Users page — they will only see your farm's data.
-                  </p>
-
-                  <form onSubmit={handleRegisterSubmit} className="space-y-4">
-                    {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-
-                    <Input
-                      label="Farm Name"
-                      value={reg.farm_name}
-                      onChange={setRegField("farm_name")}
-                      placeholder="e.g. Green Valley Estate"
-                      required
-                    />
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <Input
-                        label="First Name"
-                        value={reg.first_name}
-                        onChange={setRegField("first_name")}
-                        placeholder="First name"
-                      />
-                      <Input
-                        label="Last Name"
-                        value={reg.last_name}
-                        onChange={setRegField("last_name")}
-                        placeholder="Last name"
-                      />
-                    </div>
-
-                    <Input
-                      label="Username"
-                      value={reg.username}
-                      onChange={setRegField("username")}
-                      placeholder="Choose a username"
-                      required
-                    />
-
-                    <Input
-                      label="Email"
-                      type="email"
-                      value={reg.email}
-                      onChange={setRegField("email")}
-                      placeholder="Used for password reset"
-                      required
-                    />
-
-                    <Input
-                      label="Phone"
-                      value={reg.phone}
-                      onChange={setRegField("phone")}
-                      placeholder="Optional"
-                    />
-
-                    <Input
-                      label="Password"
-                      type="password"
-                      value={reg.password}
-                      onChange={setRegField("password")}
-                      placeholder="At least 6 characters"
-                      required
-                    />
-
-                    <Input
-                      label="Confirm Password"
-                      type="password"
-                      value={reg.password2}
-                      onChange={setRegField("password2")}
-                      placeholder="Re-enter password"
-                      required
-                    />
-
-                    <div className="flex gap-3">
-                      <Button type="submit" className="flex-1" disabled={loading}>
-                        {loading ? "Creating…" : "Create Account"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() => {
-                          setShowRegister(false);
-                          setError("");
-                        }}
-                      >
-                        Back
-                      </Button>
-                    </div>
-                  </form>
-                </div>
-              ) : showSuperAdmin ? (
+              {showSuperAdmin ? (
                 <div className="rounded-2xl border-2 border-purple-500 bg-white p-8 shadow-soft">
                   <div className="mb-4 flex items-center gap-2">
                     <Lock size={20} className="text-purple-600" />
@@ -515,23 +374,13 @@ export default function Login() {
                     </div>
                   </form>
 
-                  <div className="mt-6 border-t border-gray-100 pt-5">
-                    <p className="mb-3 text-sm text-gray-500">
-                      Don't have a super admin account yet?
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowRegister(true);
-                        setShowSuperAdmin(false);
-                        setError("");
-                      }}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
-                    >
-                      <Building2 size={16} />
-                      Create Super Admin Account
-                    </button>
-                  </div>
+                  {/* Super admin accounts are no longer self-served here — the
+                      main super administrator creates them from inside the app
+                      (Administration → Create Super Admin). */}
+                  <p className="mt-6 border-t border-gray-100 pt-5 text-xs leading-relaxed text-gray-400">
+                    Need a super admin account? Ask the main super administrator to create
+                    one for you.
+                  </p>
                 </div>
               ) : (
                 <div className="rounded-2xl border border-gray-100 bg-white p-8 shadow-soft">

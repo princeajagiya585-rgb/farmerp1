@@ -25,6 +25,9 @@ SUPER_ADMINS_HEADERS = [
     "id",
     "username",
     "full_name",
+    # Mirrors the "MAIN" badge on Administration → Super Admin Accounts: the
+    # single owner account that may create and manage other super admins.
+    "is_main_admin",
     "email",
     "phone",
     "role",
@@ -63,6 +66,7 @@ def build_super_admins():
             _flatten(u.id),
             _flatten(u.username),
             _flatten(u.get_full_name() or u.username),
+            _flatten(u.is_superuser),
             _flatten(u.email),
             _flatten(u.phone),
             _flatten(u.role),

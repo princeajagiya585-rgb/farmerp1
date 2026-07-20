@@ -105,7 +105,13 @@ export default function Layout() {
   const [langOpen, setLangOpen] = useState(false);
 
   const role = user?.role;
-  const canSee = (roles) => role === "SUPER_ADMIN" || (roles || []).includes(role);
+  // A nav entry marked `ownerOnly` belongs to the MAIN super admin alone — every
+  // SUPER_ADMIN clears the role check, so it needs its own gate.
+  const canSee = (item) => {
+    const roles = item?.roles;
+    if (item?.ownerOnly && !user?.is_superuser) return false;
+    return role === "SUPER_ADMIN" || (roles || []).includes(role);
+  };
   const currentLang = LANGUAGES.find((l) => l.code === i18n.language) || LANGUAGES[0];
 
   // Super admin changes their own UI language — persist it so it sticks on reload.
@@ -122,8 +128,8 @@ export default function Layout() {
   // at least one visible child (children filtered to the user's role).
   const visible = navGroups
     .map((item) => {
-      if (!item.children) return canSee(item.roles) ? item : null;
-      const children = item.children.filter((c) => canSee(c.roles));
+      if (!item.children) return canSee(item) ? item : null;
+      const children = item.children.filter((c) => canSee(c));
       return children.length ? { ...item, children } : null;
     })
     .filter(Boolean);

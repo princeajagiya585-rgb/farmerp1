@@ -25,8 +25,16 @@ class UserSerializer(serializers.ModelSerializer):
             "farms", "farm_names", "farm_ids", "fcm_token", "date_joined",
             "aadhaar_number", "aadhaar_photo", "aadhaar_photo_url", "aadhaar_submitted",
             "deleted_at", "deleted_by", "deleted_by_name",
+            # Marks the owner account (the "main" super admin). Read-only and
+            # never assignable through the API — it gates super-admin creation.
+            "is_superuser",
+            # Surfaced on the Super Admin Accounts page; Django maintains it.
+            "last_login",
         ]
-        read_only_fields = ["id", "date_joined", "role", "deleted_at", "deleted_by", "deleted_by_name"]
+        read_only_fields = [
+            "id", "date_joined", "role", "deleted_at", "deleted_by",
+            "deleted_by_name", "is_superuser", "last_login",
+        ]
         extra_kwargs = {
             "aadhaar_photo": {"required": False},
             "aadhaar_number": {"required": False},

@@ -81,6 +81,8 @@ const GpsMonitor = lazyLoad(() => import("./pages/GpsMonitor"));
 const Breakdowns = lazyLoad(() => import("./pages/Breakdowns"));
 const Reports = lazyLoad(() => import("./pages/Reports"));
 const Users = lazyLoad(() => import("./pages/Users"));
+const CreateSuperAdmin = lazyLoad(() => import("./pages/CreateSuperAdmin"));
+const SuperAdminAccounts = lazyLoad(() => import("./pages/SuperAdminAccounts"));
 const DeletedUsers = lazyLoad(() => import("./pages/DeletedUsers"));
 const AuditLogs = lazyLoad(() => import("./pages/AuditLogs"));
 const Notifications = lazyLoad(() => import("./pages/Notifications"));
@@ -175,6 +177,23 @@ export default function App() {
         <Route path="/breakdowns" element={R(["FARM_MANAGER", "EMPLOYEE"], <Breakdowns />)} />
         <Route path="/reports" element={R(["FARM_MANAGER"], <Reports />)} />
         <Route path="/users" element={R(["SUPER_ADMIN"], <Users />)} />
+        {/* Owner-only: the main super admin provisions other super admins. */}
+        <Route
+          path="/users/super-admins"
+          element={
+            <ProtectedRoute roles={["SUPER_ADMIN"]} ownerOnly>
+              <SuperAdminAccounts />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/users/create-super-admin"
+          element={
+            <ProtectedRoute roles={["SUPER_ADMIN"]} ownerOnly>
+              <CreateSuperAdmin />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/users/deleted" element={R(["SUPER_ADMIN"], <DeletedUsers />)} />
         <Route path="/audit" element={R(["SUPER_ADMIN"], <AuditLogs />)} />
         <Route path="/notifications" element={<Notifications />} />

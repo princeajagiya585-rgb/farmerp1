@@ -10,6 +10,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
 )
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -563,6 +564,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         """Update the user, then sync name, farm & category to the linked Employee record."""
+        self._assert_may_manage(serializer.instance)
         user = serializer.save()
         from apps.workforce.models import Employee
         farms = list(user.farms.all())
@@ -600,6 +602,23 @@ class UserViewSet(viewsets.ModelViewSet):
             except Exception as e:
                 logger.error("[USER_UPDATE] Failed to auto-create Employee for user '%s': %s", user.username, e)
 
+    def _assert_may_manage(self, target):
+        """Guard changes to SUPER_ADMIN accounts.
+
+        ``get_queryset`` only farm-scopes the *list* action, so without this any
+        super admin could PATCH or DELETE any other super admin by id. Admin
+        accounts are the owner's to manage: only ``is_superuser`` may touch them.
+        The owner account itself is never deletable/demotable — losing it would
+        leave nobody able to create super admins.
+        """
+        from .models import Role
+
+        actor = self.request.user
+        if target.role == Role.SUPER_ADMIN and not actor.is_superuser:
+            raise PermissionDenied(
+                "Only the main super administrator can manage super admin accounts."
+            )
+
     def perform_destroy(self, instance):
         """Soft-delete the user account instead of removing it from the DB.
 
@@ -613,10 +632,48 @@ class UserViewSet(viewsets.ModelViewSet):
         across all other pages.
         """
         from django.utils import timezone
+
+        self._assert_may_manage(instance)
+        # The owner account is the only one that can mint super admins; deleting
+        # it would strand the system with no way to create another.
+        if instance.is_superuser:
+            raise PermissionDenied(
+                "The main super administrator account cannot be deleted."
+            )
+        if instance.pk == self.request.user.pk:
+            raise PermissionDenied("You cannot delete your own account.")
+
         instance.deleted_at = timezone.now()
         instance.deleted_by = self.request.user if self.request.user.is_authenticated else None
         instance.is_active = False
         instance.save(update_fields=["deleted_at", "deleted_by", "is_active"])
+
+    @action(detail=False, methods=["get"], url_path="super-admins",
+            url_name="super-admins")
+    def super_admins(self, request):
+        """Every super admin account, for the main super admin only.
+
+        The ordinary ``list`` route scopes a super admin to their own farms'
+        users, so it can never show the full roster — an admin running another
+        farm would be invisible. This route deliberately ignores farm scoping
+        and is therefore restricted to the owner account (``is_superuser``),
+        the same account that creates these logins.
+
+        Soft-deleted accounts are excluded, so the row count is the live total.
+        """
+        from .models import Role
+
+        if not request.user.is_superuser:
+            raise PermissionDenied(
+                "Only the main super administrator can view super admin accounts."
+            )
+
+        admins = (
+            User.objects.filter(role=Role.SUPER_ADMIN, deleted_at__isnull=True)
+            .prefetch_related("farms")
+            .order_by("date_joined")
+        )
+        return Response(UserSerializer(admins, many=True, context={"request": request}).data)
 
     @action(detail=False, methods=["get"], url_path="deleted", url_name="deleted")
     def list_deleted(self, request):
@@ -758,15 +815,25 @@ class UserViewSet(viewsets.ModelViewSet):
     responses={201: {"type": "object"}},
 )
 @api_view(["POST"])
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def register_super_admin(request):
-    """Sign up a new super admin together with the farm they will run.
+    """Create a new super admin together with the farm they will run.
+
+    **Owner-only.** This used to be a public sign-up reachable from the login
+    screen, which let anyone on the internet mint a SUPER_ADMIN and a farm.
+    It is now restricted to the main super admin — the single account flagged
+    ``is_superuser`` — who provisions every other admin.
 
     The farm is created first and passed to the new user as its bootstrap farm,
     so the workforce signal links the account to *this* farm instead of falling
     back to whichever farm happens to be first in the table — that fallback
     would drop a brand-new admin straight into another tenant's data.
     """
+    if not request.user.is_superuser:
+        raise PermissionDenied(
+            "Only the main super administrator can create super admin accounts."
+        )
+
     from django.db import transaction
     from django.utils.text import slugify
 
