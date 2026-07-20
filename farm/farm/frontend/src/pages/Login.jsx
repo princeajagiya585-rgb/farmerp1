@@ -5,6 +5,9 @@ import { useAuth } from "../context/AuthContext";
 import { Button, Input } from "../components/ui";
 import { LogoMark } from "../components/Logo";
 import ApkDownload from "../components/ApkDownload";
+import LeafField from "../components/LeafField";
+import LoginCrest, { LeafDrift } from "../components/LoginCrest";
+import KeeperGate from "../components/KeeperGate";
 import { api } from "../lib/api";
 
 const FEATURES = [
@@ -146,6 +149,28 @@ export default function Login() {
       <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-brand-700 via-brand-800 to-brand-950 p-12 text-white lg:flex">
         <div className="absolute -right-16 -top-16 h-72 w-72 rounded-full bg-white/5" />
         <div className="absolute -bottom-24 -left-10 h-80 w-80 rounded-full bg-white/5" />
+        {/* A grove along the base of the brand panel — the product is a farm,
+            so the empty space becomes horizon rather than decoration. */}
+        <svg
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-40 w-full"
+          viewBox="0 0 600 160"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          <path
+            d="M0 160 L0 118 Q40 96 70 116 Q96 82 126 112 Q158 88 186 118 Q214 96 244 116
+               Q276 84 308 114 Q338 94 366 118 Q398 90 428 114 Q456 96 486 118
+               Q518 92 548 114 Q574 100 600 116 L600 160 Z"
+            fill="#052e16"
+            fillOpacity="0.35"
+          />
+          <path
+            d="M0 160 L0 138 Q46 122 88 138 Q130 118 172 138 Q216 122 258 140
+               Q302 120 344 138 Q388 124 430 140 Q474 120 516 138 Q558 126 600 140 L600 160 Z"
+            fill="#052e16"
+            fillOpacity="0.55"
+          />
+        </svg>
         <div className="relative flex items-center gap-3">
           <LogoMark size={44} />
           <span className="text-2xl font-extrabold tracking-tight">FarmERP Pro</span>
@@ -175,8 +200,11 @@ export default function Login() {
       </div>
 
       {/* Right form */}
-      <div className="flex w-full items-center justify-center bg-gray-50 p-6 lg:w-1/2">
-        <div className="w-full max-w-md">
+      <div className="relative flex w-full items-center justify-center bg-gradient-to-b from-brand-50/40 via-gray-50 to-gray-50 p-6 lg:w-1/2">
+        {/* Leaves drifting behind the cards — ties the sign-in panel to the
+            brand panel's grove without competing with the form. */}
+        <LeafDrift />
+        <div className="relative w-full max-w-md">
           <div className="mb-8 flex flex-col items-center lg:hidden">
             <LogoMark size={52} />
             <h1 className="mt-3 text-2xl font-bold text-gray-800">FarmERP Pro</h1>
@@ -311,27 +339,44 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={() => setShowSuperAdmin(true)}
-                  className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm font-semibold text-purple-700 hover:bg-purple-100"
+                  className="group mb-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-white px-4 py-3 text-sm font-semibold text-amber-800 transition hover:border-amber-300 hover:from-amber-100"
                 >
-                  <Lock size={16} />
+                  <Lock size={15} className="text-amber-600 transition group-hover:scale-110" />
                   Super Administrator Login
                 </button>
               )}
 
               {showSuperAdmin ? (
-                <div className="rounded-2xl border-2 border-purple-500 bg-white p-8 shadow-soft">
-                  <div className="mb-4 flex items-center gap-2">
-                    <Lock size={20} className="text-purple-600" />
-                    <h2 className="text-xl font-bold text-gray-800">Super Administrator Login</h2>
+                <div className="relative overflow-hidden rounded-3xl border border-amber-200 bg-white shadow-lift">
+                  {/* Heartwood: the owner's door. Gold rather than the app's green
+                      so it reads as a different threshold, and matching the MAIN
+                      badge on Super Admin Accounts. */}
+                  {/* The Keeper's Gate — a scene, not a badge. */}
+                  <div className="relative overflow-hidden bg-gradient-to-b from-[#1c1408] via-amber-950 to-amber-900 px-6 pt-5">
+                    <div className="pointer-events-none absolute -left-16 -top-20 h-56 w-56 rounded-full bg-amber-500/20 blur-3xl" />
+                    <div className="pointer-events-none absolute -right-16 -top-10 h-52 w-52 rounded-full bg-lime-500/10 blur-3xl" />
+                    <div className="relative mx-auto max-w-[16rem]">
+                      <KeeperGate />
+                    </div>
+                    <div className="relative pb-6 text-center">
+                      <p className="text-[0.62rem] font-bold uppercase tracking-[0.28em] text-amber-300/80">
+                        Restricted
+                      </p>
+                      <h2 className="mt-1.5 text-xl font-bold tracking-tight text-amber-50">
+                        Super Administrator
+                      </h2>
+                      <p className="mt-1 text-xs text-amber-200/60">
+                        The keeper of the grove — full administrative access.
+                      </p>
+                    </div>
+                    {/* gold hairline where the gate meets the form */}
+                    <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
                   </div>
-                  <p className="mb-6 text-sm text-gray-500">
-                    Access all administrative features.
-                  </p>
 
-                  <form onSubmit={handleSuperAdminSubmit} className="space-y-4">
+                  <form onSubmit={handleSuperAdminSubmit} className="space-y-4 px-8 pb-6 pt-1">
                     {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{error}</p>}
 
-                    <Input
+                    <LeafField
                       label="Super Admin Username"
                       value={superAdminUsername}
                       onChange={(e) => setSuperAdminUsername(e.target.value)}
@@ -339,7 +384,7 @@ export default function Login() {
                       required
                     />
 
-                    <Input
+                    <LeafField
                       label="Password"
                       type="password"
                       value={superAdminPassword}
@@ -352,14 +397,19 @@ export default function Login() {
                     <button
                       type="button"
                       onClick={() => setShowForgotPassword(true)}
-                      className="w-full text-left text-sm text-brand-600 hover:underline"
+                      className="w-full text-left text-sm text-amber-700 hover:underline"
                     >
                       Forgot your password?
                     </button>
 
-                    <div className="flex gap-3">
-                      <Button type="submit" className="flex-1" disabled={loading}>
-                        {loading ? "Signing in…" : "Sign In"}
+                    <div className="flex gap-3 pt-1">
+                      <Button
+                        type="submit"
+                        className="flex-1 bg-gradient-to-r from-amber-600 to-amber-700 py-2.5 shadow-soft hover:from-amber-700 hover:to-amber-800"
+                        disabled={loading}
+                      >
+                        <Lock size={15} className={loading ? "animate-pulse" : ""} />
+                        {loading ? "Signing in…" : "Enter"}
                       </Button>
                       <Button
                         type="button"
@@ -377,20 +427,31 @@ export default function Login() {
                   {/* Super admin accounts are no longer self-served here — the
                       main super administrator creates them from inside the app
                       (Administration → Create Super Admin). */}
-                  <p className="mt-6 border-t border-gray-100 pt-5 text-xs leading-relaxed text-gray-400">
+                  <p className="mx-8 mb-8 border-t border-amber-100 pt-4 text-xs leading-relaxed text-gray-400">
                     Need a super admin account? Ask the main super administrator to create
                     one for you.
                   </p>
                 </div>
               ) : (
-                <div className="rounded-2xl border border-gray-100 bg-white p-8 shadow-soft">
-                  <h2 className="text-xl font-bold text-gray-800">Welcome back</h2>
-                  <p className="mb-6 text-sm text-gray-500">Sign in to your account to continue.</p>
+                <div className="relative overflow-hidden rounded-3xl border border-brand-100 bg-white shadow-lift">
+                  <div className="relative overflow-hidden bg-gradient-to-b from-brand-50 via-brand-50/50 to-white px-8 pt-7">
+                    <div className="pointer-events-none absolute -left-14 -top-16 h-48 w-48 rounded-full bg-brand-200/25 blur-2xl" />
+                    <div className="pointer-events-none absolute -right-16 -top-8 h-44 w-44 rounded-full bg-emerald-300/20 blur-2xl" />
+                    <div className="relative flex flex-col items-center">
+                      <LoginCrest size={84} />
+                      <h2 className="mt-2 text-xl font-bold tracking-tight text-brand-900">
+                        Welcome back
+                      </h2>
+                      <p className="mb-5 mt-1 text-center text-xs text-gray-500">
+                        Your field is waiting — sign in to continue.
+                      </p>
+                    </div>
+                  </div>
 
-                  <form onSubmit={handleSubmit} className="space-y-4">
+                  <form onSubmit={handleSubmit} className="space-y-4 px-8 pb-8 pt-1">
                     {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{error}</p>}
 
-                    <Input
+                    <LeafField
                       label="Username"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
@@ -398,7 +459,7 @@ export default function Login() {
                       required
                     />
 
-                    <Input
+                    <LeafField
                       label="Password"
                       type="password"
                       value={password}
@@ -407,8 +468,13 @@ export default function Login() {
                       required
                     />
 
-                    <div className="flex gap-3">
-                      <Button type="submit" className="flex-1" disabled={loading}>
+                    <div className="flex gap-3 pt-1">
+                      <Button
+                        type="submit"
+                        className="flex-1 bg-gradient-to-r from-brand-600 to-brand-700 py-2.5 shadow-soft hover:from-brand-700 hover:to-brand-800"
+                        disabled={loading}
+                      >
+                        <Leaf size={16} className={loading ? "animate-pulse" : ""} />
                         {loading ? "Signing in…" : "Sign In"}
                       </Button>
                     </div>
