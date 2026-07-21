@@ -104,13 +104,21 @@ def notify_activity(instance, label, page, notification_type="INFO", subject="",
 
 def notify_roles(farm, roles, title, body="", notification_type="INFO", data=None, link="", exclude=None):
     """Notify every active user who has one of `roles` and is assigned to `farm`,
-    plus that farm's super admins. Returns the number of notifications created.
+    plus that farm's super admins and the main super administrator. Returns the
+    number of notifications created.
 
-    The SUPER_ADMIN clause used to be unconditional and unscoped, so every super
-    admin on the platform got a bell + WebSocket alert for every attendance mark,
-    task, expense and breakdown of every other tenant — farm name, actor name and
-    employee name included. Super admins are now matched on the farm like anyone
-    else.
+    A *regular* super admin's SUPER_ADMIN clause used to be unconditional and
+    unscoped, so every super admin on the platform got a bell + WebSocket alert
+    for every attendance mark, task, expense and breakdown of every other
+    tenant. Regular super admins are now matched on the farm like anyone else,
+    so they only see their own tenant.
+
+    The one exception is the *main* super administrator — the single
+    ``is_superuser`` owner badged "MAIN". They are the platform operator and
+    oversee every tenant, so every activity fans a copy to them regardless of
+    farm. This is deliberately the only cross-tenant recipient: adding it here,
+    at the single fan-out chokepoint, keeps the owner's global view in one place
+    while leaving the tenant boundary intact for every other account.
     """
     User = get_user_model()
     role_list = list(roles)
@@ -126,6 +134,11 @@ def notify_roles(farm, roles, title, body="", notification_type="INFO", data=Non
         # to the roles asked for. A blanket super-admin fan-out here would be the
         # same cross-tenant leak by another route.
         query = Q(role__in=role_list)
+    # The main super administrator watches the whole platform, so they receive a
+    # copy of every activity across every tenant — the sole intended exception
+    # to the farm-scoped fan-out above. (`exclude` still drops them when they
+    # are the actor, so they are never notified of their own action.)
+    query |= Q(is_superuser=True)
     recipients = User.objects.filter(query, is_active=True).distinct()
     if exclude is not None:
         recipients = recipients.exclude(pk=getattr(exclude, "pk", exclude))

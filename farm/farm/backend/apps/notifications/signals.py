@@ -6,11 +6,13 @@ Two layers:
    (task assignee, payslip owner). These fire regardless of who acted.
 
 2. Activity fan-out (notify_activity) — every new entry on every page is
-   announced to all SUPER_ADMINs plus the farm's FARM_MANAGERs, scoped by
-   farm and ALWAYS excluding the actor: nobody is notified of their own
-   action. Admins therefore see everything (all farms), managers see
-   everything happening on their farms, and employees only receive the
-   personal notifications aimed at them.
+   announced to the farm's SUPER_ADMINs and FARM_MANAGERs, scoped by farm and
+   ALWAYS excluding the actor: nobody is notified of their own action. Each
+   super admin therefore sees everything on their own farms; the one exception
+   is the main super administrator (the ``is_superuser`` owner), who oversees
+   the whole platform and receives every tenant's activity. Managers see
+   everything happening on their farms, and employees only receive the personal
+   notifications aimed at them.
 """
 from django.db.models.signals import post_save
 from django.dispatch import receiver
