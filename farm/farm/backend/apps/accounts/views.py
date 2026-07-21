@@ -830,6 +830,31 @@ class UserViewSet(viewsets.ModelViewSet):
         )
         return Response(UserSerializer(admins, many=True, context={"request": request}).data)
 
+    @action(detail=False, methods=["get"], url_path="deleted-super-admins",
+            url_name="deleted-super-admins")
+    def deleted_super_admins(self, request):
+        """Soft-deleted super admin accounts, for the main super admin only.
+
+        Companion to ``super_admins``: the tenant-scoped Deleted Users page
+        deliberately hides other super admins, so a deleted admin can only be
+        managed here. From this list the owner restores an admin (which brings
+        back the managers and employees archived with them via ``deleted_with``)
+        or permanently removes the whole group. Owner-only, like its live twin.
+        """
+        from .models import Role
+
+        if not request.user.is_superuser:
+            raise PermissionDenied(
+                "Only the main super administrator can view super admin accounts."
+            )
+
+        admins = (
+            User.objects.filter(role=Role.SUPER_ADMIN, deleted_at__isnull=False)
+            .prefetch_related("farms")
+            .order_by("-deleted_at")
+        )
+        return Response(UserSerializer(admins, many=True, context={"request": request}).data)
+
     @action(detail=False, methods=["get"], url_path="deleted", url_name="deleted")
     def list_deleted(self, request):
         """Return all soft-deleted users (only visible to SUPER_ADMIN)."""
