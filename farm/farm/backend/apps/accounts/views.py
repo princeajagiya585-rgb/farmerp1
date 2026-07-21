@@ -566,6 +566,15 @@ class UserViewSet(viewsets.ModelViewSet):
                 except Exception as e:
                     logger.error("[USER_CREATE] Failed to auto-create Employee for user '%s': %s", user.username, e)
 
+        # Wage type + salary entered on the Users form live on the Employee,
+        # which for a fresh account only exists now (created just above). The
+        # serializer stashed the values because it ran before the Employee
+        # existed; apply them here so they show on the Workforce/Employees page.
+        pending_wage = getattr(user, "_pending_wage", None)
+        if pending_wage and any(v is not None for v in pending_wage):
+            from .serializers import UserCreateSerializer
+            UserCreateSerializer._apply_wage(user, *pending_wage)
+
     def perform_update(self, serializer):
         """Update the user, then sync name, farm & category to the linked Employee record."""
         self._assert_may_manage(serializer.instance)

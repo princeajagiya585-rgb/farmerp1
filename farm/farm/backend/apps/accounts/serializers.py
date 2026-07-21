@@ -198,7 +198,14 @@ class UserCreateSerializer(serializers.ModelSerializer):
         user.save()
         if farms:
             user.farms.set(farms)
+        # On API create the linked Employee often does not exist yet: the
+        # workforce signal can't create it because the farms M2M is only set
+        # above (after user.save()), and for a super admin's staff the farm is
+        # copied from the creator later, in UserViewSet.perform_create. Apply
+        # the wage now if the Employee already exists, and stash it so the view
+        # can apply it once perform_create has created the Employee.
         self._apply_wage(user, wage_type, monthly_salary, hourly_wage)
+        user._pending_wage = (wage_type, monthly_salary, hourly_wage)
         return user
 
     def update(self, instance, validated_data):
