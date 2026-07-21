@@ -254,8 +254,10 @@ class Attendance(OwnedModel):
         Called when an admin edits the times so the derived columns stay
         consistent with the new times. Does not save."""
         self.working_seconds = self.calculate_working_hours()
-        self.overtime_seconds = self.calculate_overtime(regular_hours)
-        self.overtime_hours = round(self.overtime_seconds / 3600, 2)
+        # Overtime has been removed from the platform: it is never computed or
+        # counted, so the derived overtime columns stay zero.
+        self.overtime_seconds = 0
+        self.overtime_hours = 0
         if not self.check_in_time:
             return
         if self.check_out_time:

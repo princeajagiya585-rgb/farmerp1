@@ -139,7 +139,6 @@ export default function WorkerDetail() {
     },
     { key: "days_worked", header: t("header.days") },
     { key: "gross_wage", header: t("header.gross"), render: (r) => money(r.gross_wage) },
-    { key: "overtime_amount", header: t("header.ot"), render: (r) => money(r.overtime_amount) },
     { key: "advance_deduction", header: t("header.advances"), render: (r) => money(r.advance_deduction) },
     { key: "other_deductions", header: t("header.deductions"), render: (r) => money(r.other_deductions) },
     {
@@ -221,7 +220,7 @@ export default function WorkerDetail() {
             {...(activeTab === "purchases" ? { footerColumns: ["total_amount"] } : {})}
             {...(activeTab === "sales" ? { footerColumns: ["amount"] } : {})}
             {...(activeTab === "payments" ? { footerColumns: ["amount"] } : {})}
-            {...(activeTab === "payslips" ? { footerColumns: ["gross_wage", "overtime_amount", "advance_deduction", "other_deductions", "net_pay"] } : {})}
+            {...(activeTab === "payslips" ? { footerColumns: ["gross_wage", "advance_deduction", "other_deductions", "net_pay"] } : {})}
           />
         )}
       </Card>

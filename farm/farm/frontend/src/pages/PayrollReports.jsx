@@ -27,7 +27,6 @@ const MONTHLY_COLS = [
   { key: "period_year", header: "Year" },
   { key: "days_worked", header: "Days" },
   { key: "gross_wage", header: "Gross" },
-  { key: "overtime_amount", header: "OT" },
   { key: "advance_deduction", header: "Advance" },
   { key: "other_deductions", header: "Deductions" },
   { key: "net_pay", header: "Net Pay" },
@@ -126,13 +125,12 @@ export default function PayrollReports() {
         </div>
         <Table
           empty="No payslips for this period."
-          footerColumns={["gross_wage", "overtime_amount", "advance_deduction", "other_deductions", "net_pay"]}
+          footerColumns={["gross_wage", "advance_deduction", "other_deductions", "net_pay"]}
           columns={[
             { key: "employee_name", header: translate("header.employee") },
             { key: "period_month", header: translate("header.month"), render: (r) => monthLabel(r.period_month, r.period_year) },
             { key: "days_worked", header: translate("header.days") },
             { key: "gross_wage", header: translate("header.gross"), render: (r) => money(r.gross_wage) },
-            { key: "overtime_amount", header: translate("header.ot"), render: (r) => money(r.overtime_amount) },
             { key: "advance_deduction", header: translate("header.advance"), render: (r) => money(r.advance_deduction) },
             { key: "other_deductions", header: translate("header.deductions"), render: (r) => money(r.other_deductions) },
             { key: "net_pay", header: translate("header.netPay"), render: (r) => <b>{money(r.net_pay)}</b> },

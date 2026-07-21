@@ -40,7 +40,6 @@ class AttendanceAdmin(admin.ModelAdmin):
         "date",
         "status",
         "approval_status",
-        "overtime_hours",
     )
     list_filter = ("status", "approval_status", "farm", "date")
     search_fields = ("employee__first_name", "employee__last_name", "remarks")

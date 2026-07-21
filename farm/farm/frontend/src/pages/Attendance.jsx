@@ -496,7 +496,6 @@ export default function Attendance() {
       check_in_time: row.check_in_time,
       check_out_time: row.check_out_time,
       remarks: row.remarks || "",
-      overtime_hours: row.overtime_hours || 0
     });
     setEditModalOpen(true);
   };
@@ -513,7 +512,7 @@ export default function Attendance() {
     }
   };
 
-  // When the In/Out time is edited, auto-derive Status, Approval and OT the
+  // When the In/Out time is edited, auto-derive Status and Approval the
   // same way the backend does (check_out rules), so the admin sees exactly
   // what will be saved. The backend recalculates and persists these too.
   const applyEditTimes = (patch) => {
@@ -533,11 +532,9 @@ export default function Attendance() {
           next.status = monthly && secs < 5 * 3600 ? "HALF_DAY" : "PRESENT_DONE";
           next.approval_status = "APPROVED";
         }
-        next.overtime_hours = secs > 8 * 3600 ? Math.round(((secs - 8 * 3600) / 3600) * 100) / 100 : 0;
       } else {
         next.status = outsideFence ? "ABSENT" : "PRESENT";
         next.approval_status = "PENDING";
-        next.overtime_hours = 0;
       }
       return next;
     });
@@ -658,9 +655,6 @@ export default function Attendance() {
                     <span className="flex items-center gap-1 text-xs text-gray-600 font-mono">
                       <Clock size={12} /> {todayAttendance.working_hours_formatted}
                     </span>
-                  )}
-                  {todayAttendance?.overtime_hours_formatted && (
-                    <Badge color="red">OT: {todayAttendance.overtime_hours_formatted}</Badge>
                   )}
                 </div>
                 {/* Show address and geofence details */}
@@ -979,11 +973,6 @@ export default function Attendance() {
               },
             },
             {
-              key: "overtime_hours",
-              header: t("header.otHrs"),
-              render: (r) => r.overtime_hours_formatted || r.overtime_hours || "0"
-            },
-            {
               key: "working_hours",
               header: t("attendance.workingHours") || "Work Hours",
               render: (r) => r.working_hours_formatted || "—"
@@ -1298,16 +1287,6 @@ export default function Attendance() {
                     <Clock size={12} /> {t("attendance.workingHours") || "Work Hours"}: {editWorkHours}
                   </p>
                 )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t("header.otHrs")}</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={editForm.overtime_hours}
-                  onChange={(e) => setEditForm({ ...editForm, overtime_hours: Number(e.target.value) })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
-                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t("attendance.remarksLabel")}</label>

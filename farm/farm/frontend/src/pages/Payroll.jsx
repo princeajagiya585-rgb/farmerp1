@@ -127,7 +127,6 @@ export default function Payroll() {
     const adv = advanceForSlip(r);
     const net = Math.round(
       gross
-      + Number(r.overtime_amount || 0)
       + Number(r.incentive_amount || 0)
       - adv
       - Number(r.other_deductions || 0)
@@ -328,10 +327,9 @@ export default function Payroll() {
     }
   };
 
-  // Net pay always = wage + overtime + incentive − advances − deductions
+  // Net pay always = wage + incentive − advances − deductions
   const computeNet = (f) =>
     (Number(f.gross_wage) || 0) +
-    (Number(f.overtime_amount) || 0) +
     (Number(f.incentive_amount) || 0) -
     (Number(f.advance_deduction) || 0) -
     (Number(f.other_deductions) || 0);
@@ -354,11 +352,10 @@ export default function Payroll() {
     e.preventDefault();
     // Advances, incentive & other deductions are managed on their own pages —
     // preserve the payslip's existing values here (they're not edited in this
-    // modal), so Net Pay stays wage + OT + incentive − advance − deductions.
+    // modal), so Net Pay stays wage + incentive − advance − deductions.
     await slipRepo.update(editSlip.id, {
       days_worked: Number(editSlipForm.days_worked),
       gross_wage: Number(editSlipForm.gross_wage),
-      overtime_amount: Number(editSlipForm.overtime_amount),
       incentive_amount: Number(editSlipForm.incentive_amount),
       advance_deduction: Number(editSlipForm.advance_deduction),
       other_deductions: Number(editSlipForm.other_deductions),
@@ -443,7 +440,6 @@ export default function Payroll() {
           },
         },
     { key: "gross_wage", header: t("header.gross") },
-    { key: "overtime_amount", header: t("header.ot") },
     { key: "advance_deduction", header: t("header.advances") },
     {
       key: "net_remaining",
@@ -512,7 +508,7 @@ export default function Payroll() {
           <button onClick={() => { setPhotoSlip(r); setPhotoError(""); }} className={`rounded p-1.5 hover:bg-indigo-50 ${normalizePhotoUrl(r.payment_photo_url) ? "text-indigo-600" : "text-gray-500"}`} title={t("payroll.attachPhoto")}>
             <Camera size={15} />
           </button>
-          <button onClick={() => { setEditSlip(r); setEditSlipForm({ days_worked: r.days_worked, gross_wage: r.gross_wage, overtime_amount: r.overtime_amount, incentive_amount: r.incentive_amount, advance_deduction: r.advance_deduction, other_deductions: r.other_deductions, net_pay: r.net_pay, status: r.status }); }} className="rounded p-1.5 text-gray-500 hover:bg-gray-100" title={t("common.edit")}>
+          <button onClick={() => { setEditSlip(r); setEditSlipForm({ days_worked: r.days_worked, gross_wage: r.gross_wage, incentive_amount: r.incentive_amount, advance_deduction: r.advance_deduction, other_deductions: r.other_deductions, net_pay: r.net_pay, status: r.status }); }} className="rounded p-1.5 text-gray-500 hover:bg-gray-100" title={t("common.edit")}>
             <Pencil size={15} />
           </button>
           {canDelete && (
@@ -565,7 +561,6 @@ export default function Payroll() {
                 [t("header.days")]: r.days_worked,
                 [t("payroll.dailyRate")]: rate != null ? Math.round(rate) : "",
                 [t("header.gross")]: gross,
-                [t("header.ot")]: Number(r.overtime_amount || 0),
                 [t("header.advances")]: adv,
                 [t("header.netPay")]: r.status === "PAID" ? 0 : net - Number(r.half_paid || 0),
                 [t("header.status")]: r.status,
@@ -641,7 +636,7 @@ export default function Payroll() {
         }
       >
         <Table
-          footerColumns={["gross_wage", "overtime_amount", "advance_deduction", "half_paid", "net_remaining"]}
+          footerColumns={["gross_wage", "advance_deduction", "half_paid", "net_remaining"]}
           columns={buildSlipColumns(false)}
           rows={monthlySlips}
           empty={t("payroll.noPayslips")}
@@ -650,7 +645,7 @@ export default function Payroll() {
 
       <Card title={t("payroll.payslipsHourly")} className="mb-5">
         <Table
-          footerColumns={["gross_wage", "overtime_amount", "advance_deduction", "half_paid", "net_remaining"]}
+          footerColumns={["gross_wage", "advance_deduction", "half_paid", "net_remaining"]}
           columns={buildSlipColumns(true)}
           rows={hourlySlips}
           empty={t("payroll.noPayslips")}
@@ -723,7 +718,6 @@ export default function Payroll() {
           <div className="grid grid-cols-2 gap-3">
             <Input label={t("header.days")} type="number" value={editSlipForm.days_worked ?? ""} onChange={(e) => updateSlipDays(e.target.value)} />
             <Input label={t("header.gross")} type="number" value={editSlipForm.gross_wage ?? ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, gross_wage: e.target.value })} />
-            <Input label={t("header.ot")} type="number" value={editSlipForm.overtime_amount ?? ""} onChange={(e) => setEditSlipForm({ ...editSlipForm, overtime_amount: e.target.value })} />
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">{t("header.netPay")}</label>
               <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-brand-700" title={t("payroll.netAutoCalc")}>

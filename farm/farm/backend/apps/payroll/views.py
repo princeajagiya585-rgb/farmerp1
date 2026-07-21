@@ -82,9 +82,12 @@ def _attendance_worked_days(employee, month, year):
     Honors the admin attendance override (``AttendanceMonthlySummary``) edited on
     the Attendance Reports "Edit" screen: when an override exists for
     (employee, year, month) its Present / Half-Day drive ``days_worked``
-    (present + ½·half_day) and its OT hours drive overtime, so an edited month's
+    (present + ½·half_day) drive ``days_worked``, so an edited month's
     attendance flows straight into salary. Without an override the values are
     summed from the raw daily ``Attendance`` records (same rule as before).
+
+    Overtime has been removed from the platform, so ``overtime_hours`` is always
+    zero — kept in the return tuple only so existing callers stay unchanged.
     """
     from apps.workforce.models import AttendanceMonthlySummary
 
@@ -109,11 +112,9 @@ def _attendance_worked_days(employee, month, year):
     ).first()
     if ov is not None:
         days_worked = Decimal(ov.present or 0) + Decimal("0.5") * Decimal(ov.half_day or 0)
-        overtime_hours = Decimal(ov.overtime_hours or 0)
-        return days_worked, overtime_hours, worked_hours
+        return days_worked, Decimal("0"), worked_hours
 
     days_worked = Decimal("0")
-    overtime_hours = Decimal("0")
     for att in raw:
         if att.status in (
             Attendance.Status.PRESENT,
@@ -122,8 +123,7 @@ def _attendance_worked_days(employee, month, year):
             days_worked += Decimal("1")
         elif att.status == Attendance.Status.HALF_DAY:
             days_worked += Decimal("0.5")
-        overtime_hours += att.overtime_hours or Decimal("0")
-    return days_worked, overtime_hours, worked_hours
+    return days_worked, Decimal("0"), worked_hours
 
 
 def _wage_from_worked(employee, period, days_worked, overtime_hours, worked_hours):
@@ -149,12 +149,9 @@ def _wage_from_worked(employee, period, days_worked, overtime_hours, worked_hour
     else:
         gross_wage = monthly_salary
 
-    effective_daily = (
-        daily_wage if daily_wage > 0
-        else (monthly_salary / Decimal("30")) if monthly_salary > 0
-        else Decimal("0")
-    )
-    overtime_amount = overtime_hours * (effective_daily / Decimal("8"))
+    # Overtime has been removed from the platform: it never contributes to pay.
+    # The overtime_hours argument is ignored and the amount is always zero.
+    overtime_amount = Decimal("0")
     return gross_wage, overtime_amount
 
 
@@ -774,7 +771,6 @@ class PayslipViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
 
         fields = [
             "gross_wage",
-            "overtime_amount",
             "incentive_amount",
             "advance_deduction",
             "other_deductions",
@@ -787,13 +783,13 @@ class PayslipViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
             data = PayslipSerializer(slip, context={"request": request}).data
             # Always reflect the employee's real outstanding advance and keep
             # the row internally consistent by recomputing Net Pay from it.
+            # Overtime has been removed, so it is no longer part of the total.
             adv = advance_by_emp.get(slip.employee_id, Decimal("0"))
             gross = slip.gross_wage or Decimal("0")
-            ot = slip.overtime_amount or Decimal("0")
             inc = slip.incentive_amount or Decimal("0")
             other = slip.other_deductions or Decimal("0")
             data["advance_deduction"] = adv
-            data["net_pay"] = gross + ot + inc - adv - other
+            data["net_pay"] = gross + inc - adv - other
             rows.append(data)
 
         # Employees with an outstanding advance but no payslip this period.
@@ -821,7 +817,6 @@ class PayslipViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseModel
                 "period_year": y,
                 "days_worked": Decimal("0"),
                 "gross_wage": Decimal("0"),
-                "overtime_amount": Decimal("0"),
                 "incentive_amount": Decimal("0"),
                 "advance_deduction": adv,
                 "other_deductions": Decimal("0"),

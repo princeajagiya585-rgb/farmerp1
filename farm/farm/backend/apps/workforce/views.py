@@ -499,11 +499,11 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
 
     @action(detail=True, methods=["post"])
     def check_out(self, request, pk=None):
-        """Set check-out time and optional overtime.
+        """Set check-out time and working hours.
 
         Also validates check-out GPS coordinates against the farm's geofence
         so the Geofence column reflects the check-out location status.
-        Calculates working hours and overtime automatically.
+        Overtime has been removed from the platform, so none is computed.
         """
         with transaction.atomic():
             attendance = self.get_object()
@@ -535,8 +535,6 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
                 else:
                     attendance.status = Attendance.Status.PRESENT_DONE
                 attendance.approval_status = Attendance.ApprovalStatus.APPROVED
-            if request.data.get("overtime_hours") is not None:
-                attendance.overtime_hours = request.data.get("overtime_hours")
             if request.data.get("check_out_lat") is not None:
                 attendance.check_out_lat = request.data.get("check_out_lat")
             if request.data.get("check_out_lng") is not None:
@@ -583,13 +581,9 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
             working_seconds = attendance.calculate_working_hours()
             attendance.working_seconds = working_seconds
 
-            # Calculate overtime (beyond 8 hours = 28800 seconds)
-            overtime_seconds = attendance.calculate_overtime(regular_hours=8)
-            attendance.overtime_seconds = overtime_seconds
-
-            # Convert overtime to hours for the existing field
-            if overtime_seconds > 0:
-                attendance.overtime_hours = round(overtime_seconds / 3600, 2)
+            # Overtime removed from the platform: keep the derived columns zero.
+            attendance.overtime_seconds = 0
+            attendance.overtime_hours = 0
 
             attendance.save()
 
@@ -867,7 +861,8 @@ class AttendanceViewSet(EmployeeSelfScopedMixin, FarmScopedQuerysetMixin, BaseMo
                 "half_day": _int(data.get("half_day")),
                 "absent": _int(data.get("absent")),
                 "leave": _int(data.get("leave")),
-                "overtime_hours": _dec(data.get("overtime_hours")),
+                # Overtime removed from the platform: overrides never store OT.
+                "overtime_hours": 0,
                 "created_by": request.user,
             },
         )

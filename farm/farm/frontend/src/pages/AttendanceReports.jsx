@@ -21,7 +21,7 @@ export default function AttendanceReports() {
   const [editOpen, setEditOpen] = useState(false);
   const [editRow, setEditRow] = useState(null); // the report row being edited
   // Absent is not edited directly — it is auto-derived from the days in the period.
-  const [editForm, setEditForm] = useState({ present: 0, half_day: 0, leave: 0, overtime_hours: 0 });
+  const [editForm, setEditForm] = useState({ present: 0, half_day: 0, leave: 0 });
   const [savingRow, setSavingRow] = useState(false);
   const [farms, setFarms] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -65,14 +65,13 @@ export default function AttendanceReports() {
     row.employee_id || employees.find((e) => e.name === row.employee)?.id;
 
   // Edit → open a small form on THIS page to edit only the monthly totals
-  // (Present / Half Day / Absent / Leave / OT Hrs). No navigation.
+  // (Present / Half Day / Absent / Leave). No navigation.
   const openEdit = (row) => {
     setEditRow(row);
     setEditForm({
       present: Number(row.present) || 0,
       half_day: Number(row.half_day) || 0,
       leave: Number(row.leave) || 0,
-      overtime_hours: Number(row.overtime_hours) || 0,
     });
     setEditOpen(true);
   };
@@ -125,7 +124,6 @@ export default function AttendanceReports() {
         half_day: Number(editForm.half_day) || 0,
         absent: computedAbsent(),
         leave: Number(editForm.leave) || 0,
-        overtime_hours: Number(editForm.overtime_hours) || 0,
       });
       closeEdit();
       await run(); // refresh the report so the edited totals show
@@ -280,7 +278,6 @@ export default function AttendanceReports() {
         { key: "half_day", header: t("header.halfDay") },
         { key: "absent", header: t("header.absent") },
         { key: "leave", header: t("header.leave") },
-        { key: "overtime_hours", header: t("header.otHrs") },
         { key: "attendance_pct", header: t("header.attendancePct") },
       ],
       filename,
@@ -358,7 +355,6 @@ export default function AttendanceReports() {
             { key: "half_day", header: t("header.halfDay") },
             { key: "absent", header: t("header.absent") },
             { key: "leave", header: t("header.leave") },
-            { key: "overtime_hours", header: t("header.otHrs") },
             {
               key: "attendance_pct",
               header: t("header.attendancePct"),
@@ -418,7 +414,6 @@ export default function AttendanceReports() {
                 { key: "half_day", label: t("header.halfDay") },
                 { key: "absent", label: t("header.absent") },
                 { key: "leave", label: t("header.leave") },
-                { key: "overtime_hours", label: t("header.otHrs") },
               ].map((f) => (
                 <div key={f.key}>
                   <label className="mb-1 block text-sm font-medium text-gray-700">{f.label}</label>
@@ -438,7 +433,7 @@ export default function AttendanceReports() {
                     <input
                       type="number"
                       min="0"
-                      step={f.key === "overtime_hours" ? "0.01" : "1"}
+                      step="1"
                       value={editForm[f.key]}
                       onChange={(e) => setEditForm({ ...editForm, [f.key]: e.target.value })}
                       className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500"
