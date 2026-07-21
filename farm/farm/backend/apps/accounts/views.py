@@ -542,7 +542,9 @@ class UserViewSet(viewsets.ModelViewSet):
 
         qs = User.objects.prefetch_related("farms").all()
         if self.action == "list_deleted":
-            return qs.filter(deleted_at__isnull=False).order_by("-deleted_at")
+            # Tenant-scoped: a super admin sees only their own farms' trash, not
+            # every tenant's — and never another super admin's account.
+            return self._deleted_in_scope(self.request.user).order_by("-deleted_at")
         qs = qs.filter(deleted_at__isnull=True)
         user = self.request.user
         role = getattr(user, "role", None)
@@ -703,6 +705,51 @@ class UserViewSet(viewsets.ModelViewSet):
             .distinct()
         )
 
+    def _deleted_in_scope(self, user):
+        """Soft-deleted accounts visible to ``user`` under the farm tenant
+        boundary — the same rule the live ``list`` uses.
+
+        The Deleted Users page (list), its "Delete All Permanently" bulk purge
+        and the per-row restore/purge all run through this, so the trash is
+        tenant-isolated everywhere. Without it every super admin — the owner
+        included — saw and could wipe every other tenant's deleted managers and
+        employees, and other super admins' accounts, from this one page.
+
+        A super admin sees only their own farms' trashed accounts (plus their
+        own row); other super admins are hidden, exactly as on the live list,
+        since admin accounts are managed only on the Super Admin Accounts page.
+        """
+        from django.db.models import Q
+        from .models import Role
+
+        return (
+            User.objects.filter(deleted_at__isnull=False)
+            .prefetch_related("farms")
+            .filter(Q(farms__in=user.farms.all()) | Q(pk=user.pk))
+            .exclude(Q(role=Role.SUPER_ADMIN) & ~Q(pk=user.pk))
+            .distinct()
+        )
+
+    def _assert_deleted_in_reach(self, target):
+        """Guard restore/purge of a trashed account to the caller's tenant.
+
+        ``get`` on the detail route is unscoped, so without this any super admin
+        could restore or permanently delete another tenant's trashed account by
+        id. Super admin accounts keep the owner-only rule (``_assert_may_manage``);
+        every other account must share a farm with the caller.
+        """
+        from .models import Role
+
+        self._assert_may_manage(target)  # owner-only for SUPER_ADMIN targets
+        if target.role == Role.SUPER_ADMIN:
+            return
+        caller = self.request.user
+        shares_farm = target.farms.filter(
+            pk__in=caller.farms.values_list("pk", flat=True)
+        ).exists()
+        if not shares_farm:
+            raise PermissionDenied("This account belongs to another farm.")
+
     def perform_destroy(self, instance):
         """Soft-delete the user account instead of removing it from the DB.
 
@@ -808,10 +855,14 @@ class UserViewSet(viewsets.ModelViewSet):
         (the user link is SET_NULL), so attendance and payroll history is kept;
         their notifications and location pings cascade away. There are no PROTECT
         constraints on the User FK, so the delete cannot fail on a dependency.
+
+        Scoped to the caller's own tenant — it purges exactly what the Deleted
+        Users page shows them, never another super admin's trash.
         """
-        qs = User.objects.filter(deleted_at__isnull=False)
+        qs = self._deleted_in_scope(request.user)
         count = qs.count()
-        qs.delete()
+        # .delete() on a sliced/annotated qs can complain; take concrete ids.
+        User.objects.filter(pk__in=list(qs.values_list("pk", flat=True))).delete()
         logger.info("[PURGE_DELETED] %s permanently deleted %s user(s)", request.user, count)
         return Response(
             {"detail": f"Permanently deleted {count} user(s).", "deleted": count}
@@ -840,8 +891,9 @@ class UserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        # Same guard as the soft delete: admin accounts are the owner's alone.
-        self._assert_may_manage(user)
+        # Tenant guard: own farms only (super admins stay owner-only). Stops a
+        # super admin permanently deleting another tenant's trashed account by id.
+        self._assert_deleted_in_reach(user)
         if user.is_superuser:
             raise PermissionDenied(
                 "The main super administrator account cannot be deleted."
@@ -871,9 +923,9 @@ class UserViewSet(viewsets.ModelViewSet):
         """Restore a soft-deleted user — clears deleted_at and reactivates."""
         try:
             user = User.objects.get(pk=pk, deleted_at__isnull=False)
-            # Admin accounts are the owner's to manage — restoring one is as
-            # consequential as deleting it, so it takes the same guard.
-            self._assert_may_manage(user)
+            # Admin accounts are the owner's to manage, and every other account
+            # only by its own tenant — restoring is as consequential as deleting.
+            self._assert_deleted_in_reach(user)
             user.deleted_at = None
             user.deleted_by = None
             user.deleted_with = None
