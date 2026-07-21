@@ -295,19 +295,26 @@ def phone_login(request):
 @permission_classes([AllowAny])
 @throttle_classes([])
 def forgot_password(request):
-    """Send OTP to the Super Admin's email for password reset.
+    """Send a password-reset OTP to the email the user entered.
 
-    Uses Django's configured EMAIL_BACKEND so it works with any email provider
-    (SMTP, console, file-based, etc.) and respects all EMAIL_* settings.
+    Works for EVERY account — Super Admins, Managers, Employees and Workers —
+    with no cap on how many users or how many distinct addresses exist. The OTP
+    is delivered ONLY to the matched account's own registered email; the SMTP
+    sender account (EMAIL_HOST_USER) is used purely to send, never as a
+    recipient. Uses Django's configured EMAIL_BACKEND so it respects all EMAIL_*
+    settings.
     """
     serializer = ForgotPasswordSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     email = serializer.validated_data["email"]
 
-    user = User.objects.filter(email=email, role="SUPER_ADMIN").first()
+    # Match by email across ALL roles (case-insensitively). Previously this was
+    # locked to role="SUPER_ADMIN", so managers/employees/workers could never
+    # reset their password — that was the real limitation, not the recipient.
+    user = User.objects.filter(email__iexact=email).first()
     if not user:
         return Response(
-            {"detail": "No Super Administrator account found with this email."},
+            {"success": False, "message": "Email not found.", "detail": "Email not found."},
             status=status.HTTP_404_NOT_FOUND,
         )
 
@@ -327,7 +334,7 @@ def forgot_password(request):
     subject = "FarmERP Pro - Password Reset OTP"
     message = f"""Hello {user.get_full_name() or user.username},
 
-You requested a password reset for your FarmERP Pro Super Administrator account.
+You requested a password reset for your FarmERP Pro account.
 
 Your OTP code is: {otp.code}
 
@@ -361,7 +368,10 @@ If you did not request this, please ignore this email.
             subject=subject,
             message=message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[email],
+            # Deliver ONLY to the matched account's registered address — never to
+            # EMAIL_HOST_USER or any fixed literal. user.email is the stored,
+            # canonical address for whoever owns this account.
+            recipient_list=[user.email],
             fail_silently=False,
         )
         email_sent = True
@@ -396,6 +406,7 @@ If you did not request this, please ignore this email.
     if email_sent:
         logger.info("[PASSWORD_RESET] OTP %s for %s stored in DB, expires in 10 min", otp.code, email)
         return Response({
+            "success": True,
             "detail": "OTP sent to your email.",
             "expires_in": 600,
             "email_sent": True,
@@ -414,6 +425,7 @@ If you did not request this, please ignore this email.
     # demo `send_otp` endpoint. Configure EMAIL_HOST_USER/EMAIL_HOST_PASSWORD
     # (or an email API) to deliver the OTP by email instead of on screen.
     return Response({
+        "success": True,
         "detail": "Email delivery isn't configured, so your OTP is shown below.",
         "otp": otp.code,
         "email_sent": False,
@@ -426,7 +438,7 @@ If you did not request this, please ignore this email.
 @permission_classes([AllowAny])
 @throttle_classes([])
 def reset_password(request):
-    """Verify OTP and set a new password for the Super Admin."""
+    """Verify the OTP and set a new password for the matched account (any role)."""
     serializer = ResetPasswordSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     email = serializer.validated_data["email"]
@@ -441,10 +453,12 @@ def reset_password(request):
             reason = "OTP has expired. Please request a new one."
         return Response({"detail": reason}, status=status.HTTP_400_BAD_REQUEST)
 
-    user = User.objects.filter(email=email, role="SUPER_ADMIN").first()
+    # Same rule as forgot_password: resolve the account by email across every
+    # role, so the reset works for whoever the OTP was issued to.
+    user = User.objects.filter(email__iexact=email).first()
     if not user:
         return Response(
-            {"detail": "No Super Administrator account found with this email."},
+            {"success": False, "message": "Email not found.", "detail": "Email not found."},
             status=status.HTTP_404_NOT_FOUND,
         )
 
