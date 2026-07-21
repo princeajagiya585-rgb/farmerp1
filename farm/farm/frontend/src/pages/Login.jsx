@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Leaf, Users, BarChart3, MapPin, ShieldCheck, Lock, Mail } from "lucide-react";
+import { Leaf, Users, BarChart3, MapPin, ShieldCheck, Lock, Mail, KeyRound, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { Button, Input } from "../components/ui";
+import { Button } from "../components/ui";
 import { LogoMark } from "../components/Logo";
 import ApkDownload from "../components/ApkDownload";
 import LeafField from "../components/LeafField";
@@ -210,127 +210,176 @@ export default function Login() {
             <h1 className="mt-3 text-2xl font-bold text-gray-800">FarmERP Pro</h1>
           </div>
 
-          {/* Forgot Password Flow */}
+          {/* Forgot Password Flow — the Keeper's Gate, in recovery mode: the
+              same gold threshold as the Super Administrator card so the reset
+              reads as the owner's own door, not a generic form. */}
           {showForgotPassword ? (
-            <div className="rounded-2xl border-2 border-blue-500 bg-white p-8 shadow-soft">
-              <div className="mb-4 flex items-center gap-2">
-                <Mail size={20} className="text-blue-600" />
-                <h2 className="text-xl font-bold text-gray-800">Reset Super Admin Password</h2>
+            <div className="relative overflow-hidden rounded-3xl border border-amber-200 bg-white shadow-lift">
+              <div className="relative overflow-hidden bg-gradient-to-b from-[#1c1408] via-amber-950 to-amber-900 px-6 pt-5">
+                <div className="pointer-events-none absolute -left-16 -top-20 h-56 w-56 rounded-full bg-amber-500/20 blur-3xl" />
+                <div className="pointer-events-none absolute -right-16 -top-10 h-52 w-52 rounded-full bg-lime-500/10 blur-3xl" />
+                <div className="relative mx-auto max-w-[16rem]">
+                  <KeeperGate />
+                </div>
+                <div className="relative pb-4 text-center">
+                  <p className="text-[0.62rem] font-bold uppercase tracking-[0.28em] text-amber-300/80">
+                    Restricted · Recovery
+                  </p>
+                  <h2 className="mt-1.5 text-xl font-bold tracking-tight text-amber-50">
+                    Reset Super Admin Password
+                  </h2>
+                  <p className="mt-1 text-xs text-amber-200/60">
+                    {forgotPasswordStep === 1 && "Enter your registered email to receive a one-time code."}
+                    {forgotPasswordStep === 2 && "Enter the 6-digit code we sent to your email."}
+                    {forgotPasswordStep === 3 && "Choose a new password for your account."}
+                  </p>
+                </div>
+                {/* Three-step trail of gold saplings */}
+                <div className="relative flex items-center justify-center gap-2 pb-5">
+                  {[1, 2, 3].map((s) => (
+                    <span
+                      key={s}
+                      className={`h-1.5 rounded-full transition-all duration-300 ${
+                        s === forgotPasswordStep
+                          ? "w-6 bg-amber-400"
+                          : s < forgotPasswordStep
+                          ? "w-1.5 bg-amber-400/80"
+                          : "w-1.5 bg-amber-100/25"
+                      }`}
+                    />
+                  ))}
+                </div>
+                <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-amber-400/60 to-transparent" />
               </div>
-              <p className="mb-6 text-sm text-gray-500">
-                {forgotPasswordStep === 1 && "Enter your email to receive an OTP."}
-                {forgotPasswordStep === 2 && "Enter the OTP sent to your email."}
-                {forgotPasswordStep === 3 && "Set your new password."}
-              </p>
 
-              {forgotPasswordStep === 1 && (
-                <form onSubmit={handleForgotPasswordSendOtp} className="space-y-4">
-                  {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-                  <Input
-                    label="Email Address"
-                    type="email"
-                    value={resetEmail}
-                    onChange={(e) => setResetEmail(e.target.value)}
-                    placeholder="Enter your email"
-                    required
-                  />
-                  <div className="flex gap-3">
-                    <Button type="submit" className="flex-1" disabled={loading}>
-                      {loading ? "Sending…" : "Send OTP"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        setShowForgotPassword(false);
-                        setForgotPasswordStep(1);
-                        setError("");
-                      }}
-                    >
-                      Back
-                    </Button>
-                  </div>
-                </form>
-              )}
+              <div className="px-8 pb-7 pt-5">
+                {error && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-600">{error}</p>}
 
-              {forgotPasswordStep === 2 && (
-                <form onSubmit={handleVerifyOtp} className="space-y-4">
-                  {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-                  {resetOtpHint ? (
-                    <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800 ring-1 ring-amber-200">
-                      <p className="mb-1">Email delivery isn't set up, so here is your OTP:</p>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-xl font-bold tracking-widest text-amber-900">{resetOtpHint}</span>
-                        <button
-                          type="button"
-                          onClick={() => setResetOtp(resetOtpHint)}
-                          className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
-                        >
-                          Use code
-                        </button>
-                      </div>
+                {forgotPasswordStep === 1 && (
+                  <form onSubmit={handleForgotPasswordSendOtp} className="space-y-4">
+                    <LeafField
+                      label="Email Address"
+                      type="email"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      required
+                    />
+                    <div className="flex gap-3 pt-1">
+                      <Button
+                        type="submit"
+                        className="flex-1 bg-gradient-to-r from-amber-600 to-amber-700 py-2.5 shadow-soft hover:from-amber-700 hover:to-amber-800"
+                        disabled={loading}
+                      >
+                        <Mail size={15} className={loading ? "animate-pulse" : ""} />
+                        {loading ? "Sending…" : "Send code"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => {
+                          setShowForgotPassword(false);
+                          setForgotPasswordStep(1);
+                          setError("");
+                        }}
+                      >
+                        <ArrowLeft size={15} /> Back
+                      </Button>
                     </div>
-                  ) : (
-                    <p className="text-sm text-gray-500">OTP sent to: <span className="font-medium">{resetEmail}</span></p>
-                  )}
-                  <Input
-                    label="OTP Code"
-                    type="text"
-                    value={resetOtp}
-                    onChange={(e) => setResetOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    placeholder="Enter 6-digit OTP"
-                    maxLength={6}
-                    required
-                    className="text-center text-lg font-mono tracking-widest"
-                  />
-                  <div className="flex gap-3">
-                    <Button type="submit" className="flex-1" disabled={loading || resetOtp.length < 6}>
-                      {loading ? "Verifying…" : "Next"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setForgotPasswordStep(1)}
-                    >
-                      Back
-                    </Button>
-                  </div>
-                </form>
-              )}
+                  </form>
+                )}
 
-              {forgotPasswordStep === 3 && (
-                <form onSubmit={handleResetPassword} className="space-y-4">
-                  {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-600">{error}</p>}
-                  <Input
-                    label="New Password"
-                    type="password"
-                    value={resetNewPassword}
-                    onChange={(e) => setResetNewPassword(e.target.value)}
-                    placeholder="Enter new password"
-                    required
-                  />
-                  <Input
-                    label="Confirm New Password"
-                    type="password"
-                    value={resetConfirmPassword}
-                    onChange={(e) => setResetConfirmPassword(e.target.value)}
-                    placeholder="Confirm new password"
-                    required
-                  />
-                  <div className="flex gap-3">
-                    <Button type="submit" className="flex-1" disabled={loading || resetNewPassword.length < 6}>
-                      {loading ? "Resetting…" : "Reset Password"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => setForgotPasswordStep(2)}
-                    >
-                      Back
-                    </Button>
-                  </div>
-                </form>
-              )}
+                {forgotPasswordStep === 2 && (
+                  <form onSubmit={handleVerifyOtp} className="space-y-4">
+                    {resetOtpHint ? (
+                      <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800 ring-1 ring-amber-200">
+                        <p className="mb-1">Email delivery isn't set up, so here is your code:</p>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-xl font-bold tracking-widest text-amber-900">{resetOtpHint}</span>
+                          <button
+                            type="button"
+                            onClick={() => setResetOtp(resetOtpHint)}
+                            className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+                          >
+                            Use code
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="flex items-center gap-2 rounded-xl bg-brand-50/60 p-3 text-sm text-gray-600 ring-1 ring-brand-100">
+                        <Mail size={15} className="shrink-0 text-brand-600" />
+                        <span>Code sent to <span className="font-semibold text-gray-800">{resetEmail}</span></span>
+                      </p>
+                    )}
+                    <LeafField
+                      label="One-Time Code"
+                      type="text"
+                      value={resetOtp}
+                      onChange={(e) => setResetOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="6-digit code"
+                      maxLength={6}
+                      required
+                      inputMode="numeric"
+                      className="text-center text-lg font-mono tracking-[0.4em]"
+                    />
+                    <div className="flex gap-3 pt-1">
+                      <Button
+                        type="submit"
+                        className="flex-1 bg-gradient-to-r from-amber-600 to-amber-700 py-2.5 shadow-soft hover:from-amber-700 hover:to-amber-800"
+                        disabled={loading || resetOtp.length < 6}
+                      >
+                        <KeyRound size={15} />
+                        {loading ? "Verifying…" : "Verify code"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => { setForgotPasswordStep(1); setError(""); }}
+                      >
+                        <ArrowLeft size={15} /> Back
+                      </Button>
+                    </div>
+                  </form>
+                )}
+
+                {forgotPasswordStep === 3 && (
+                  <form onSubmit={handleResetPassword} className="space-y-4">
+                    <LeafField
+                      label="New Password"
+                      type="password"
+                      value={resetNewPassword}
+                      onChange={(e) => setResetNewPassword(e.target.value)}
+                      placeholder="At least 6 characters"
+                      required
+                    />
+                    <LeafField
+                      label="Confirm New Password"
+                      type="password"
+                      value={resetConfirmPassword}
+                      onChange={(e) => setResetConfirmPassword(e.target.value)}
+                      placeholder="Re-enter new password"
+                      required
+                    />
+                    <div className="flex gap-3 pt-1">
+                      <Button
+                        type="submit"
+                        className="flex-1 bg-gradient-to-r from-amber-600 to-amber-700 py-2.5 shadow-soft hover:from-amber-700 hover:to-amber-800"
+                        disabled={loading || resetNewPassword.length < 6}
+                      >
+                        <CheckCircle2 size={15} className={loading ? "animate-pulse" : ""} />
+                        {loading ? "Resetting…" : "Reset password"}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => { setForgotPasswordStep(2); setError(""); }}
+                      >
+                        <ArrowLeft size={15} /> Back
+                      </Button>
+                    </div>
+                  </form>
+                )}
+              </div>
             </div>
           ) : (
             <>
