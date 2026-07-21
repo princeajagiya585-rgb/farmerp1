@@ -433,6 +433,41 @@ If you did not request this, please ignore this email.
     })
 
 
+@extend_schema(request=ResetPasswordSerializer, responses={200: {"type": "object", "properties": {"success": {"type": "boolean"}}}})
+@api_view(["POST"])
+@permission_classes([AllowAny])
+@throttle_classes([])
+def verify_reset_otp(request):
+    """Validate a password-reset OTP server-side, without consuming it.
+
+    The reset flow's middle step calls this so the entered code is checked for
+    real against the database — an exact value comparison against the one active
+    OTP for that email, plus expiry — instead of a client-side length/format
+    guess. A wrong code (e.g. 111111 when 745125 was sent) is rejected here. The
+    OTP's single use is still spent later, at reset_password, so verifying does
+    not burn the code.
+    """
+    email = (request.data.get("email") or "").strip()
+    code = (request.data.get("otp") or "").strip()
+
+    user = User.objects.filter(email__iexact=email).first()
+    if not user:
+        return Response(
+            {"success": False, "message": "Email not found.", "detail": "Email not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    valid, reason = OTP.peek(email, code, purpose="PASSWORD_RESET")
+    if not valid:
+        message = "OTP has expired." if reason == "expired" else "Invalid OTP."
+        return Response(
+            {"success": False, "message": message, "detail": message},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    return Response({"success": True, "message": "OTP verified.", "detail": "OTP verified."})
+
+
 @extend_schema(request=ResetPasswordSerializer, responses={200: {"type": "object", "properties": {"detail": {"type": "string"}}}})
 @api_view(["POST"])
 @permission_classes([AllowAny])
@@ -445,13 +480,15 @@ def reset_password(request):
     code = serializer.validated_data["otp"]
     new_password = serializer.validated_data["new_password"]
 
-    # Verify OTP
+    # Verify the OTP and consume it (single use). An expired match returns the
+    # OTP so we can report expiry precisely; a wrong value returns None.
     success, otp = OTP.verify(email, code, purpose="PASSWORD_RESET")
     if not success:
-        reason = "Invalid or expired OTP."
-        if otp and otp.is_expired:
-            reason = "OTP has expired. Please request a new one."
-        return Response({"detail": reason}, status=status.HTTP_400_BAD_REQUEST)
+        message = "OTP has expired." if (otp and otp.is_expired) else "Invalid OTP."
+        return Response(
+            {"success": False, "message": message, "detail": message},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     # Same rule as forgot_password: resolve the account by email across every
     # role, so the reset works for whoever the OTP was issued to.

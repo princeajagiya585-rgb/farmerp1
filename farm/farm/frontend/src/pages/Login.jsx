@@ -105,9 +105,24 @@ export default function Login() {
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
     if (resetOtp.length < 6) return;
+    setLoading(true);
     setError("");
-    // OTP will be verified by backend during final password reset
-    setForgotPasswordStep(3);
+    try {
+      // Validate the code on the SERVER — the length check above is only to
+      // enable the button. The backend compares the entered code against the
+      // OTP stored for this email (exact value + expiry + unused); only a real
+      // match advances. No OTP validation happens on the client.
+      await api.post("/auth/verify-reset-otp/", { email: resetEmail, otp: resetOtp });
+      setForgotPasswordStep(3);
+    } catch (err) {
+      setError(
+        err.response?.data?.message ||
+        err.response?.data?.detail ||
+        "Invalid OTP."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleResetPassword = async (e) => {

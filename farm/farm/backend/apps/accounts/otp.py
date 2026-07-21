@@ -49,8 +49,35 @@ class OTP(models.Model):
         return otp
 
     @classmethod
+    def peek(cls, identifier, code, purpose="LOGIN"):
+        """Validate an OTP WITHOUT consuming it. Returns (valid, reason).
+
+        NB: named ``peek`` rather than ``check`` on purpose — Django's system
+        check framework calls ``Model.check(**kwargs)``, so a classmethod named
+        ``check`` here would shadow it and break ``manage.py check``/startup.
+
+        Used by the standalone verify step so the code can be checked for real,
+        server-side, before the user moves on — while the single actual use is
+        still spent later by ``verify()`` at password reset. The match is an
+        exact value comparison against the one active (unused) OTP for this
+        identifier; a wrong value never matches, and length/format alone is
+        never sufficient.
+
+        reason is one of: None (valid), "invalid" (no such active code),
+        "expired" (matched but past its 10-minute window).
+        """
+        otp = cls.objects.filter(
+            identifier=identifier, code=code, purpose=purpose, is_used=False
+        ).first()
+        if otp is None:
+            return False, "invalid"
+        if otp.is_expired:
+            return False, "expired"
+        return True, None
+
+    @classmethod
     def verify(cls, identifier, code, purpose="LOGIN"):
-        """Verify an OTP. Returns (success, otp_instance)."""
+        """Verify an OTP and CONSUME it (single use). Returns (success, otp)."""
         otp = cls.objects.filter(
             identifier=identifier, code=code, purpose=purpose, is_used=False
         ).first()
