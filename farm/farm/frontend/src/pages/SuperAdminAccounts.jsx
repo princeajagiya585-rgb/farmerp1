@@ -48,6 +48,7 @@ export default function SuperAdminAccounts() {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState("");
   const [notice, setNotice] = useState("");
+  const [showDeleted, setShowDeleted] = useState(false); // toggle: deleted admins view
 
   const load = () => {
     setLoading(true);
@@ -315,11 +316,27 @@ export default function SuperAdminAccounts() {
         title="Super Admin Accounts"
         subtitle="Every super administrator across all farms — visible to the main super admin only."
         action={
-          <Link to="/users/create-super-admin">
-            <Button className="bg-gradient-to-r from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800">
-              <Plus size={16} /> Create Super Admin
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowDeleted((v) => !v)}
+              className={showDeleted ? "border-brand-300 bg-brand-50 text-brand-800" : ""}
+            >
+              {showDeleted ? <ShieldCheck size={16} /> : <Trash2 size={16} />}
+              {showDeleted ? "Active Super Admins" : "Deleted Super Admins"}
+              {!showDeleted && deleted.length > 0 && (
+                <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-100 px-1.5 text-[11px] font-bold text-red-600">
+                  {deleted.length}
+                </span>
+              )}
             </Button>
-          </Link>
+            <Link to="/users/create-super-admin">
+              <Button className="bg-gradient-to-r from-brand-600 to-brand-700 hover:from-brand-700 hover:to-brand-800">
+                <Plus size={16} /> Create Super Admin
+              </Button>
+            </Link>
+          </div>
         }
       />
 
@@ -341,6 +358,29 @@ export default function SuperAdminAccounts() {
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
           {error}
         </div>
+      ) : showDeleted ? (
+        <>
+          <div className="mb-4">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-gray-700">
+              <Trash2 size={16} className="text-red-500" />
+              Deleted Super Admins
+              <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600">
+                {loading ? "—" : deleted.length}
+              </span>
+            </h3>
+            <p className="mt-1 text-xs text-gray-400">
+              Admins you have deleted. Restore one to bring back the managers and
+              employees archived with them, or remove the whole group for good.
+            </p>
+          </div>
+          {loading ? (
+            <div className="rounded-2xl border border-gray-100 bg-white p-12 text-center text-sm text-gray-400">
+              Loading deleted super admins…
+            </div>
+          ) : (
+            <Table columns={deletedColumns} rows={deleted} empty="No deleted super admins." />
+          )}
+        </>
       ) : (
         <>
           {/* Summary strip — the count is the point of this page. */}
@@ -389,25 +429,6 @@ export default function SuperAdminAccounts() {
                 .map((r) => `${r.username} — ${fmtDateTime(r.last_login)}`)
                 .join(" · ")}
             </p>
-          )}
-
-          {/* Deleted super admins — restore the whole team or remove for good.
-              Owner-only, and the only place a deleted admin can be managed. */}
-          {!loading && deleted.length > 0 && (
-            <div className="mt-8">
-              <h3 className="flex items-center gap-2 text-sm font-bold text-gray-700">
-                <Trash2 size={15} className="text-red-500" />
-                Deleted Super Admins
-                <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600">
-                  {deleted.length}
-                </span>
-              </h3>
-              <p className="mb-3 mt-1 text-xs text-gray-400">
-                Restoring an admin brings back the managers and employees archived with
-                them. Permanent delete removes the whole group's logins for good.
-              </p>
-              <Table columns={deletedColumns} rows={deleted} empty="No deleted super admins." />
-            </div>
           )}
         </>
       )}
